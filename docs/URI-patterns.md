@@ -115,7 +115,7 @@ The generated RDF uses the following namespace bindings:
 For triple store deployment, graph URIs follow a template pattern:
 
 **Pattern**: `{base_uri}/graph/{SOURCE}`
-**Example**: `http://data.climatesense-project.eu/graph/misinfome`
+**Example**: `http://data.climatesense-project.eu/graph/euroclimatecheck`
 
 The `{SOURCE}` placeholder is replaced with the data source name from the configuration.
 

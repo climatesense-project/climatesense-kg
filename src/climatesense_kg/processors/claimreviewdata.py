@@ -1,4 +1,4 @@
-"""MisInfoMe data processor."""
+"""ClaimReviewData data processor."""
 
 from collections.abc import Iterator
 import json
@@ -13,11 +13,11 @@ from ..config.models import (
 from .base import BaseProcessor
 
 
-class MisinfoMeProcessor(BaseProcessor):
-    """Processor for MisInfoMe JSON data."""
+class ClaimReviewDataProcessor(BaseProcessor):
+    """Processor for ClaimReviewData JSON data."""
 
     def process(self, raw_data: bytes) -> Iterator[CanonicalClaimReview]:
-        """Process MisInfoMe raw data into CanonicalClaimReview objects."""
+        """Process ClaimReviewData raw data into CanonicalClaimReview objects."""
         try:
             data = json.loads(raw_data.decode("utf-8"))
 
@@ -37,10 +37,10 @@ class MisinfoMeProcessor(BaseProcessor):
         except json.JSONDecodeError as e:
             self.logger.error(f"Invalid JSON data: {e}")
         except Exception as e:
-            self.logger.error(f"Error processing MisInfoMe data: {e}")
+            self.logger.error(f"Error processing ClaimReviewData data: {e}")
 
     def _normalize_item(self, item: dict[str, Any]) -> CanonicalClaimReview:
-        """Convert MisInfoMe item to CanonicalClaimReview."""
+        """Convert ClaimReviewData item to CanonicalClaimReview."""
         claim_text_raw = item.get("claim_text", [])
         claim_text = claim_text_raw[0] if claim_text_raw else ""
 
@@ -73,12 +73,12 @@ class MisinfoMeProcessor(BaseProcessor):
             date_published=str(date_published) if date_published else None,
             language=item.get("language") or fact_checker.get("language"),
             rating=rating,
-            source_type="misinfome",
+            source_type="claimreviewdata",
             source_name=self.name,
         )
 
     def _validate_item(self, item: dict[str, Any]) -> tuple[bool, list[str]]:
-        """Validate a MisInfoMe item and return validation errors.
+        """Validate a ClaimReviewData item and return validation errors.
 
         Returns:
             (is_valid, errors)

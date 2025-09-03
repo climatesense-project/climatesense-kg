@@ -7,10 +7,10 @@ from pathlib import Path
 from .config.models import CanonicalClaimReview
 from .config.schemas import DataSourceConfig, ProviderConfig
 from .processors import (
+    ClaimReviewDataProcessor,
     DbkfProcessor,
     DefactoProcessor,
     EuroClimateCheckProcessor,
-    MisinfoMeProcessor,
 )
 from .processors.base import BaseProcessor
 from .providers import (
@@ -50,7 +50,7 @@ class DataManager:
 
         # Processor type mapping
         self._processors: dict[str, type[BaseProcessor]] = {
-            "misinfome": MisinfoMeProcessor,
+            "claimreviewdata": ClaimReviewDataProcessor,
             "euroclimatecheck": EuroClimateCheckProcessor,
             "dbkf": DbkfProcessor,
             "defacto": DefactoProcessor,

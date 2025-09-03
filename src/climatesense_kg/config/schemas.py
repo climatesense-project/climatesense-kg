@@ -40,7 +40,7 @@ class DataSourceConfig:
     """Configuration for a data source."""
 
     name: str
-    type: Literal["misinfome", "euroclimatecheck", "dbkf", "defacto"]
+    type: Literal["claimreviewdata", "euroclimatecheck", "dbkf", "defacto"]
     enabled: bool = True
     provider: ProviderConfig | None = None
     cache_ttl_hours: float | None = None

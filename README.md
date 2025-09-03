@@ -14,7 +14,7 @@
 
 - Multi-source ingestion from major climate fact-checking organizations
   - [EuroClimateCheck](https://github.com/climatesense-project/euroclimatecheck-scraper)
-  - [MisinfoMe](https://github.com/MartinoMensio/claimreview-data)
+  - [ClaimReviewData](https://github.com/MartinoMensio/claimreview-data)
   - [DeFacto](https://defacto-observatoire.fr/Fact-checks/)
   - [DBKF](https://dbkf.ontotext.com/)
 - Data enrichment with:
@@ -94,6 +94,7 @@ just run config/minimal.yaml
    ```
 
    Edit `.env` to configure:
+
    - `GITHUB_TOKEN`: Your GitHub token for private repositories
    - `VIRTUOSO_PORT`: Port for Virtuoso (default: 8890)
    - `ISQL_PORT`: Port for Virtuoso ISQL interface (default: 8080)
@@ -116,8 +117,8 @@ The pipeline uses YAML-based configuration. Example config:
 ```yaml
 data_sources:
   - name: "claimreview_sample"
-    type: "misinfome"
-    input_path: "samples/misinfome-data"
+    type: "claimreviewdata"
+    input_path: "samples/claimreviewdata-data"
   - name: "euroclimatecheck_sample"
     type: "euroclimatecheck"
     input_path: "samples/euroclimatecheck-data"

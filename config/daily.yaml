@@ -1,6 +1,6 @@
 data_sources:
-  - name: "misinfome"
-    type: "misinfome"
+  - name: "claimreviewdata"
+    type: "claimreviewdata"
     provider:
       provider_type: "github"
       repository: "MartinoMensio/claimreview-data"
