@@ -1,0 +1,14 @@
+data_sources:
+  - name: "misinfome"
+    type: "misinfome"
+    provider:
+      provider_type: "github"
+      repository: "MartinoMensio/claimreview-data"
+      asset_pattern: "*.zip"
+      extract_file: "claim_reviews.json"
+
+output:
+  format: "nt"
+  output_path: "data/rdf/{DATE}/{SOURCE}.nt"
+  base_uri: "http://data.climatesense-project.eu"
+  uri_cache_path: "cache/processed_uris.txt"

@@ -1,0 +1,32 @@
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "climatesense-kg"
+version = "0.1.0"
+description = "A modular, source-agnostic pipeline for building the ClimateSense knowledge graphs"
+authors = ["ClimateSense <climatesense@lists.eurecom.fr>"]
+readme = "README.md"
+license = "MIT"
+packages = [{include = "climatesense_kg", from = "src"}]
+
+[tool.poetry.scripts]
+climatesense-kg = "climatesense_kg.cli:main"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+requests = "^2.31.0"
+pyyaml = "^6.0.0"
+rdflib = "^7.0.0"
+trafilatura = "^1.6.0"
+torch = "2.2.2"
+numpy = "<2.0.0"
+transformers = ">=4.25.1,<4.30.0"
+defusedxml = "^0.7.1"
+dacite = "^1.9.2"
+tqdm = "^4.67.1"
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.12.9"
+mypy = "^1.17.1"

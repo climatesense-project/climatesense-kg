@@ -1,0 +1,58 @@
+volumes:
+  virtuoso_data:
+
+services:
+  virtuoso:
+    image: openlink/virtuoso-opensource-7:latest
+    container_name: climatesense-virtuoso
+    environment:
+      DBA_PASSWORD: dba
+      SPARQL_UPDATE: true
+    ports:
+      - "${VIRTUOSO_PORT:-8890}:8890"
+    volumes:
+      - virtuoso_data:/database
+      - ../data:/database/data:ro
+    restart: unless-stopped
+
+  pipeline:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: climatesense-pipeline
+    environment:
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+    volumes:
+      - ../data:/app/data
+      - ../logs:/app/logs
+      - ../cache:/app/cache
+      - ../config:/app/config:ro
+    depends_on:
+      - virtuoso
+      - isql-service
+    profiles:
+      - manual
+
+  isql-service:
+    build:
+      context: ./isql-service
+      dockerfile: Dockerfile
+    container_name: climatesense-isql
+    environment:
+      VIRTUOSO_HOST: virtuoso
+      VIRTUOSO_ISQL_PORT: 1111
+      VIRTUOSO_USER: dba
+      VIRTUOSO_PASSWORD: dba
+      HOST: 0.0.0.0
+      PORT: 8080
+    ports:
+      - "${ISQL_PORT:-8080}:8080"
+    depends_on:
+      - virtuoso
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

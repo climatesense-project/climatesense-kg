@@ -1,0 +1,145 @@
+data_sources:
+  - name: "misinfome"
+    type: "misinfome"
+    provider:
+      provider_type: "github"
+      repository: "MartinoMensio/claimreview-data"
+      asset_pattern: "*.zip"
+      extract_file: "claim_reviews.json"
+  - name: "euroclimatecheck"
+    type: "euroclimatecheck"
+    provider:
+      provider_type: "github"
+      repository: "climatesense-project/euroclimatecheck-scraper"
+      asset_pattern: "all_articles.json"
+  - name: "defacto"
+    type: "defacto"
+    provider:
+      provider_type: "xwiki"
+      base_url: "https://defacto-observatoire.fr"
+      tags: ["Climat", "climat", "Changement climatique"]
+  - name: "dbkf"
+    type: "dbkf"
+    provider:
+      provider_type: "graphql"
+      endpoint: "https://dbkf.ontotext.com/gql-api"
+      query: |
+        query GetReviewsWithConcepts($limit: PositiveInteger!, $offset: NonNegativeInteger!) {
+          claimReview(
+            limit: $limit,
+            offset: $offset,
+            where: {
+              OR: [
+                { annotation: { concept: { id: { EQ: "http://weverify.eu/resource/Concept/Q7937" } } } },
+                { annotation: { concept: { id: { EQ: "http://weverify.eu/resource/Concept/Q7942" } } } },
+                { annotation: { concept: { id: { EQ: "http://weverify.eu/resource/Concept/Q125928" } } } }
+              ]
+            }
+          ) {
+            id
+            externalUrl
+            headline
+            reviewBody
+            author {
+              id
+              name
+            }
+            publisher {
+              id
+              name
+            }
+            language
+            dateCreated
+            annotation {
+              concept {
+                id
+                prefLabel {
+                  value
+                }
+              }
+              description
+            }
+            containsEvent {
+              startOffset
+              endOffset
+              text
+              eventType {
+                id
+              }
+              hasTrigger {
+                startOffset
+                endOffset
+                text
+              }
+            }
+            imageObject {
+              image
+            }
+            audioObject {
+              audio
+            }
+            videoObject {
+              video
+            }
+            fileObject {
+              file
+            }
+            itemReviewed {
+              id
+              text
+            }
+            hasPart {
+              about
+            }
+          }
+        }
+      batch_size: 100
+
+# Enrichment configuration
+enrichment:
+  url_text_extraction:
+    enabled: true
+    rate_limit_delay: 0.5
+    timeout: 15
+    max_retries: 2
+
+  dbpedia_spotlight:
+    enabled: true
+    api_url: "https://api.dbpedia-spotlight.org/en/annotate"
+    confidence: 0.6
+    support: 30
+    timeout: 20
+    rate_limit_delay: 0.2
+
+  bert_factors:
+    enabled: true
+    models_path: "data/cimple-factors-models"
+    batch_size: 64
+    device: "auto"
+    max_length: 128
+
+# Output configuration
+output:
+  format: "nt"
+  output_path: "data/rdf/{DATE}/{SOURCE}.nt"
+  base_uri: "http://data.climatesense-project.eu"
+  uri_cache_path: "cache/processed_uris.txt"
+
+# Deployment configuration
+deployment:
+  virtuoso:
+    enabled: true
+    host: "virtuoso"
+    port: 1111
+    user: "dba"
+    password: "dba"
+    isql_service_url: "http://isql-service:8080"
+    graph_template: "http://data.climatesense-project.eu/graph/{SOURCE}"
+
+# Logging configuration
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file_path: "logs/daily_pipeline.log"
+  max_file_size: "50MB"
+  backup_count: 10

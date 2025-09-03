@@ -1,0 +1,10 @@
+exclude_dirs:
+  - tests
+  - .venv
+
+skips:
+  - B101 # assert statements
+  - B104 # hardcoded bind all interfaces
+  - B107 # hardcoded password defaults
+  - B113 # requests without timeout
+  - B310 # urlopen usage

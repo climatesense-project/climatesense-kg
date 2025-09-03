@@ -1,0 +1,34 @@
+[
+  {
+    "claim_text": [
+      "N\u00eb fund t\u00eb muajit apo n\u00eb fillim t\u00eb nentorit do t\u00eb fillojn\u00eb 10 dit\u00ebt e err\u00ebsir\u00ebs q\u00eb ne e kemi parashikuar, do t\u00eb zhduket interneti, do t\u00eb mbyllen t\u00eb gjitha televizionet e sidomos n\u00eb Shtetet e Bashkuara t\u00eb Amerik\u00ebs dhe do t\u00eb ket\u00eb nj\u00eb err\u00ebsir\u00eb totale"
+    ],
+    "label": "not_credible",
+    "review_url": "https://kallxo.com/krypometer/teoria-konspirative-per-10-ditet-e-erresires-ne-shba/",
+    "fact_checker": {
+      "name": "internews-kosova",
+      "country": "Kosovo",
+      "language": "Albanian",
+      "website": "https://www.kallxo.com/krypometer/",
+      "ifcn_url": "https://ifcncodeofprinciples.poynter.org/profile/internews-kosova",
+      "avatar": "https://cdn.ifcncodeofprinciples.poynter.org/storage/badges/2FC1A1AF-141B-42F4-5D3C-DA5C5C55DD67.png",
+      "domain": "kallxo.com"
+    },
+    "appearances": [],
+    "reviews": [
+      {
+        "label": "not_credible",
+        "original_label": "Rren\u00eb",
+        "review_rating": {
+          "@type": "Rating",
+          "ratingValue": "2",
+          "bestRating": "5",
+          "worstRating": "1",
+          "alternateName": "Rren\u00eb"
+        },
+        "retrieved_by": null,
+        "date_published": "2024-11-26"
+      }
+    ]
+  }
+]
