@@ -29,6 +29,7 @@ services:
       - ../logs:/app/logs
       - ../cache:/app/cache
       - ../config:/app/config:ro
+      - ${CIMPLE_MODELS_PATH:-../data/cimple-factors-models}:/app/data/cimple-factors-models
     depends_on:
       - virtuoso
       - isql-service
