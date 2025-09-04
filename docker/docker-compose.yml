@@ -5,6 +5,7 @@ services:
   virtuoso:
     image: openlink/virtuoso-opensource-7:latest
     container_name: climatesense-virtuoso
+    env_file: .env
     environment:
       DBA_PASSWORD: ${VIRTUOSO_PASSWORD:-dba}
       SPARQL_UPDATE: true
