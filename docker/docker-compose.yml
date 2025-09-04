@@ -6,7 +6,7 @@ services:
     image: openlink/virtuoso-opensource-7:latest
     container_name: climatesense-virtuoso
     environment:
-      DBA_PASSWORD: dba
+      DBA_PASSWORD: ${VIRTUOSO_PASSWORD:-dba}
       SPARQL_UPDATE: true
     ports:
       - "${VIRTUOSO_PORT:-8890}:8890"
@@ -42,7 +42,7 @@ services:
       VIRTUOSO_HOST: virtuoso
       VIRTUOSO_ISQL_PORT: 1111
       VIRTUOSO_USER: dba
-      VIRTUOSO_PASSWORD: dba
+      VIRTUOSO_PASSWORD: ${VIRTUOSO_PASSWORD:-dba}
       HOST: 0.0.0.0
       PORT: 8080
     ports:
