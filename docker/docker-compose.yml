@@ -12,6 +12,7 @@ services:
       - "${VIRTUOSO_PORT:-8890}:8890"
     volumes:
       - virtuoso_data:/database
+      - ./virtuoso/initdb.d:/initdb.d:ro
       - ../data:/database/data:ro
     restart: unless-stopped
 
