@@ -142,6 +142,7 @@ enrichment:
   bert_factors:
     enabled: true
     models_path: "data/cimple-factors-models"
+    auto_download: true
     batch_size: 64
     device: "auto"
     max_length: 128

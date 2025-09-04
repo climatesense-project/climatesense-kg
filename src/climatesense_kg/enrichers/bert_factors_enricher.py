@@ -6,6 +6,9 @@ from pathlib import Path
 from typing import Any
 import warnings
 
+import requests
+from tqdm import tqdm
+
 from ..config.models import CanonicalClaimReview
 from .base import Enricher
 
@@ -75,6 +78,15 @@ class BertFactorsEnricher(Enricher):
     ]
     CONSPIRACY_LEVELS_LIST = ["No ", "Mentioning ", "Supporting "]
 
+    # Model download configuration
+    MODELS_BASE_URL = "https://data.cimple.eu/models"
+    REQUIRED_MODELS = [
+        "emotion.pth",
+        "sentiment.pth",
+        "political-leaning.pth",
+        "conspiracy.pth",
+    ]
+
     tokenizer: AutoTokenizer | None = None
     models: (
         tuple[
@@ -96,7 +108,9 @@ class BertFactorsEnricher(Enricher):
         self.batch_size = kwargs.get("batch_size", 32)
         self.max_length = kwargs.get("max_length", 128)
         self.device = kwargs.get("device", "auto")
+        self.auto_download = kwargs.get("auto_download", True)
         self._setup_device()
+        self._ensure_models_available()
         self._load_models()
 
     def _setup_device(self) -> None:
@@ -109,6 +123,67 @@ class BertFactorsEnricher(Enricher):
             self.torch_device = torch.device(self.device)
 
         self.logger.info(f"Using PyTorch device: {self.torch_device}")
+
+    def _ensure_models_available(self) -> None:
+        """Ensure all required models are available, download if missing and auto_download is enabled."""
+        if not self.auto_download:
+            return
+
+        missing_models = self._get_missing_models()
+        if missing_models:
+            self.logger.info(f"Missing BERT models: {missing_models}")
+            self.logger.info("Downloading missing models...")
+
+            self.models_path.mkdir(parents=True, exist_ok=True)
+
+            for model_file in missing_models:
+                self._download_model(model_file)
+        else:
+            self.logger.info("All BERT models are available")
+
+    def _get_missing_models(self) -> list[str]:
+        """Get list of missing model files."""
+        missing = []
+        for model_file in self.REQUIRED_MODELS:
+            model_path = self.models_path / model_file
+            if not model_path.exists():
+                missing.append(model_file)
+        return missing
+
+    def _download_model(self, model_file: str) -> None:
+        """Download a single model file."""
+        url = f"{self.MODELS_BASE_URL}/{model_file}"
+        model_path = self.models_path / model_file
+
+        self.logger.info(f"Downloading {model_file} from {url}")
+
+        try:
+            response = requests.get(url, stream=True, timeout=60)
+            response.raise_for_status()
+
+            total_size = int(response.headers.get("content-length", 0))
+
+            with open(model_path, "wb") as f:
+                with tqdm(
+                    total=total_size,
+                    unit="B",
+                    unit_scale=True,
+                    desc=model_file,
+                    miniters=1,
+                ) as pbar:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
+                            pbar.update(len(chunk))
+
+            self.logger.info(f"Successfully downloaded {model_file}")
+
+        except Exception as e:
+            self.logger.error(f"Failed to download {model_file}: {e}")
+            # Clean up partial download
+            if model_path.exists():
+                model_path.unlink()
+            raise RuntimeError(f"Could not download required model {model_file}") from e
 
     def _load_models(self) -> None:
         """Load BERT models and tokenizer."""

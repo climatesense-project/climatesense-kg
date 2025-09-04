@@ -77,6 +77,7 @@ class BertFactorsConfig:
     batch_size: int = 32
     device: Literal["auto", "cpu", "cuda"] = "auto"
     max_length: int = 128
+    auto_download: bool = True
 
 
 @dataclass
