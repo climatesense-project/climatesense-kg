@@ -41,6 +41,9 @@ COPY pyproject.toml poetry.lock justfile README.md ./
 # Install the package in editable mode so the climatesense_kg module is available
 RUN pip install -e .
 
+# Environment variables
+ENV PYTHONUNBUFFERED=1
+
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import climatesense_kg; print('OK')" || exit 1
