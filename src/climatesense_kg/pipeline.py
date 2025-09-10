@@ -167,15 +167,25 @@ class Pipeline:
         try:
             virtuoso_config = self.config.deployment.virtuoso
             if virtuoso_config.enabled:
-                self.deployment_handler = VirtuosoDeploymentHandler(
-                    host=virtuoso_config.host,
-                    port=virtuoso_config.port,
-                    user=virtuoso_config.user,
-                    password=virtuoso_config.password,
-                    isql_service_url=virtuoso_config.isql_service_url,
-                    graph_template=virtuoso_config.graph_template,
+                host = os.getenv("VIRTUOSO_HOST", "localhost")
+                port = int(os.getenv("VIRTUOSO_PORT", "8890"))
+                user = os.getenv("VIRTUOSO_USER", "dba")
+                password = os.getenv("VIRTUOSO_PASSWORD", "dba")
+                isql_service_url = os.getenv(
+                    "VIRTUOSO_ISQL_SERVICE_URL", "http://isql-service:8080"
                 )
-                self.logger.info("Initialized Virtuoso deployment handler")
+
+                self.deployment_handler = VirtuosoDeploymentHandler(
+                    host=host,
+                    port=port,
+                    user=user,
+                    password=password,
+                    graph_template=virtuoso_config.graph_template,
+                    isql_service_url=isql_service_url,
+                )
+                self.logger.info(
+                    f"Initialized Virtuoso deployment handler (host: {host}:{port})"
+                )
             else:
                 self.deployment_handler = None
         except Exception as e:

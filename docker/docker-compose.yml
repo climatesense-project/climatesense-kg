@@ -53,7 +53,7 @@ services:
       HOST: 0.0.0.0
       PORT: 8080
     ports:
-      - "${ISQL_PORT:-8080}:8080"
+      - "${ISQL_SERVICE_PORT:-8080}:8080"
     depends_on:
       - virtuoso
     restart: unless-stopped
@@ -74,6 +74,11 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       CACHE_ENV: ${CACHE_ENV:-dev}
+      VIRTUOSO_HOST: virtuoso
+      VIRTUOSO_PORT: 8890
+      VIRTUOSO_USER: dba
+      VIRTUOSO_PASSWORD: ${VIRTUOSO_PASSWORD:-dba}
+      VIRTUOSO_ISQL_SERVICE_URL: http://isql-service:8080
     volumes:
       - ../data:/app/data
       - ../logs:/app/logs

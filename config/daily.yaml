@@ -133,11 +133,6 @@ cache:
 deployment:
   virtuoso:
     enabled: true
-    host: "virtuoso"
-    port: 1111
-    user: "dba"
-    password: "dba"
-    isql_service_url: "http://isql-service:8080"
     graph_template: "http://data.climatesense-project.eu/graph/{SOURCE}"
 
 # Logging configuration

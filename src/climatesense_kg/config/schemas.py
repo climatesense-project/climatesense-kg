@@ -118,11 +118,6 @@ class VirtuosoConfig:
     """Configuration for Virtuoso triplestore deployment."""
 
     enabled: bool = False
-    host: str = "localhost"
-    port: int = 1111
-    user: str = "dba"
-    password: str = "dba"  # noqa: S105
-    isql_service_url: str | None = None
     graph_template: str = "http://data.climatesense-project.eu/graph/{SOURCE}"
 
 

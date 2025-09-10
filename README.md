@@ -94,9 +94,12 @@ just run config/minimal.yaml
 
    Edit `.env` to configure:
    - `GITHUB_TOKEN`: Your GitHub token for private repositories
-   - `VIRTUOSO_PASSWORD`: Password for Virtuoso DBA user (default: dba)
-   - `VIRTUOSO_PORT`: Port for Virtuoso (default: 8890)
-   - `ISQL_PORT`: Port for Virtuoso ISQL interface (default: 8080)
+   - `VIRTUOSO_HOST`: Virtuoso server host (default: localhost)
+   - `VIRTUOSO_PORT`: Virtuoso SQL port (default: 8890)
+   - `VIRTUOSO_USER`: Virtuoso database username (default: dba)
+   - `VIRTUOSO_PASSWORD`: Virtuoso database password (default: dba)
+   - `VIRTUOSO_ISQL_SERVICE_URL`: URL of ISQL HTTP service (default: http://isql-service:8080)
+   - `ISQL_SERVICE_PORT`: Port for Virtuoso ISQL interface (default: 8080)
    - `REDIS_HOST`: Redis host for URI cache (default: redis)
    - `REDIS_PORT`: Redis port (default: 6379)
    - `REDIS_PASSWORD`: Redis password (optional)

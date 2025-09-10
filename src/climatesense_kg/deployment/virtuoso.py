@@ -17,13 +17,13 @@ class VirtuosoDeploymentHandler(DeploymentHandler):
         user: str,
         password: str,
         graph_template: str,
-        isql_service_url: str | None,
+        isql_service_url: str,
     ):
         """Initialize Virtuoso deployment handler.
 
         Args:
             host: Virtuoso server host
-            port: Virtuoso SQL port (default 1111)
+            port: Virtuoso SQL port
             user: Database username
             password: Database password
             graph_template: Graph name template
