@@ -532,7 +532,7 @@ class Pipeline:
             self.logger.info(
                 f"Deploying RDF file: {output_path} for source: {source_name}"
             )
-            success = self.deployment_handler.deploy(output_path, source_name, force)
+            success = self.deployment_handler.deploy(output_path, source_name)
             deployment_results.append(success)
 
             if success:

@@ -37,15 +37,12 @@ class VirtuosoDeploymentHandler(DeploymentHandler):
         self.graph_template = graph_template
         self.isql_service_url = isql_service_url
 
-    def deploy(
-        self, rdf_file_path: Path, source_name: str, force: bool = False
-    ) -> bool:
+    def deploy(self, rdf_file_path: Path, source_name: str) -> bool:
         """Deploy RDF data to Virtuoso.
 
         Args:
             rdf_file_path: Path to the RDF file to deploy
             source_name: Name of the data source
-            force: Force deployment even if no changes detected
 
         Returns:
             True if deployment was successful, False otherwise
