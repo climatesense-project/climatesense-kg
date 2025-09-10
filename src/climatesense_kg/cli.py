@@ -15,7 +15,7 @@ def create_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  climatesense-kg run --config config/minimal.yaml
+  climatesense-kg run --config config/minimal.yaml --debug
         """,
     )
 
@@ -31,6 +31,11 @@ Examples:
         "--force-deployment",
         action="store_true",
         help="Force deployment even when no RDF changes are detected",
+    )
+    run_parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable DEBUG level logging",
     )
 
     return parser
@@ -104,6 +109,9 @@ def run_pipeline(args: argparse.Namespace) -> int:
     except Exception as e:
         print(f"Failed to load configuration: {e}", file=sys.stderr)
         return 1
+
+    if getattr(args, "debug", False):
+        config.logging.level = "DEBUG"
 
     try:
         pipeline = Pipeline(config)
