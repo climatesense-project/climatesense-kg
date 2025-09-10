@@ -1,9 +1,9 @@
 # Project specific
-logs/
-output/
-data/
-cache/
-models/
+/logs/
+/output/
+/data/
+/cache/
+/models/
 *.ttl
 *.nt
 *.rdf
