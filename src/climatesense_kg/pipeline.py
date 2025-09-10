@@ -2,35 +2,25 @@
 
 from datetime import datetime
 import logging
+import os
 from pathlib import Path
 import time
-from typing import Any, TypedDict
+from typing import TypedDict
 
+from .cache.interface import CacheInterface
+from .cache.redis_cache import RedisCache
 from .config import PipelineConfig
 from .config.models import CanonicalClaimReview
 from .data_manager import DataManager
 from .deployment.virtuoso import VirtuosoDeploymentHandler
 from .enrichers.base import Enricher as BaseEnricher
-from .enrichers.base import EnricherMetadata
 from .enrichers.bert_factors_enricher import BertFactorsEnricher
-from .enrichers.composite_enricher import CompositeEnricher
 from .enrichers.dbpedia_enricher import DBpediaEnricher
 from .enrichers.url_text_enricher import URLTextEnricher
 from .rdf_generation.generator import RDFGenerator
-from .utils.data_cache import DataCacheStats
 from .utils.logging import configure_external_loggers, setup_logging
-from .utils.uri_cache import URICache
 
 logger = logging.getLogger(__name__)
-
-
-class PipelineMetadata(TypedDict):
-    """Metadata about the pipeline."""
-
-    config: PipelineConfig
-    cache_stats: DataCacheStats
-    enricher: EnricherMetadata | None
-    rdf_generator: dict[str, Any] | None
 
 
 class DataSourceResults(TypedDict):
@@ -94,14 +84,36 @@ class Pipeline:
             cache_dir=config.cache.cache_dir,
             default_ttl_hours=config.cache.default_ttl_hours,
         )
-        self.enricher: BaseEnricher | None = None
+        self.enrichers: list[BaseEnricher] = []
         self.rdf_generator: RDFGenerator | None = None
         self.deployment_handler: VirtuosoDeploymentHandler | None = None
-        self.uri_cache: URICache | None = None
+        self.cache: CacheInterface | None = None
         self._initialize_components()
 
     def _initialize_components(self) -> None:
         """Initialize pipeline components from configuration."""
+
+        # Initialize Redis URI cache
+        try:
+            redis_host = os.getenv("REDIS_HOST", "localhost")
+            redis_port = int(os.getenv("REDIS_PORT", "6379"))
+            redis_password = os.getenv("REDIS_PASSWORD")
+            redis_db = int(os.getenv("REDIS_DB", "0"))
+            cache_env = os.getenv("CACHE_ENV", "dev")
+
+            self.cache = RedisCache(
+                host=redis_host,
+                port=redis_port,
+                password=redis_password,
+                db=redis_db,
+                env=cache_env,
+            )
+            self.logger.info(
+                f"Initialized Redis URI cache at {redis_host}:{redis_port}"
+            )
+        except Exception as e:
+            self.logger.warning(f"Failed to initialize URI cache: {e}")
+            self.cache = None
 
         # Initialize enricher
         try:
@@ -110,29 +122,29 @@ class Pipeline:
 
             # URL text enricher
             if config.url_text_extraction.enabled:
-                url_enricher = URLTextEnricher(**vars(config.url_text_extraction))
+                url_enricher = URLTextEnricher(
+                    cache=self.cache, **vars(config.url_text_extraction)
+                )
                 if url_enricher.is_available():
                     enrichers.append(url_enricher)
 
             # DBpedia enricher
             if config.dbpedia_spotlight.enabled:
-                dbpedia_enricher = DBpediaEnricher(**vars(config.dbpedia_spotlight))
+                dbpedia_enricher = DBpediaEnricher(
+                    cache=self.cache, **vars(config.dbpedia_spotlight)
+                )
                 if dbpedia_enricher.is_available():
                     enrichers.append(dbpedia_enricher)
 
             # BERT factors enricher
             if config.bert_factors.enabled:
-                bert_enricher = BertFactorsEnricher(**vars(config.bert_factors))
+                bert_enricher = BertFactorsEnricher(
+                    cache=self.cache, **vars(config.bert_factors)
+                )
                 if bert_enricher.is_available():
                     enrichers.append(bert_enricher)
 
-            # Create composite or single enricher
-            if len(enrichers) == 1:
-                self.enricher = enrichers[0]
-            elif len(enrichers) > 1:
-                self.enricher = CompositeEnricher(enrichers)
-            else:
-                self.enricher = None
+            self.enrichers = enrichers
 
             self.logger.info("Initialized enricher")
         except Exception as e:
@@ -166,19 +178,46 @@ class Pipeline:
                 self.logger.info("Initialized Virtuoso deployment handler")
             else:
                 self.deployment_handler = None
-                self.logger.info("No deployment handler configured")
         except Exception as e:
             self.logger.error(f"Failed to initialize deployment handler: {e}")
             self.deployment_handler = None
 
-        # Initialize URI cache
-        if self.config.output.uri_cache_path:
-            try:
-                self.uri_cache = URICache(self.config.output.uri_cache_path)
-                self.logger.info("Initialized URI cache")
-            except Exception as e:
-                self.logger.error(f"Failed to initialize URI cache: {e}")
-                raise
+    def _is_uri_processed(self, uri: str) -> bool:
+        """Check if a URI has been successfully processed."""
+        if not self.cache:
+            return False
+
+        # Check pipeline completion cache
+        pipeline_step = "pipeline.processed_items"
+        cached_data = self.cache.get(uri, pipeline_step)
+        if cached_data is None:
+            return False
+
+        # Check cache for each enricher
+        for enricher in self.enrichers:
+            if enricher.is_available():
+                enricher_cached = self.cache.get(uri, enricher.step_name)
+                if enricher_cached is None:
+                    return False
+
+        return True
+
+    def _mark_uri_processed(
+        self, uri: str, source_name: str, rdf_file_path: str
+    ) -> None:
+        """Mark a URI as successfully processed."""
+        if not self.cache:
+            return
+
+        step_name = "pipeline.processed_items"
+
+        payload = {
+            "source": source_name,
+            "processed_at": datetime.now().isoformat(),
+            "rdf_file_path": rdf_file_path,
+        }
+
+        self.cache.set(uri, step_name, payload)
 
     def run(self, force_deployment: bool = False) -> PipelineResults:
         """Execute the complete pipeline.
@@ -267,19 +306,9 @@ class Pipeline:
             rdf_stats = self._run_rdf_generation(enriched_reviews)
             results["rdf_generation"] = rdf_stats
 
-            # Step 4: Update URI cache
-            if self.uri_cache and enriched_reviews:
-                self.logger.info("Step 4: Updating URI cache")
-                processed_uris = [
-                    f"{self.config.output.base_uri}/{review.uri}"
-                    for review in enriched_reviews
-                    if review.uri
-                ]
-                self.uri_cache.add_uris(processed_uris)
-
-            # Step 5: Deployment
+            # Step 4: Deployment
             if self.deployment_handler:
-                self.logger.info("Step 5: Deploying RDF data")
+                self.logger.info("Step 4: Deploying RDF data")
                 deployment_success = self._run_deployment(rdf_stats, force_deployment)
             else:
                 deployment_success = True
@@ -321,6 +350,7 @@ class Pipeline:
     def _run_ingestion(self) -> list[CanonicalClaimReview]:
         """Run data ingestion using DataManager."""
         all_items: list[CanonicalClaimReview] = []
+        total_items_before_filtering = 0
 
         for source_config in self.config.data_sources:
             if not source_config.enabled:
@@ -328,61 +358,72 @@ class Pipeline:
 
             try:
                 items = list(self.data_manager.get_data(source_config))
+                total_items_before_filtering += len(items)
 
-                # Filter out already processed items using URI cache
-                filtered_items = self._filter_cached_items(items)
+                # Filter out already-processed items
+                if self.cache:
+                    self.logger.info(
+                        f"Filtering already processed items using cache for {source_config.name}..."
+                    )
+                    new_items: list[CanonicalClaimReview] = []
+                    skipped_count = 0
+                    for item in items:
+                        if self._is_uri_processed(item.uri):
+                            skipped_count += 1
+                        else:
+                            new_items.append(item)
 
-                all_items.extend(filtered_items)
-                self.logger.info(
-                    f"Ingested {len(filtered_items)}/{len(items)} items from {source_config.name} "
-                    f"({len(items) - len(filtered_items)} cached)"
-                )
+                    self.logger.info(
+                        f"Ingested {len(items)} items from {source_config.name}: "
+                        f"{len(new_items)} new, {skipped_count} already processed"
+                    )
+                    all_items.extend(new_items)
+                else:
+                    self.logger.info(
+                        f"Ingested {len(items)} items from {source_config.name} (no cache filtering)"
+                    )
+                    all_items.extend(items)
 
             except Exception as e:
                 self.logger.error(f"Error ingesting from {source_config.name}: {e}")
 
-        self.logger.info(f"Total ingested items: {len(all_items)}")
+        skipped_total = total_items_before_filtering - len(all_items)
+        if skipped_total > 0:
+            self.logger.info(
+                f"Total: {len(all_items)} new items, {skipped_total} already processed"
+            )
+        else:
+            self.logger.info(f"Total ingested items: {len(all_items)}")
+
         return all_items
-
-    def _filter_cached_items(
-        self, items: list[CanonicalClaimReview]
-    ) -> list[CanonicalClaimReview]:
-        """Filter out items that are already in URI cache."""
-        if not self.uri_cache:
-            return items
-
-        filtered_items: list[CanonicalClaimReview] = []
-        skipped_count = 0
-
-        for item in items:
-            if item.uri:
-                full_uri = f"{self.config.output.base_uri}/{item.uri}"
-                if self.uri_cache.is_uri_cached(full_uri):
-                    skipped_count += 1
-                    continue
-
-            filtered_items.append(item)
-
-        if skipped_count > 0:
-            self.logger.info(f"Skipped {skipped_count} already processed items")
-
-        return filtered_items
 
     def _run_enrichment(
         self, canonical_reviews: list[CanonicalClaimReview]
     ) -> list[CanonicalClaimReview]:
         """Run enrichment step."""
-        if not self.enricher or not self.enricher.is_available():
-            self.logger.warning("No enricher available, skipping enrichment")
+        if not self.enrichers:
+            self.logger.warning("No enrichers available, skipping enrichment")
             return canonical_reviews
 
-        try:
-            enriched_reviews = self.enricher.enrich_batch(canonical_reviews)
-            self.logger.info(f"Enriched {len(enriched_reviews)} claim reviews")
-            return enriched_reviews
-        except Exception as e:
-            self.logger.error(f"Error during enrichment: {e}")
-            return canonical_reviews
+        enriched_reviews = canonical_reviews
+
+        for enricher in self.enrichers:
+            if enricher.is_available():
+                try:
+                    self.logger.info(f"Applying enricher: {enricher.name}")
+                    enriched_reviews = enricher.enrich_batch(enriched_reviews)
+                except Exception as e:
+                    self.logger.error(
+                        f"Error in batch enrichment with {enricher.name}: {e}"
+                    )
+                    continue
+            else:
+                self.logger.warning(
+                    f"Enricher {enricher.name} is not available, skipping"
+                )
+
+        self.logger.info(f"Enriched {len(enriched_reviews)} claim reviews")
+        return enriched_reviews
 
     def _run_rdf_generation(
         self, canonical_reviews: list[CanonicalClaimReview]
@@ -424,6 +465,10 @@ class Pipeline:
                 output_format = self.config.output.format
 
                 self.rdf_generator.save(source_reviews, output_path, output_format)
+
+                # Mark URIs as processed after successful RDF generation
+                for review in source_reviews:
+                    self._mark_uri_processed(review.uri, source_name, str(output_path))
 
                 file_size = output_path.stat().st_size if output_path.exists() else 0
                 total_file_size += file_size
@@ -545,14 +590,3 @@ class Pipeline:
     def clear_cache(self, source_name: str | None = None) -> None:
         """Clear cache for all sources or specific source."""
         self.data_manager.clear_cache(source_name)
-
-    def get_metadata(self) -> PipelineMetadata:
-        """Get metadata about the pipeline configuration."""
-        return {
-            "config": self.config,
-            "cache_stats": self.data_manager.get_cache_stats(),
-            "enricher": self.enricher.get_metadata() if self.enricher else None,
-            "rdf_generator": (
-                self.rdf_generator.get_metadata() if self.rdf_generator else None
-            ),
-        }

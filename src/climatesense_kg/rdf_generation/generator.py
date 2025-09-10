@@ -401,12 +401,3 @@ class RDFGenerator:
         if relative_uri.startswith("http"):
             return relative_uri
         return f"{self.base_uri}/{relative_uri}"
-
-    def get_metadata(self) -> dict[str, Any]:
-        """Get metadata about this RDF generator."""
-        return {
-            "type": self.__class__.__name__,
-            "base_uri": self.base_uri,
-            "config": self.config,
-            "supported_formats": sorted(self.SUPPORTED_FORMATS),
-        }

@@ -38,8 +38,21 @@ class URLTextEnricher(Enricher):
             self.logger.warning("No review URL available for text extraction")
             return claim_review
 
+        if not claim_review.uri:
+            return claim_review
+
+        # Check cache first
+        cached_data = self.get_cached(claim_review.uri)
+        if cached_data:
+            # Apply cached URL text
+            claim_review.review_url_text = cached_data.get("review_url_text")
+            self.logger.debug(f"Applied cached URL text for {claim_review.uri}")
+            return claim_review
+
         # Extract text from review URL
         extracted_text = self._extract_url_text(claim_review.review_url)
+
+        cache_payload: dict[str, Any] = {}
 
         if extracted_text and not extracted_text.startswith("Error"):
             claim_review.review_url_text = extracted_text
@@ -47,12 +60,34 @@ class URLTextEnricher(Enricher):
                 f"Successfully extracted {len(extracted_text)} characters "
                 f"from URL: {claim_review.review_url}"
             )
+
+            # Cache the results
+            cache_payload = {
+                "review_url_text": extracted_text,
+                "review_url": claim_review.review_url,  # Store URL for debugging
+            }
+            self.set_cached(
+                claim_review.uri,
+                cache_payload,
+            )
+
         else:
             self.logger.warning(
                 f"Failed to extract text from URL: {claim_review.review_url}"
             )
             if extracted_text and extracted_text.startswith("Error"):
                 claim_review.review_url_text = None  # Don't store error messages
+
+                # Cache the failure to avoid repeated attempts
+                cache_payload = {
+                    "review_url_text": None,
+                    "review_url": claim_review.review_url,
+                    "extraction_error": True,
+                }
+                self.set_cached(
+                    claim_review.uri,
+                    cache_payload,
+                )
 
         # Rate limiting
         time.sleep(self.rate_limit_delay)

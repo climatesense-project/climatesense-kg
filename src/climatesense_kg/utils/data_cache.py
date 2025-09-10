@@ -40,7 +40,7 @@ class DataCache:
     def _generate_cache_key(self, source_name: str, config: dict[str, Any]) -> str:
         """Generate cache key from source name and config."""
         config_str = json.dumps(config, sort_keys=True, ensure_ascii=True)
-        config_hash = hashlib.sha256(config_str.encode()).hexdigest()[:16]
+        config_hash = hashlib.sha256(config_str.encode()).hexdigest()
 
         return f"{source_name}_{config_hash}"
 

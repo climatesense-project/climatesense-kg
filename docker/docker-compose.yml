@@ -1,5 +1,6 @@
 volumes:
   virtuoso_data:
+  redis_data:
 
 services:
   virtuoso:
@@ -15,6 +16,28 @@ services:
       - virtuoso_data:/database
       - ./virtuoso/initdb.d:/initdb.d:ro
       - ../data:/database/data:ro
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: climatesense-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: climatesense-redis-commander
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+      - VIEW_JSON_DEFAULT=all
+    ports:
+      - "${REDIS_COMMANDER_PORT:-8081}:8081"
+    depends_on:
+      - redis
     restart: unless-stopped
 
   isql-service:
@@ -48,6 +71,9 @@ services:
     container_name: climatesense-pipeline
     environment:
       GITHUB_TOKEN: ${GITHUB_TOKEN}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      CACHE_ENV: ${CACHE_ENV:-dev}
     volumes:
       - ../data:/app/data
       - ../logs:/app/logs
@@ -57,5 +83,6 @@ services:
     depends_on:
       - virtuoso
       - isql-service
+      - redis
     profiles:
       - manual

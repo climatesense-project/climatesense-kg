@@ -42,7 +42,6 @@ class CovidTwitterBertClassifier(nn.Module):
         original_in_features = self.bert.cls.seq_relationship.in_features
         self.bert.cls.seq_relationship = nn.Linear(original_in_features, n_classes)
 
-    # noqa: vulture
     def forward(
         self,
         input_ids: torch.Tensor,
@@ -61,7 +60,7 @@ class CovidTwitterBertClassifier(nn.Module):
 class BertFactorsEnricher(Enricher):
     """Enricher that uses BERT models for emotion, sentiment, political leaning, and conspiracy detection."""
 
-    # Constants from original code
+    # Constants for factor categories
     EMOTIONS_LIST = ["None", "Happiness", "Anger", "Sadness", "Fear"]
     POLITICAL_BIAS_LIST = ["Left", "Other", "Right"]
     SENTIMENTS_LIST = ["Negative", "Neutral", "Positive"]
@@ -109,9 +108,7 @@ class BertFactorsEnricher(Enricher):
         self.max_length = kwargs.get("max_length", 128)
         self.device = kwargs.get("device", "auto")
         self.auto_download = kwargs.get("auto_download", True)
-        self._setup_device()
-        self._ensure_models_available()
-        self._load_models()
+        self._models_loaded = False
 
     def _setup_device(self) -> None:
         """Setup PyTorch device."""
@@ -307,13 +304,23 @@ class BertFactorsEnricher(Enricher):
             self.models = None
             self.tokenizer = None
 
+    def _ensure_models_loaded(self) -> None:
+        """Ensure models are loaded when needed."""
+        if not self._models_loaded:
+            self._setup_device()
+            self._ensure_models_available()
+            self._load_models()
+            self._models_loaded = True
+
     def is_available(self) -> bool:
         """Check if BERT enricher is available."""
-        if not self.models or not self.tokenizer:
-            self.logger.warning("BERT models or tokenizer not loaded")
-            return False
+        if not self.auto_download:
+            missing_models = self._get_missing_models()
+            if missing_models:
+                self.logger.warning(f"Missing BERT models: {missing_models}")
+                return False
 
-        return all(model is not None for model in self.models)
+        return True
 
     def enrich(self, claim_review: CanonicalClaimReview) -> CanonicalClaimReview:
         """
@@ -325,21 +332,84 @@ class BertFactorsEnricher(Enricher):
         Returns:
             CanonicalClaimReview: Enriched claim review
         """
-        if not self.is_available():
+        if not self.is_available() or not claim_review.uri:
             return claim_review
 
-        # Compute factors for the claim text
-        if claim_review.claim.normalized_text:
-            factors = self._compute_factors(claim_review.claim.normalized_text)
+        # Check cache first
+        cached_data = self.get_cached(claim_review.uri)
+        if cached_data:
+            self._apply_factors(claim_review, cached_data)
+            self.logger.debug(f"Applied cached BERT factors for {claim_review.uri}")
+            return claim_review
 
-        # Update claim with computed factors
-        if factors:
-            claim_review.claim.emotion = factors.get("emotion")
-            claim_review.claim.sentiment = factors.get("sentiment")
-            claim_review.claim.political_leaning = factors.get("political_leaning")
-            claim_review.claim.conspiracies = factors.get("conspiracies", [])
+        # Compute factors if text available
+        if claim_review.claim.normalized_text:
+            self._ensure_models_loaded()
+            factors = self._compute_factors(claim_review.claim.normalized_text)
+            if factors:
+                self._apply_factors(claim_review, factors, cache=True)
 
         return claim_review
+
+    def enrich_batch(
+        self, claim_reviews: list[CanonicalClaimReview]
+    ) -> list[CanonicalClaimReview]:
+        """
+        Enrich a batch of claim reviews with optimized batch processing and caching.
+
+        Args:
+            claim_reviews: List of claim reviews to enrich
+
+        Returns:
+            List[CanonicalClaimReview]: List of enriched claim reviews
+        """
+        if not self.is_available() or not claim_reviews:
+            return claim_reviews
+
+        # First pass: handle cached items and collect uncached
+        uncached_items = []
+        cached_count = 0
+
+        for claim_review in claim_reviews:
+            if not claim_review.uri:
+                continue
+
+            cached_data = self.get_cached(claim_review.uri)
+            if cached_data:
+                self._apply_factors(claim_review, cached_data)
+                cached_count += 1
+                self.logger.debug(f"Applied cached BERT factors for {claim_review.uri}")
+            elif claim_review.claim.normalized_text:
+                uncached_items.append(claim_review)
+
+        if not uncached_items:
+            self.logger.info(f"All {len(claim_reviews)} claim reviews were cached")
+            return claim_reviews
+
+        self.logger.info(
+            f"Processing {len(uncached_items)} uncached items (cached: {cached_count})"
+        )
+
+        # Batch compute factors for uncached items
+        texts = [item.claim.normalized_text for item in uncached_items]
+        self._ensure_models_loaded()
+        all_factors = self._compute_factors_batch(texts)
+
+        # Apply computed factors
+        processed_count = 0
+        for item, factors in zip(uncached_items, all_factors, strict=False):
+            if factors:
+                self._apply_factors(item, factors, cache=True)
+                processed_count += 1
+
+        self.logger.info(
+            f"BERT factors progress: {processed_count}/{len(uncached_items)}"
+        )
+        self.logger.info(
+            f"Completed BERT factors enrichment for {len(claim_reviews)} claim reviews"
+        )
+
+        return claim_reviews
 
     def _compute_factors(self, text: str) -> dict[str, Any] | None:
         """
@@ -434,62 +504,20 @@ class BertFactorsEnricher(Enricher):
             self.logger.error(f"Error computing BERT factors: {e}")
             return None
 
-    def enrich_batch(
-        self, claim_reviews: list[CanonicalClaimReview]
-    ) -> list[CanonicalClaimReview]:
-        """
-        Enrich a batch of claim reviews with optimized batch processing.
+    def _apply_factors(
+        self,
+        claim_review: CanonicalClaimReview,
+        factors: dict[str, Any],
+        cache: bool = False,
+    ) -> None:
+        """Apply factors to a claim review and optionally cache them."""
+        claim_review.claim.emotion = factors.get("emotion")
+        claim_review.claim.sentiment = factors.get("sentiment")
+        claim_review.claim.political_leaning = factors.get("political_leaning")
+        claim_review.claim.conspiracies = factors.get("conspiracies", [])
 
-        Args:
-            claim_reviews: List of claim reviews to enrich
-
-        Returns:
-            List[CanonicalClaimReview]: List of enriched claim reviews
-        """
-        if not self.is_available():
-            return claim_reviews
-
-        # Process in batches for efficiency
-        enriched_reviews = []
-        total = len(claim_reviews)
-
-        for i in range(0, total, self.batch_size):
-            batch = claim_reviews[i : i + self.batch_size]
-            batch_texts = [
-                cr.claim.normalized_text for cr in batch if cr.claim.normalized_text
-            ]
-
-            # Compute factors for the batch
-            batch_factors = (
-                self._compute_factors_batch(batch_texts) if batch_texts else []
-            )
-
-            # Apply factors to claim reviews
-            batch_factor_idx = 0
-            for claim_review in batch:
-                if claim_review.claim.normalized_text and batch_factor_idx < len(
-                    batch_factors
-                ):
-                    factors = batch_factors[batch_factor_idx]
-                    if factors is not None:
-                        claim_review.claim.emotion = factors.get("emotion")
-                        claim_review.claim.sentiment = factors.get("sentiment")
-                        claim_review.claim.political_leaning = factors.get(
-                            "political_leaning"
-                        )
-                        claim_review.claim.conspiracies = factors.get(
-                            "conspiracies", []
-                        )
-                    batch_factor_idx += 1
-                enriched_reviews.append(claim_review)
-
-            if i % (self.batch_size * 5) == 0:
-                self.logger.info(
-                    f"BERT factors progress: {min(i + self.batch_size, total)}/{total}"
-                )
-
-        self.logger.info(f"Completed BERT factors enrichment for {total} claim reviews")
-        return enriched_reviews
+        if cache and claim_review.uri:
+            self.set_cached(claim_review.uri, factors)
 
     def _compute_factors_batch(self, texts: list[str]) -> list[dict[str, Any] | None]:
         """

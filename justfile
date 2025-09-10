@@ -74,6 +74,43 @@ docker-minimal-run:
     docker compose -f docker/docker-compose.yml run --build -v ./samples:/app/samples pipeline run --config config/minimal.yaml
 
 # ============================================================================
+# Cache Commands
+# ============================================================================
+
+# Flush entire Redis cache
+cache-flush:
+    @echo "WARNING: This will delete ALL cache data in Redis!"
+    @read -p "Are you sure? (y/N) " confirm; \
+    if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then \
+        @cd docker && docker compose exec redis redis-cli FLUSHDB && \
+        echo "✅ Redis cache cleared successfully"; \
+    else \
+        echo "❌ Cache flush cancelled"; \
+    fi
+
+# Clear cache for specific enricher step (e.g., enricher.dbpedia_spotlight)
+cache-clear STEP:
+    @echo "Clearing cache for step: {{STEP}}"
+    @cd docker && COUNT=$(docker compose exec redis redis-cli KEYS "*:climatesense:{{STEP}}:*" | wc -l | tr -d ' '); \
+    if [ "$COUNT" -eq 0 ]; then \
+        echo "No cache entries found for step {{STEP}}"; \
+        exit 0; \
+    fi; \
+    echo "Found $COUNT cache entries for step {{STEP}}"; \
+    read -p "Are you sure you want to delete them? (y/N) " confirm; \
+    if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then \
+        @docker compose exec redis redis-cli EVAL "local keys = redis.call('KEYS', ARGV[1]) for i=1,#keys,5000 do redis.call('DEL', unpack(keys, i, math.min(i+4999, #keys))) end return #keys" 0 "*:climatesense:{{STEP}}:*" && \
+        echo "✅ Cache cleared for {{STEP}}"; \
+    else \
+        echo "❌ Cache clear cancelled"; \
+    fi
+
+# List all cache steps
+cache-list:
+    @echo "=== Cached Steps ==="
+    @cd docker && docker compose exec redis redis-cli KEYS "*:climatesense:*" | sed 's/.*:climatesense:\([^:]*\):.*/\1/' | sort | uniq -c | sort -nr || true
+
+# ============================================================================
 # Database and Virtuoso Commands
 # ============================================================================
 

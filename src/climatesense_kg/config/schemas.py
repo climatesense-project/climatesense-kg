@@ -100,7 +100,6 @@ class OutputConfig:
     format: Literal["turtle", "nt", "rdf/xml", "n3"] = "nt"
     output_path: str | Path = "output/knowledge_graph.nt"
     base_uri: str = "http://data.climatesense-project.eu"
-    uri_cache_path: str | Path | None = None
 
 
 @dataclass

@@ -2,29 +2,27 @@
 
 from abc import ABC, abstractmethod
 import logging
-from typing import Any, NotRequired, TypedDict
+from typing import Any
 
+from ..cache.interface import CacheInterface
 from ..config.models import CanonicalClaimReview
 
 logger = logging.getLogger(__name__)
 
 
-class EnricherMetadata(TypedDict):
-    """Metadata about an enricher."""
-
-    name: str
-    type: str
-    available: bool
-    config: dict[str, Any]
-    enrichers: NotRequired[list["EnricherMetadata"]]
-
-
 class Enricher(ABC):
     """Abstract base class for data enrichers."""
 
-    def __init__(self, name: str, **kwargs: Any):
+    def __init__(
+        self,
+        name: str,
+        cache: CacheInterface | None = None,
+        **kwargs: Any,
+    ):
         self.name = name
         self.config = kwargs
+        self.cache = cache
+        self.step_name = f"enricher.{name}"
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
     @abstractmethod
@@ -49,6 +47,37 @@ class Enricher(ABC):
             bool: True if enricher can be used, False otherwise
         """
         pass
+
+    def get_cached(self, uri: str) -> dict[str, Any] | None:
+        """
+        Get cached enrichment data for a URI.
+
+        Args:
+            uri: URI to look up
+
+        Returns:
+            Cached payload or None if not found/no cache
+        """
+        if not self.cache:
+            return None
+
+        return self.cache.get(uri, self.step_name)
+
+    def set_cached(self, uri: str, payload: dict[str, Any]) -> bool:
+        """
+        Store enrichment data in cache.
+
+        Args:
+            uri: URI to cache data for
+            payload: Enrichment data to cache
+
+        Returns:
+            True if successfully cached, False otherwise
+        """
+        if not self.cache:
+            return False
+
+        return self.cache.set(uri, self.step_name, payload)
 
     def enrich_batch(
         self, claim_reviews: list[CanonicalClaimReview]
@@ -76,17 +105,3 @@ class Enricher(ABC):
                 enriched_reviews.append(claim_review)
 
         return enriched_reviews
-
-    def get_metadata(self) -> EnricherMetadata:
-        """
-        Get metadata about this enricher.
-
-        Returns:
-            Dict[str, Any]: Enricher metadata
-        """
-        return {
-            "name": self.name,
-            "type": self.__class__.__name__,
-            "available": self.is_available(),
-            "config": self.config,
-        }

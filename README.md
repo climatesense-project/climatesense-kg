@@ -94,11 +94,15 @@ just run config/minimal.yaml
    ```
 
    Edit `.env` to configure:
-
    - `GITHUB_TOKEN`: Your GitHub token for private repositories
    - `VIRTUOSO_PASSWORD`: Password for Virtuoso DBA user (default: dba)
    - `VIRTUOSO_PORT`: Port for Virtuoso (default: 8890)
    - `ISQL_PORT`: Port for Virtuoso ISQL interface (default: 8080)
+   - `REDIS_HOST`: Redis host for URI cache (default: redis)
+   - `REDIS_PORT`: Redis port (default: 6379)
+   - `REDIS_PASSWORD`: Redis password (optional)
+   - `REDIS_DB`: Redis database number (default: 0)
+   - `CACHE_ENV`: Cache environment namespace (default: dev)
 
 3. Start the services:
 
@@ -151,7 +155,10 @@ output:
   format: "turtle"
   output_path: "data/rdf/{DATE}/{SOURCE}.ttl"
   base_uri: "http://data.climatesense-project.eu"
-  uri_cache_path: "cache/processed_uris.txt"
+
+cache:
+  cache_dir: "cache"
+  default_ttl_hours: 24.0
 ```
 
 ## Querying the Knowledge Graph

@@ -20,7 +20,7 @@ from .providers import (
     XWikiProvider,
 )
 from .providers.base import BaseProvider
-from .utils.data_cache import DataCache, DataCacheStats
+from .utils.data_cache import DataCache
 
 logger = logging.getLogger(__name__)
 
@@ -94,8 +94,6 @@ class DataManager:
 
                 # Store in cache
                 self.cache.put(source_name, cache_key_config, raw_data)
-            else:
-                self.logger.info(f"Cache hit for {source_name}")
 
             # 4. Process data
             processor = self._create_processor(source_name, source_type)
@@ -136,7 +134,3 @@ class DataManager:
             self.logger.info(f"Cleared cache for {source_name}")
         else:
             self.logger.info("Cleared all cache")
-
-    def get_cache_stats(self) -> DataCacheStats:
-        """Get cache statistics."""
-        return self.cache.get_stats()

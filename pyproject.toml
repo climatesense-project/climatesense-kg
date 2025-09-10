@@ -26,6 +26,7 @@ transformers = ">=4.25.1,<4.30.0"
 defusedxml = "^0.7.1"
 dacite = "^1.9.2"
 tqdm = "^4.67.1"
+redis = "^6.4.0"
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.12.9"

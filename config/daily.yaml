@@ -123,7 +123,11 @@ output:
   format: "nt"
   output_path: "data/rdf/{DATE}/{SOURCE}.nt"
   base_uri: "http://data.climatesense-project.eu"
-  uri_cache_path: "cache/processed_uris.txt"
+
+# Cache configuration
+cache:
+  cache_dir: "cache"
+  default_ttl_hours: 24.0
 
 # Deployment configuration
 deployment:

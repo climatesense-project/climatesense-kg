@@ -68,6 +68,24 @@ class DBpediaEnricher(Enricher):
         Returns:
             CanonicalClaimReview: Enriched claim review
         """
+        if not claim_review.uri:
+            return claim_review
+
+        # Check cache first
+        cached_data = self.get_cached(claim_review.uri)
+        if cached_data:
+            # Apply cached enrichment data
+            if "claim_entities" in cached_data:
+                claim_review.claim.entities.extend(cached_data["claim_entities"])
+            if "review_entities" in cached_data:
+                claim_review.entities_in_review.extend(cached_data["review_entities"])
+            self.logger.debug(f"Applied cached DBpedia entities for {claim_review.uri}")
+            return claim_review
+
+        # Perform enrichment
+        claim_entities: list[DBpediaSpotlightEntity] = []
+        review_entities: list[dict[str, Any]] = []
+
         # Extract entities from claim text
         if claim_review.claim.normalized_text:
             claim_entities = self._extract_entities(claim_review.claim.normalized_text)
@@ -75,15 +93,25 @@ class DBpediaEnricher(Enricher):
 
         # Extract entities from review text if available
         if claim_review.review_text:
-            review_entities = self._extract_entities(claim_review.review_text)
-            claim_review.entities_in_review.extend([asdict(e) for e in review_entities])
+            review_text_entities = self._extract_entities(claim_review.review_text)
+            review_entities.extend([asdict(e) for e in review_text_entities])
 
         # Extract entities from review URL text if available
         if claim_review.review_url_text:
             url_text_entities = self._extract_entities(claim_review.review_url_text)
-            claim_review.entities_in_review.extend(
-                [asdict(e) for e in url_text_entities]
-            )
+            review_entities.extend([asdict(e) for e in url_text_entities])
+
+        claim_review.entities_in_review.extend(review_entities)
+
+        # Cache the results
+        cache_payload = {
+            "claim_entities": [asdict(e) for e in claim_entities],
+            "review_entities": review_entities,
+        }
+        self.set_cached(
+            claim_review.uri,
+            cache_payload,
+        )
 
         # Rate limiting
         time.sleep(self.rate_limit_delay)
