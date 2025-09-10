@@ -46,7 +46,6 @@
 - [Quick Start](#quick-start)
 - [Docker Setup](#docker-setup)
 - [Configuration](#configuration)
-- [Output](#-output)
 - [Querying the Knowledge Graph](#querying-the-knowledge-graph)
   - [Example SPARQL Queries](#example-sparql-queries)
 - [Development](#development)
