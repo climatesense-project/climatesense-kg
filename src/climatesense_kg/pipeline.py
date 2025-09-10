@@ -7,6 +7,8 @@ from pathlib import Path
 import time
 from typing import TypedDict
 
+from dotenv import load_dotenv
+
 from .cache.interface import CacheInterface
 from .cache.redis_cache import RedisCache
 from .config import PipelineConfig
@@ -72,6 +74,8 @@ class Pipeline:
     """Main pipeline orchestrator."""
 
     def __init__(self, config: PipelineConfig):
+        load_dotenv()
+
         self.config = config
 
         # Setup logging

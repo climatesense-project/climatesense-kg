@@ -27,6 +27,7 @@ defusedxml = "^0.7.1"
 dacite = "^1.9.2"
 tqdm = "^4.67.1"
 redis = "^6.4.0"
+python-dotenv = "^1.1.1"
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.12.9"
