@@ -82,7 +82,7 @@ cache-flush:
     @echo "WARNING: This will delete ALL cache data in Redis!"
     @read -p "Are you sure? (y/N) " confirm; \
     if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then \
-        @cd docker && docker compose exec redis redis-cli FLUSHDB && \
+        cd docker && docker compose exec redis redis-cli FLUSHDB && \
         echo "✅ Redis cache cleared successfully"; \
     else \
         echo "❌ Cache flush cancelled"; \
@@ -91,7 +91,7 @@ cache-flush:
 # Clear cache for specific enricher step (e.g., enricher.dbpedia_spotlight)
 cache-clear STEP:
     @echo "Clearing cache for step: {{STEP}}"
-    @cd docker && COUNT=$(docker compose exec redis redis-cli KEYS "*:climatesense:{{STEP}}:*" | wc -l | tr -d ' '); \
+    cd docker && COUNT=$(docker compose exec redis redis-cli KEYS "*:climatesense:{{STEP}}:*" | wc -l | tr -d ' '); \
     if [ "$COUNT" -eq 0 ]; then \
         echo "No cache entries found for step {{STEP}}"; \
         exit 0; \
