@@ -52,7 +52,9 @@ class CanonicalClaim:
     emotion: str | None = None
     sentiment: str | None = None
     political_leaning: str | None = None
-    conspiracies: list[str] = field(default_factory=list[str])
+    conspiracies: dict[str, list[str]] = field(
+        default_factory=lambda: {"mentioned": [], "promoted": []}
+    )
     readability_score: float | None = None
 
     @property

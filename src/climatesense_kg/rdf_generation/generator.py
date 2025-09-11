@@ -334,11 +334,16 @@ class RDFGenerator:
             self.graph.add((claim_uri, self.CIMPLE.hasPoliticalLeaning, political_uri))
 
         # Conspiracies
-        for conspiracy in claim.conspiracies:
+        for conspiracy in claim.conspiracies["mentioned"]:
             conspiracy_uri = URIRef(
                 f"{self.base_uri}/conspiracy/{conspiracy.replace(' ', '_').lower()}"
             )
             self.graph.add((claim_uri, self.CIMPLE.mentionsConspiracy, conspiracy_uri))
+        for conspiracy in claim.conspiracies["promoted"]:
+            conspiracy_uri = URIRef(
+                f"{self.base_uri}/conspiracy/{conspiracy.replace(' ', '_').lower()}"
+            )
+            self.graph.add((claim_uri, self.CIMPLE.promotesConspiracy, conspiracy_uri))
 
         # Readability score
         if claim.readability_score:

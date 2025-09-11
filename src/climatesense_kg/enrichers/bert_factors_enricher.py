@@ -514,7 +514,9 @@ class BertFactorsEnricher(Enricher):
         claim_review.claim.emotion = factors.get("emotion")
         claim_review.claim.sentiment = factors.get("sentiment")
         claim_review.claim.political_leaning = factors.get("political_leaning")
-        claim_review.claim.conspiracies = factors.get("conspiracies", [])
+        claim_review.claim.conspiracies = factors.get(
+            "conspiracies", {"mentioned": [], "promoted": []}
+        )
 
         if cache and claim_review.uri:
             self.set_cached(claim_review.uri, factors)
