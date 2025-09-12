@@ -345,7 +345,8 @@ class BertFactorsEnricher(Enricher):
         # Compute factors if text available
         if claim_review.claim.normalized_text:
             self._ensure_models_loaded()
-            factors = self._compute_factors(claim_review.claim.normalized_text)
+            factors_list = self._compute_factors([claim_review.claim.normalized_text])
+            factors = factors_list[0] if factors_list else None
             if factors:
                 self._apply_factors(claim_review, factors, cache=True)
 
@@ -393,7 +394,7 @@ class BertFactorsEnricher(Enricher):
         # Batch compute factors for uncached items
         texts = [item.claim.normalized_text for item in uncached_items]
         self._ensure_models_loaded()
-        all_factors = self._compute_factors_batch(texts)
+        all_factors = self._compute_factors(texts)
 
         # Apply computed factors
         processed_count = 0
@@ -410,99 +411,6 @@ class BertFactorsEnricher(Enricher):
         )
 
         return claim_reviews
-
-    def _compute_factors(self, text: str) -> dict[str, Any] | None:
-        """
-        Compute factors for a single text.
-
-        Args:
-            text: Text to analyze
-
-        Returns:
-            Dict[str, Any]: Computed factors
-        """
-        if not text or not text.strip() or not self.models or not self.tokenizer:
-            return None
-
-        try:
-            # Tokenize text
-            tokenized = self.tokenizer(
-                text,
-                max_length=self.max_length,
-                padding="max_length",
-                truncation=True,
-                return_tensors="pt",
-            )
-
-            input_ids = tokenized["input_ids"].to(self.torch_device)
-            token_type_ids = tokenized["token_type_ids"].to(self.torch_device)
-            attention_mask = tokenized["attention_mask"].to(self.torch_device)
-
-            model_em, model_pol, model_sent, model_con = self.models
-
-            with torch.no_grad():
-                # Compute predictions
-                results = {}
-
-                # Emotion
-                if model_em:
-                    logits_em = model_em(input_ids, token_type_ids, attention_mask)
-                    pred_em = logits_em.detach().cpu().numpy().argmax(axis=1)[0]
-                    results["emotion"] = (
-                        self.EMOTIONS_LIST[pred_em]
-                        if self.EMOTIONS_LIST[pred_em] != "None"
-                        else None
-                    )
-
-                # Political leaning
-                if model_pol:
-                    logits_pol = model_pol(input_ids, token_type_ids, attention_mask)
-                    pred_pol = logits_pol.detach().cpu().numpy().argmax(axis=1)[0]
-                    results["political_leaning"] = self.POLITICAL_BIAS_LIST[pred_pol]
-
-                # Sentiment
-                if model_sent:
-                    logits_sent = model_sent(input_ids, token_type_ids, attention_mask)
-                    pred_sent = logits_sent.detach().cpu().numpy().argmax(axis=1)[0]
-                    results["sentiment"] = self.SENTIMENTS_LIST[pred_sent]
-
-                # Conspiracies
-                if model_con:
-                    logits_con = model_con(input_ids, token_type_ids, attention_mask)
-
-                    # Reshape conspiracy predictions
-                    num_conspiracies = len(self.CONSPIRACIES_LIST)
-                    num_levels = len(self.CONSPIRACY_LEVELS_LIST)
-
-                    predictions_reshaped = (
-                        logits_con.detach()
-                        .cpu()
-                        .numpy()
-                        .reshape(-1, num_conspiracies, num_levels)
-                    )
-                    predictions_con = predictions_reshaped.argmax(axis=2)[0]
-
-                    # Extract conspiracy mentions and promotions
-                    mentioned_conspiracies = []
-                    promoted_conspiracies = []
-
-                    for i, level_idx in enumerate(predictions_con):
-                        conspiracy_name = self.CONSPIRACIES_LIST[i]
-                        if level_idx == 1:  # Mentioning
-                            mentioned_conspiracies.append(conspiracy_name)
-                        elif level_idx == 2:  # Supporting
-                            promoted_conspiracies.append(conspiracy_name)
-
-                    results["conspiracies"] = {
-                        "mentioned": mentioned_conspiracies,
-                        "promoted": promoted_conspiracies,
-                    }
-
-                return results
-
-        except Exception as e:
-            self.logger.error(f"Error computing BERT factors: {e}")
-            return None
 
     def _apply_factors(
         self,
@@ -521,15 +429,15 @@ class BertFactorsEnricher(Enricher):
         if cache and claim_review.uri:
             self.set_cached(claim_review.uri, factors)
 
-    def _compute_factors_batch(self, texts: list[str]) -> list[dict[str, Any] | None]:
+    def _compute_factors(self, texts: list[str]) -> list[dict[str, Any] | None]:
         """
-        Compute factors for a batch of texts efficiently.
+        Compute factors for a list of texts.
 
         Args:
             texts: List of texts to analyze
 
         Returns:
-            List[Optional[Dict[str, Any]]]: List of computed factors
+            List of computed factors for each text
         """
         if not texts:
             return []
@@ -658,5 +566,5 @@ class BertFactorsEnricher(Enricher):
                 return final_results
 
         except Exception as e:
-            self.logger.error(f"Error in batch BERT factors computation: {e}")
+            self.logger.error(f"Error in BERT factors computation: {e}")
             return [None] * len(texts)
