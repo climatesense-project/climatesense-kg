@@ -148,19 +148,14 @@ def fetch_and_extract_text(url: str) -> TextExtractionResult:
         )
 
     try:
-        # Attempt with trafilatura's default fetch
-        downloaded = trafilatura.fetch_url(sanitized_url)
-
-        if downloaded is None:
-            # Fallback with common headers
-            headers = {
-                "Accept-Language": "en-US,en;q=0.6",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
-                "Sec-CH-UA": '"Chromium";v="139", "Not=A?Brand";v="24", "Google Chrome";v="139"',
-            }
-            response = requests.get(sanitized_url, headers=headers, timeout=10)
-            response.raise_for_status()
-            downloaded = response.text
+        headers = {
+            "Accept-Language": "en-US,en;q=0.6",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
+            "Sec-CH-UA": '"Chromium";v="139", "Not=A?Brand";v="24", "Google Chrome";v="139"',
+        }
+        response = requests.get(sanitized_url, headers=headers, timeout=10)
+        response.raise_for_status()
+        downloaded = response.text
 
         if downloaded:
             main_text: str | None = trafilatura.extract(  # pyright: ignore[reportUnknownMemberType]
