@@ -17,6 +17,12 @@ services:
       - ./virtuoso/initdb.d:/initdb.d:ro
       - ../data:/database/data:ro
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8890/sparql || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   redis:
     image: redis:7-alpine
@@ -27,6 +33,12 @@ services:
       - redis_data:/data
     restart: unless-stopped
     command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "hc_ping"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   redis-commander:
     image: rediscommander/redis-commander:latest
@@ -39,6 +51,12 @@ services:
     depends_on:
       - redis
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/redis-commander/bin/healthcheck.js"]
+      interval: 1m
+      timeout: 2s
+      retries: 3
+      start_period: 10s
 
   isql-service:
     build:
@@ -62,7 +80,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 10s
 
   pipeline:
     build:
