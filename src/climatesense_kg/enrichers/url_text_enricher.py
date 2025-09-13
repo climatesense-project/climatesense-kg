@@ -21,7 +21,7 @@ class URLTextEnricher(Enricher):
         self.rate_limit_delay = kwargs.get(
             "rate_limit_delay", 0.5
         )  # seconds between requests
-        self.max_retries = kwargs.get("max_retries", 2)
+        self.max_retries = kwargs.get("max_retries", 1)
 
         if self.rate_limit_delay < 0:
             raise ValueError("rate_limit_delay must be non-negative")
@@ -140,7 +140,7 @@ class URLTextEnricher(Enricher):
                     self.logger.debug(
                         f"Attempt {attempt + 1} failed for URL {url} ({result.error_type}), retrying..."
                     )
-                    time.sleep(2**attempt)
+                    time.sleep(min(2**attempt, 2))
                 else:
                     self.logger.warning(
                         f"All {self.max_retries + 1} attempts failed for URL: {url}"
@@ -152,7 +152,7 @@ class URLTextEnricher(Enricher):
                     self.logger.debug(
                         f"Exception on attempt {attempt + 1} for URL {url}: {e}"
                     )
-                    time.sleep(2**attempt)
+                    time.sleep(min(2**attempt, 2))
                 else:
                     self.logger.error(f"Error extracting text from URL {url}: {e}")
                     return TextExtractionResult(

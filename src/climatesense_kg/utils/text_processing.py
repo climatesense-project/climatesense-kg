@@ -158,7 +158,7 @@ def fetch_and_extract_text(url: str) -> TextExtractionResult:
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
                 "Sec-CH-UA": '"Chromium";v="139", "Not=A?Brand";v="24", "Google Chrome";v="139"',
             }
-            response = requests.get(sanitized_url, headers=headers, timeout=15)
+            response = requests.get(sanitized_url, headers=headers, timeout=10)
             response.raise_for_status()
             downloaded = response.text
 
