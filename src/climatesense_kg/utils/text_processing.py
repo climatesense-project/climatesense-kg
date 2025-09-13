@@ -1,5 +1,7 @@
 """Text processing utilities."""
 
+from dataclasses import dataclass
+from enum import Enum
 import html
 import logging
 import re
@@ -9,6 +11,46 @@ import requests
 import trafilatura  # pyright: ignore[reportMissingTypeStubs]
 
 logger = logging.getLogger(__name__)
+
+_URL_PATTERN = re.compile(r"http\S+")
+
+
+class ExtractionErrorType(Enum):
+    """Error types for text extraction operations."""
+
+    INVALID_INPUT = "invalid_input"
+    INVALID_URL = "invalid_url"
+    TIMEOUT = "timeout"
+    CONNECTION = "connection"
+    HTTP_ERROR = "http"
+    REQUEST_ERROR = "request"
+    DOWNLOAD_FAILED = "download_failed"
+    EXTRACTION_FAILED = "extraction_failed"
+    UNEXPECTED = "unexpected"
+    UNKNOWN = "unknown"
+
+    @property
+    def is_retryable(self) -> bool:
+        """Return True if this error type should be retried."""
+        retryable_types = {
+            ExtractionErrorType.TIMEOUT,
+            ExtractionErrorType.CONNECTION,
+            ExtractionErrorType.REQUEST_ERROR,
+            ExtractionErrorType.DOWNLOAD_FAILED,
+            ExtractionErrorType.UNKNOWN,
+            ExtractionErrorType.UNEXPECTED,
+        }
+        return self in retryable_types
+
+
+@dataclass
+class TextExtractionResult:
+    """Result of text extraction operation."""
+
+    success: bool
+    content: str = ""
+    error_message: str = ""
+    error_type: ExtractionErrorType | None = None
 
 
 def normalize_text(text: str) -> str:
@@ -24,7 +66,7 @@ def normalize_text(text: str) -> str:
     # Normalize HTML entities and special characters
     text = text.replace("&amp;", "&")
     text = text.replace("\xa0", "")  # Remove non-breaking spaces
-    text = re.sub(r"http\S+", "", text)  # Remove URLs
+    text = _URL_PATTERN.sub("", text)  # Remove URLs
     text = html.unescape(text)  # Unescape HTML entities
     text = " ".join(text.split())  # Normalize whitespace
 
@@ -44,14 +86,16 @@ def sanitize_url(url: str) -> str | None:
     if not url:
         return None
 
-    if "://" not in url:
+    if not url.startswith(("http://", "https://")):
         url = "https://" + url
 
     try:
         parsed = urlparse(url)
         if parsed.scheme not in ("http", "https"):
+            logger.debug(f"Invalid scheme '{parsed.scheme}' in URL: {url}")
             return None
         if not parsed.netloc:
+            logger.debug(f"No netloc found in URL: {url}")
             return None
 
         path = quote(parsed.path, safe="/")
@@ -69,65 +113,106 @@ def sanitize_url(url: str) -> str | None:
             )
         )
         return sanitized
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Failed to sanitize URL '{url}': {e}")
         return None
 
 
-def fetch_and_extract_text(url: str) -> str:
+def fetch_and_extract_text(url: str) -> TextExtractionResult:
     """
     Fetch and extract main text content from a URL using trafilatura.
 
     This function attempts to fetch web content and extract the main text
-    using trafilatura's content extraction capabilities. It includes fallback
-    mechanisms for better reliability.
+    using trafilatura's content extraction capabilities.
 
     Args:
         url: URL to fetch and extract text from
 
     Returns:
-        str: Extracted main text content, or error message if extraction fails
+        TextExtractionResult: Result containing extracted text or error information
     """
     if not url:
-        return ""
+        return TextExtractionResult(
+            success=False,
+            error_message="Empty URL provided",
+            error_type=ExtractionErrorType.INVALID_INPUT,
+        )
 
     sanitized_url = sanitize_url(url)
     if not sanitized_url:
         logger.warning("Invalid URL provided for text extraction")
-        return "Error: Invalid URL"
+        return TextExtractionResult(
+            success=False,
+            error_message="Invalid URL format",
+            error_type=ExtractionErrorType.INVALID_URL,
+        )
 
     try:
         # Attempt with trafilatura's default fetch
         downloaded = trafilatura.fetch_url(sanitized_url)
 
         if downloaded is None:
-            # Fallback with a common user-agent
+            # Fallback with common headers
             headers = {
-                "Accept-Language": "en-US,en;q=0.6'",
-                "User-Agent": "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; Trident/5.0)",
-                "Sec-CH-UA": '"Not_A Brand";v="8", "Chromium";v="108", "Microsoft Edge";v="108"',
+                "Accept-Language": "en-US,en;q=0.6",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
+                "Sec-CH-UA": '"Chromium";v="139", "Not=A?Brand";v="24", "Google Chrome";v="139"',
             }
             response = requests.get(sanitized_url, headers=headers, timeout=15)
             response.raise_for_status()
             downloaded = response.text
 
         if downloaded:
-            main_text = trafilatura.extract(  # pyright: ignore[reportUnknownMemberType]
+            main_text: str | None = trafilatura.extract(  # pyright: ignore[reportUnknownMemberType]
                 downloaded
             )
             if main_text:
-                return normalize_text(main_text)
+                normalized_text: str = normalize_text(main_text)
+                return TextExtractionResult(success=True, content=normalized_text)
             else:
                 logger.warning(f"No text content extracted from URL: {sanitized_url}")
-                return ""
+                return TextExtractionResult(
+                    success=False,
+                    error_message="No text content found",
+                    error_type=ExtractionErrorType.EXTRACTION_FAILED,
+                )
 
         logger.warning(f"No content downloaded from URL: {sanitized_url}")
-        return ""
-
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Failed to fetch URL {sanitized_url}: {e}")
-        return f"Error fetching URL: {e}"
-    except Exception as e:
-        logger.error(
-            f"Error extracting text from URL {sanitized_url} with Trafilatura: {e}"
+        return TextExtractionResult(
+            success=False,
+            error_message="No content downloaded",
+            error_type=ExtractionErrorType.DOWNLOAD_FAILED,
         )
-        return f"Error extracting text: {e}"
+
+    except requests.exceptions.Timeout as e:
+        logger.error(f"Timeout fetching URL {sanitized_url}: {e}")
+        return TextExtractionResult(
+            success=False, error_message=str(e), error_type=ExtractionErrorType.TIMEOUT
+        )
+    except requests.exceptions.ConnectionError as e:
+        logger.error(f"Connection error for URL {sanitized_url}: {e}")
+        return TextExtractionResult(
+            success=False,
+            error_message=str(e),
+            error_type=ExtractionErrorType.CONNECTION,
+        )
+    except requests.exceptions.HTTPError as e:
+        logger.error(f"HTTP error for URL {sanitized_url}: {e}")
+        status_code = e.response.status_code if e.response else "unknown"
+        return TextExtractionResult(
+            success=False,
+            error_message=f"HTTP {status_code}: {e}",
+            error_type=ExtractionErrorType.HTTP_ERROR,
+        )
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Request error for URL {sanitized_url}: {e}")
+        return TextExtractionResult(
+            success=False,
+            error_message=str(e),
+            error_type=ExtractionErrorType.REQUEST_ERROR,
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error extracting text from URL {sanitized_url}: {e}")
+        return TextExtractionResult(
+            success=False, error_message=str(e), error_type=ExtractionErrorType.UNKNOWN
+        )

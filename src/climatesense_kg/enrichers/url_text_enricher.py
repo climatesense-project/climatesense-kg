@@ -4,7 +4,11 @@ import time
 from typing import Any
 
 from ..config.models import CanonicalClaimReview
-from ..utils.text_processing import fetch_and_extract_text
+from ..utils.text_processing import (
+    ExtractionErrorType,
+    TextExtractionResult,
+    fetch_and_extract_text,
+)
 from .base import Enricher
 
 
@@ -17,8 +21,10 @@ class URLTextEnricher(Enricher):
         self.rate_limit_delay = kwargs.get(
             "rate_limit_delay", 0.5
         )  # seconds between requests
-        self.timeout = kwargs.get("timeout", 15)
         self.max_retries = kwargs.get("max_retries", 2)
+
+        if self.rate_limit_delay < 0:
+            raise ValueError("rate_limit_delay must be non-negative")
 
     def is_available(self) -> bool:
         """Check if URL text extraction is available."""
@@ -50,51 +56,64 @@ class URLTextEnricher(Enricher):
             return claim_review
 
         # Extract text from review URL
-        extracted_text = self._extract_url_text(claim_review.review_url)
+        result = self._extract_url_text(claim_review.review_url)
 
         cache_payload: dict[str, Any] = {}
 
-        if extracted_text and not extracted_text.startswith("Error"):
-            claim_review.review_url_text = extracted_text
+        if result and result.success:
+            claim_review.review_url_text = result.content
             self.logger.debug(
-                f"Successfully extracted {len(extracted_text)} characters "
+                f"Successfully extracted {len(result.content)} characters "
                 f"from URL: {claim_review.review_url}"
             )
 
             # Cache the results
             cache_payload = {
-                "review_url_text": extracted_text,
-                "review_url": claim_review.review_url,  # Store URL for debugging
+                "review_url_text": result.content,
+                "review_url": claim_review.review_url,
             }
             self.set_cached(
                 claim_review.uri,
                 cache_payload,
             )
 
+            # Rate limiting only after successful requests
+            time.sleep(self.rate_limit_delay)
+
         else:
             self.logger.warning(
                 f"Failed to extract text from URL: {claim_review.review_url}"
             )
-            if extracted_text and extracted_text.startswith("Error"):
-                claim_review.review_url_text = None  # Don't store error messages
+            claim_review.review_url_text = None  # Don't store error messages
 
-                # Cache the failure to avoid repeated attempts
-                cache_payload = {
-                    "review_url_text": None,
-                    "review_url": claim_review.review_url,
-                    "extraction_error": True,
-                }
-                self.set_cached(
-                    claim_review.uri,
-                    cache_payload,
-                )
-
-        # Rate limiting
-        time.sleep(self.rate_limit_delay)
+            # Cache the failure with error details
+            cache_payload = {
+                "review_url_text": None,
+                "review_url": claim_review.review_url,
+                "extraction_error": True,
+                "error_details": {
+                    "error_message": (
+                        result.error_message if result else "Unknown error"
+                    ),
+                    "error_type": (
+                        result.error_type.value
+                        if result and result.error_type
+                        else "unknown"
+                    ),
+                    "timestamp": time.time(),
+                },
+            }
+            self.logger.debug(
+                f"Caching extraction failure for {claim_review.uri}: {cache_payload['error_details']}"
+            )
+            self.set_cached(
+                claim_review.uri,
+                cache_payload,
+            )
 
         return claim_review
 
-    def _extract_url_text(self, url: str) -> str | None:
+    def _extract_url_text(self, url: str) -> TextExtractionResult | None:
         """
         Extract text from a URL with retry logic.
 
@@ -102,36 +121,47 @@ class URLTextEnricher(Enricher):
             url: URL to extract text from
 
         Returns:
-            Optional[str]: Extracted text or None if extraction fails
+            TextExtractionResult | None: Extraction result or None if all attempts fail
         """
+        last_result = None
+
         for attempt in range(self.max_retries + 1):
             try:
-                extracted_text = fetch_and_extract_text(url)
+                result = fetch_and_extract_text(url)
+                last_result = result
 
-                if extracted_text and not extracted_text.startswith("Error"):
-                    return extracted_text
-                elif attempt < self.max_retries:
+                if result.success:
+                    return result
+                elif (
+                    attempt < self.max_retries
+                    and result.error_type
+                    and result.error_type.is_retryable
+                ):
                     self.logger.debug(
-                        f"Attempt {attempt + 1} failed for URL {url}, retrying..."
+                        f"Attempt {attempt + 1} failed for URL {url} ({result.error_type}), retrying..."
                     )
-                    time.sleep(1)  # Brief pause before retry
+                    time.sleep(2**attempt)
                 else:
                     self.logger.warning(
                         f"All {self.max_retries + 1} attempts failed for URL: {url}"
                     )
-                    return extracted_text  # Return the error message
+                    return result
 
             except Exception as e:
                 if attempt < self.max_retries:
                     self.logger.debug(
                         f"Exception on attempt {attempt + 1} for URL {url}: {e}"
                     )
-                    time.sleep(1)
+                    time.sleep(2**attempt)
                 else:
                     self.logger.error(f"Error extracting text from URL {url}: {e}")
-                    return f"Error extracting text: {e}"
+                    return TextExtractionResult(
+                        success=False,
+                        error_message=str(e),
+                        error_type=ExtractionErrorType.UNEXPECTED,
+                    )
 
-        return None
+        return last_result
 
     def enrich_batch(
         self, claim_reviews: list[CanonicalClaimReview]
@@ -153,8 +183,10 @@ class URLTextEnricher(Enricher):
                 enriched = self.enrich(claim_review)
                 enriched_reviews.append(enriched)
 
-                if i % 10 == 0:  # Log progress every 10 items
-                    self.logger.info(f"URL text extraction progress: {i + 1}/{total}")
+                if (i + 1) % 10 == 0:  # Log progress every 10 items
+                    self.logger.info(
+                        f"URL text extraction progress: {i + 1}/{total} ({((i + 1) / total * 100):.1f}%)"
+                    )
 
             except Exception as e:
                 self.logger.error(
