@@ -50,6 +50,10 @@ check:
 pre-commit-all:
     poetry run pre-commit run --all-files
 
+# Run tests
+test:
+    poetry run pytest tests/ -v
+
 # ============================================================================
 # Runtime Commands
 # ============================================================================
