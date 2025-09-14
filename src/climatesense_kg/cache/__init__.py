@@ -1,6 +1,6 @@
-"""Per-step cache system."""
+"""Per-step PostgreSQL cache system."""
 
 from .interface import CacheInterface
-from .redis_cache import RedisCache
+from .postgres_cache import PostgresCache
 
-__all__ = ["CacheInterface", "RedisCache"]
+__all__ = ["CacheInterface", "PostgresCache"]

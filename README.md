@@ -100,11 +100,11 @@ just run config/minimal.yaml
    - `VIRTUOSO_PASSWORD`: Virtuoso database password (default: dba)
    - `VIRTUOSO_ISQL_SERVICE_URL`: URL of ISQL HTTP service (default: http://isql-service:8080)
    - `ISQL_SERVICE_PORT`: Port for Virtuoso ISQL interface (default: 8080)
-   - `REDIS_HOST`: Redis host for URI cache (default: redis)
-   - `REDIS_PORT`: Redis port (default: 6379)
-   - `REDIS_PASSWORD`: Redis password (optional)
-   - `REDIS_DB`: Redis database number (default: 0)
-   - `CACHE_ENV`: Cache environment namespace (default: dev)
+   - `POSTGRES_HOST`: PostgreSQL host (default: postgres)
+   - `POSTGRES_PORT`: PostgreSQL port (default: 5432)
+   - `POSTGRES_DB`: Database name (default: climatesense)
+   - `POSTGRES_USER`: Database user (default: postgres)
+   - `POSTGRES_PASSWORD`: Database password (required)
 
 3. Start the services:
 
@@ -161,6 +161,22 @@ output:
 cache:
   cache_dir: "cache"
   default_ttl_hours: 24.0
+```
+
+## Querying the cache
+
+You can use pgAdmin or any PostgreSQL client to connect to the PostgreSQL cache database and run SQL queries.
+
+### Example SQL Queries
+
+```sql
+-- Processing success rates by step
+SELECT step, COUNT(*) AS total, COUNT(*) FILTER (WHERE success) AS successes
+FROM cache_entries GROUP BY step;
+
+-- Error analysis by domain
+SELECT split_part(payload->'payload'->>'review_url', '/', 3) AS domain, COUNT(*) AS failures
+FROM cache_entries WHERE success = false GROUP BY domain;
 ```
 
 ## Querying the Knowledge Graph

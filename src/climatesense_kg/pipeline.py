@@ -10,7 +10,7 @@ from typing import TypedDict
 from dotenv import load_dotenv
 
 from .cache.interface import CacheInterface
-from .cache.redis_cache import RedisCache
+from .cache.postgres_cache import PostgresCache
 from .config import PipelineConfig
 from .config.models import CanonicalClaimReview
 from .data_manager import DataManager
@@ -97,23 +97,17 @@ class Pipeline:
     def _initialize_components(self) -> None:
         """Initialize pipeline components from configuration."""
 
-        # Initialize Redis URI cache
+        # Initialize URI cache
         try:
-            redis_host = os.getenv("REDIS_HOST", "localhost")
-            redis_port = int(os.getenv("REDIS_PORT", "6379"))
-            redis_password = os.getenv("REDIS_PASSWORD")
-            redis_db = int(os.getenv("REDIS_DB", "0"))
-            cache_env = os.getenv("CACHE_ENV", "dev")
-
-            self.cache = RedisCache(
-                host=redis_host,
-                port=redis_port,
-                password=redis_password,
-                db=redis_db,
-                env=cache_env,
+            self.cache = PostgresCache(
+                host=os.getenv("POSTGRES_HOST", "localhost"),
+                port=int(os.getenv("POSTGRES_PORT", "5432")),
+                database=os.getenv("POSTGRES_DB", "climatesense_cache"),
+                user=os.getenv("POSTGRES_USER", "postgres"),
+                password=os.getenv("POSTGRES_PASSWORD"),
             )
             self.logger.info(
-                f"Initialized Redis URI cache at {redis_host}:{redis_port}"
+                f"Initialized PostgreSQL URI cache at {self.cache.host}:{self.cache.port}/{self.cache.database}"
             )
         except Exception as e:
             self.logger.warning(f"Failed to initialize URI cache: {e}")

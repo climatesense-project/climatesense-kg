@@ -57,20 +57,19 @@ class CacheInterface(ABC):
         """
         pass
 
-    def generate_cache_key(self, uri: str, step: str, env: str) -> str:
+    def generate_cache_key(self, uri: str, step: str) -> str:
         """
         Generate namespaced cache key.
 
         Args:
             uri: URI to generate key for
             step: Step name
-            env: Environment namespace
 
         Returns:
-            Cache key in format: {env}:climatesense:{step}:{uri_sha256}
+            Cache key in format: climatesense:{step}:{uri_sha256}
         """
         uri_hash = hashlib.sha256(uri.encode()).hexdigest()
-        return f"{env}:climatesense:{step}:{uri_hash}"
+        return f"climatesense:{step}:{uri_hash}"
 
     def create_cache_value(
         self,

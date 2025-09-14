@@ -1,6 +1,6 @@
 volumes:
   virtuoso_data:
-  redis_data:
+  postgres_data:
 
 services:
   virtuoso:
@@ -24,39 +24,40 @@ services:
       retries: 3
       start_period: 10s
 
-  redis:
-    image: redis:7-alpine
-    container_name: climatesense-redis
+  postgres:
+    image: postgres:17-alpine
+    container_name: climatesense-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-climatesense_cache}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
-      - redis_data:/data
+      - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
-    command: redis-server --appendonly yes
     healthcheck:
-      test: ["CMD", "redis-cli", "--raw", "incr", "hc_ping"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-climatesense_cache}",
+        ]
       interval: 15s
       timeout: 5s
       retries: 3
       start_period: 10s
-
-  redis-commander:
-    image: rediscommander/redis-commander:latest
-    container_name: climatesense-redis-commander
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: climatesense-pgadmin
     environment:
-      - REDIS_HOSTS=local:redis:6379
-      - VIEW_JSON_DEFAULT=all
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@climatesense-project.eu}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
     ports:
-      - "${REDIS_COMMANDER_PORT:-8081}:8081"
+      - "${PGADMIN_PORT:-8082}:80"
     depends_on:
-      - redis
+      - postgres
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "/redis-commander/bin/healthcheck.js"]
-      interval: 1m
-      timeout: 2s
-      retries: 3
-      start_period: 10s
 
   isql-service:
     build:
@@ -89,9 +90,11 @@ services:
     container_name: climatesense-pipeline
     environment:
       GITHUB_TOKEN: ${GITHUB_TOKEN}
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      CACHE_ENV: ${CACHE_ENV:-dev}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-climatesense_cache}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       VIRTUOSO_HOST: virtuoso
       VIRTUOSO_PORT: 8890
       VIRTUOSO_USER: dba
@@ -106,6 +109,6 @@ services:
     depends_on:
       - virtuoso
       - isql-service
-      - redis
+      - postgres
     profiles:
       - manual
