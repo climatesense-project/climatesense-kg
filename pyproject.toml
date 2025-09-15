@@ -22,7 +22,7 @@ dependencies = [
     "python-dotenv>=1.1.1,<2",
     "torch==2.2.2",
     "numpy>=1.21.0,<2.0",
-    "transformers>=4.56.1",
+    "transformers>=4.25.1,<4.30.0",
 ]
 
 [project.scripts]
