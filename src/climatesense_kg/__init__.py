@@ -9,7 +9,3 @@ to a Triple Store.
 
 __version__ = "0.1.0"
 __author__ = "ClimateSense"
-
-from .pipeline import Pipeline
-
-__all__ = ["Pipeline"]

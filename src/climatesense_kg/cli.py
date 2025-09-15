@@ -2,10 +2,16 @@
 
 import argparse
 import sys
+from typing import TYPE_CHECKING
 
 from . import __version__
-from .config import load_config
-from .pipeline import DeploymentResults, Pipeline, PipelineResults, RDFGenerationResults
+
+if TYPE_CHECKING:
+    from .pipeline import (
+        DeploymentResults,
+        PipelineResults,
+        RDFGenerationResults,
+    )
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -41,7 +47,7 @@ Examples:
     return parser
 
 
-def _print_rdf_generation_summary(rdf_data: RDFGenerationResults) -> None:
+def _print_rdf_generation_summary(rdf_data: "RDFGenerationResults") -> None:
     """Print RDF generation summary in a safe way."""
     if rdf_data.get("error"):
         print(f"RDF Generation: Failed - {rdf_data['error']}")
@@ -63,7 +69,7 @@ def _print_rdf_generation_summary(rdf_data: RDFGenerationResults) -> None:
         )
 
 
-def _print_deployment_summary(deployment_data: DeploymentResults) -> None:
+def _print_deployment_summary(deployment_data: "DeploymentResults") -> None:
     """Print deployment summary in a safe way."""
     success = deployment_data["success"]
     files_deployed = deployment_data["files_deployed"]
@@ -73,7 +79,7 @@ def _print_deployment_summary(deployment_data: DeploymentResults) -> None:
     print(f"Deployment: {status} ({files_deployed}/{total_files} files)")
 
 
-def _print_success_summary(results: PipelineResults) -> None:
+def _print_success_summary(results: "PipelineResults") -> None:
     """Print pipeline success summary."""
     print("Pipeline completed successfully!")
     print(f"Processed {results['total_processed']} claim reviews")
@@ -93,7 +99,7 @@ def _print_success_summary(results: PipelineResults) -> None:
         _print_deployment_summary(deployment_data)
 
 
-def _print_failure_summary(results: PipelineResults) -> None:
+def _print_failure_summary(results: "PipelineResults") -> None:
     """Print pipeline failure summary."""
     print("Pipeline failed:", file=sys.stderr)
 
@@ -104,6 +110,9 @@ def _print_failure_summary(results: PipelineResults) -> None:
 
 def run_pipeline(args: argparse.Namespace) -> int:
     """Run the pipeline."""
+    from .config import load_config
+    from .pipeline import Pipeline
+
     try:
         config = load_config(args.config)
     except Exception as e:
