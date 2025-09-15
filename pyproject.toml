@@ -26,8 +26,8 @@ transformers = ">=4.25.1,<4.30.0"
 defusedxml = "^0.7.1"
 dacite = "^1.9.2"
 tqdm = "^4.67.1"
-psycopg2-binary = "^2.9.0"
 python-dotenv = "^1.1.1"
+psycopg = {extras = ["binary", "pool"], version = "^3.2.10"}
 
 
 [tool.poetry.group.dev.dependencies]

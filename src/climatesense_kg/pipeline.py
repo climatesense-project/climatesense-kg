@@ -106,9 +106,6 @@ class Pipeline:
                 user=os.getenv("POSTGRES_USER", "postgres"),
                 password=os.getenv("POSTGRES_PASSWORD"),
             )
-            self.logger.info(
-                f"Initialized PostgreSQL URI cache at {self.cache.host}:{self.cache.port}/{self.cache.database}"
-            )
         except Exception as e:
             self.logger.warning(f"Failed to initialize URI cache: {e}")
             self.cache = None
