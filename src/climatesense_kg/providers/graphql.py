@@ -110,7 +110,7 @@ class GraphQLProvider(BaseProvider):
                     return cast(dict[str, Any], result)
                 return None
 
-            except requests.exceptions.RequestException as e:
+            except requests.RequestException as e:
                 self.logger.warning(
                     f"GraphQL request attempt {attempt + 1} failed: {e}"
                 )

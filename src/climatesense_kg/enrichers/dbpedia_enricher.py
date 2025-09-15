@@ -151,7 +151,7 @@ class DBpediaEnricher(Enricher):
                 )
                 return []
 
-        except requests.exceptions.RequestException as e:
+        except requests.RequestException as e:
             self.logger.error(f"DBpedia Spotlight API request failed: {e}")
             return []
         except json.JSONDecodeError as e:

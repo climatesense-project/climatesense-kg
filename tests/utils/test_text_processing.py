@@ -201,7 +201,7 @@ class TestFetchAndExtractText:
         """Test timeout error handling."""
         mock_sanitize.return_value = "https://example.com"
         mock_trafilatura.fetch_url.return_value = None
-        mock_get.side_effect = requests.exceptions.Timeout("Timeout")
+        mock_get.side_effect = requests.Timeout("Timeout")
 
         result = fetch_and_extract_text("https://example.com")
 
@@ -217,7 +217,7 @@ class TestFetchAndExtractText:
         """Test connection error handling."""
         mock_sanitize.return_value = "https://example.com"
         mock_trafilatura.fetch_url.return_value = None
-        mock_get.side_effect = requests.exceptions.ConnectionError("Connection failed")
+        mock_get.side_effect = requests.ConnectionError("Connection failed")
 
         result = fetch_and_extract_text("https://example.com")
 
@@ -234,7 +234,7 @@ class TestFetchAndExtractText:
         mock_sanitize.return_value = "https://example.com"
         mock_trafilatura.fetch_url.return_value = None
 
-        http_error = requests.exceptions.HTTPError("404 Not Found")
+        http_error = requests.HTTPError("404 Not Found")
         mock_response = Mock()
         mock_response.status_code = 404
         http_error.response = mock_response

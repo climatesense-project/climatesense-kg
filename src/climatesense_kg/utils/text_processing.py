@@ -112,7 +112,7 @@ def sanitize_url(url: str) -> str | None:
                 fragment,
             )
         )
-        return sanitized
+        return str(sanitized) if sanitized else None
     except Exception as e:
         logger.warning(f"Failed to sanitize URL '{url}': {e}")
         return None
@@ -189,19 +189,19 @@ def fetch_and_extract_text(url: str) -> TextExtractionResult:
             error_type=ExtractionErrorType.DOWNLOAD_FAILED,
         )
 
-    except requests.exceptions.Timeout as e:
+    except requests.Timeout as e:
         logger.error(f"Timeout fetching URL {sanitized_url}: {e}")
         return TextExtractionResult(
             success=False, error_message=str(e), error_type=ExtractionErrorType.TIMEOUT
         )
-    except requests.exceptions.ConnectionError as e:
+    except requests.ConnectionError as e:
         logger.error(f"Connection error for URL {sanitized_url}: {e}")
         return TextExtractionResult(
             success=False,
             error_message=str(e),
             error_type=ExtractionErrorType.CONNECTION,
         )
-    except requests.exceptions.HTTPError as e:
+    except requests.HTTPError as e:
         logger.error(f"HTTP error for URL {sanitized_url}: {e}")
         status_code = e.response.status_code if e.response else "unknown"
         return TextExtractionResult(
@@ -209,7 +209,7 @@ def fetch_and_extract_text(url: str) -> TextExtractionResult:
             error_message=f"HTTP {status_code}: {e}",
             error_type=ExtractionErrorType.HTTP_ERROR,
         )
-    except requests.exceptions.RequestException as e:
+    except requests.RequestException as e:
         logger.error(f"Request error for URL {sanitized_url}: {e}")
         return TextExtractionResult(
             success=False,

@@ -119,7 +119,7 @@ class VirtuosoDeploymentHandler(DeploymentHandler):
                 )
                 return False
 
-        except requests.exceptions.Timeout:
+        except requests.Timeout:
             self.logger.error(f"SQL execution timed out after {timeout} seconds")
             return False
         except Exception as e:
