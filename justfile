@@ -81,21 +81,21 @@ docker-minimal-run:
 # Cache Commands
 # ============================================================================
 
-# Flush entire Redis cache
+# Flush entire PostgreSQL cache
 cache-flush:
-    @echo "WARNING: This will delete ALL cache data in Redis!"
+    @echo "WARNING: This will delete ALL cache data in PostgreSQL!"
     @read -p "Are you sure? (y/N) " confirm; \
     if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then \
-        cd docker && docker compose exec redis redis-cli FLUSHDB && \
-        echo "✅ Redis cache cleared successfully"; \
+        cd docker && docker compose exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "TRUNCATE TABLE cache_entries;"' && \
+        echo "✅ PostgreSQL cache cleared successfully"; \
     else \
         echo "❌ Cache flush cancelled"; \
     fi
 
-# Clear cache for specific enricher step (e.g., enricher.dbpedia_spotlight)
-cache-clear STEP:
-    @echo "Clearing cache for step: {{STEP}}"
-    cd docker && COUNT=$(docker compose exec redis redis-cli KEYS "*:climatesense:{{STEP}}:*" | wc -l | tr -d ' '); \
+# Delete cache entries for a specific step
+cache-delete STEP:
+    @echo "Deleting PostgreSQL cache for step: {{STEP}}"
+    @cd docker && COUNT=$(docker compose exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -t -c "SELECT COUNT(*) FROM cache_entries WHERE step = '\''{{STEP}}'\'';"' | tr -d ' '); \
     if [ "$COUNT" -eq 0 ]; then \
         echo "No cache entries found for step {{STEP}}"; \
         exit 0; \
@@ -103,16 +103,16 @@ cache-clear STEP:
     echo "Found $COUNT cache entries for step {{STEP}}"; \
     read -p "Are you sure you want to delete them? (y/N) " confirm; \
     if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then \
-        @docker compose exec redis redis-cli EVAL "local keys = redis.call('KEYS', ARGV[1]) for i=1,#keys,5000 do redis.call('DEL', unpack(keys, i, math.min(i+4999, #keys))) end return #keys" 0 "*:climatesense:{{STEP}}:*" && \
-        echo "✅ Cache cleared for {{STEP}}"; \
+        docker compose exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "DELETE FROM cache_entries WHERE step = '\''{{STEP}}'\'';"' && \
+        echo "✅ PostgreSQL cache deleted for {{STEP}}"; \
     else \
-        echo "❌ Cache clear cancelled"; \
+        echo "❌ Cache deletion cancelled"; \
     fi
 
 # List all cache steps
 cache-list:
     @echo "=== Cached Steps ==="
-    @cd docker && docker compose exec redis redis-cli KEYS "*:climatesense:*" | sed 's/.*:climatesense:\([^:]*\):.*/\1/' | sort | uniq -c | sort -nr || true
+    @cd docker && docker compose exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT step, COUNT(*) as count FROM cache_entries GROUP BY step ORDER BY count DESC;"' || true
 
 # ============================================================================
 # Database and Virtuoso Commands
