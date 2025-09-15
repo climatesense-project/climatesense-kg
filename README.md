@@ -1,7 +1,7 @@
 # ClimateSense KG Pipeline
 
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://python.org)
-[![Poetry](https://img.shields.io/badge/dependency-poetry-blue)](https://python-poetry.org)
+[![uv](https://img.shields.io/badge/dependency-uv-blue)](https://docs.astral.sh/uv/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 > The ClimateSense KG is a continuously updated knowledge graph that integrates climate fact-checking data from multiple sources to combat climate misinformation. It links information from fact-checking organizations with enriched data, giving researchers a more comprehensive view of the problem.
@@ -33,7 +33,7 @@
 ## 📋 Prerequisites
 
 - Python 3.11+
-- [Poetry](https://python-poetry.org/docs/#installation) (for dependency management)
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) (for dependency management)
 - [just](https://github.com/casey/just) (for task automation)
 - [Docker & Docker Compose](https://docs.docker.com/get-docker/) (for Docker setup)
 
@@ -232,11 +232,11 @@ just pre-commit-all  # Run pre-commit on all files
 ### CLI Usage
 
 ```bash
-poetry run climatesense-kg --help
-poetry run climatesense-kg run --config config/minimal.yaml
+uv run climatesense-kg --help
+uv run climatesense-kg run --config config/minimal.yaml
 
 # Force redeployment even when no RDF changes are detected
-poetry run climatesense-kg run --config config/minimal.yaml --force-deployment
+uv run climatesense-kg run --config config/minimal.yaml --force-deployment
 ```
 
 ## Acknowledgments

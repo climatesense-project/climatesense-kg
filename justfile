@@ -11,7 +11,7 @@ default:
 
 # Run the CLI with help
 help:
-    poetry run climatesense-kg --help
+    uv run climatesense-kg --help
 
 # ============================================================================
 # Setup and Installation Commands
@@ -19,18 +19,17 @@ help:
 
 # Install dependencies
 install:
-    poetry install
+    uv sync
 
 # Setup development environment
 setup-dev: install
-    poetry install --with dev
-    poetry run mypy --install-types --non-interactive src
+    uv sync --group dev
     @just pre-commit-install
 
 # Install pre-commit hooks
 pre-commit-install:
-    poetry run pre-commit install
-    poetry run pre-commit install --hook-type commit-msg
+    uv run pre-commit install
+    uv run pre-commit install --hook-type commit-msg
 
 # ============================================================================
 # Development and Quality Commands
@@ -38,21 +37,21 @@ pre-commit-install:
 
 # Run code formatting
 format:
-    poetry run ruff format src
-    poetry run ruff check --fix src
+    uv run ruff format src
+    uv run ruff check --fix src
 
 # Run all quality checks
 check:
-    poetry run ruff check src
-    poetry run mypy src
+    uv run ruff check src
+    uv run ty check
 
 # Run pre-commit on all files
 pre-commit-all:
-    poetry run pre-commit run --all-files
+    uv run pre-commit run --all-files
 
 # Run tests
 test:
-    poetry run pytest tests/ -v
+    uv run pytest tests/ -v
 
 # ============================================================================
 # Runtime Commands
@@ -60,7 +59,7 @@ test:
 
 # Run pipeline with configuration
 run CONFIG:
-    poetry run climatesense-kg run --config {{CONFIG}}
+    uv run climatesense-kg run --config {{CONFIG}}
 
 # ============================================================================
 # Docker Commands

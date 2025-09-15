@@ -3,6 +3,6 @@
     "ms-python.python",
     "charliermarsh.ruff",
     "ms-python.vscode-pylance",
-    "ms-python.mypy-type-checker"
+    "astral-sh.ty"
   ]
 }
