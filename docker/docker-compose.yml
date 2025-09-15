@@ -3,27 +3,6 @@ volumes:
   postgres_data:
 
 services:
-  virtuoso:
-    image: openlink/virtuoso-opensource-7:latest
-    container_name: climatesense-virtuoso
-    env_file: .env
-    environment:
-      DBA_PASSWORD: ${VIRTUOSO_PASSWORD:-dba}
-      SPARQL_UPDATE: true
-    ports:
-      - "${VIRTUOSO_PORT:-8890}:8890"
-    volumes:
-      - virtuoso_data:/database
-      - ./virtuoso/initdb.d:/initdb.d:ro
-      - ../data:/database/data:ro
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8890/sparql || exit 1"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-
   postgres:
     image: postgres:17-alpine
     container_name: climatesense-postgres
@@ -58,6 +37,27 @@ services:
     depends_on:
       - postgres
     restart: unless-stopped
+
+  virtuoso:
+    image: openlink/virtuoso-opensource-7:latest
+    container_name: climatesense-virtuoso
+    env_file: .env
+    environment:
+      DBA_PASSWORD: ${VIRTUOSO_PASSWORD:-dba}
+      SPARQL_UPDATE: true
+    ports:
+      - "${VIRTUOSO_PORT:-8890}:8890"
+    volumes:
+      - virtuoso_data:/database
+      - ./virtuoso/initdb.d:/initdb.d:ro
+      - ../data:/database/data:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8890/sparql || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   isql-service:
     build:
