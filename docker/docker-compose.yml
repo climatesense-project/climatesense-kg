@@ -90,14 +90,14 @@ services:
     container_name: climatesense-pipeline
     environment:
       GITHUB_TOKEN: ${GITHUB_TOKEN}
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
+      POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
       POSTGRES_DB: ${POSTGRES_DB:-climatesense_cache}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      VIRTUOSO_HOST: virtuoso
-      VIRTUOSO_PORT: 8890
-      VIRTUOSO_USER: dba
+      VIRTUOSO_HOST: ${VIRTUOSO_HOST:-virtuoso}
+      VIRTUOSO_PORT: ${VIRTUOSO_PORT:-8890}
+      VIRTUOSO_USER: ${VIRTUOSO_USER:-dba}
       VIRTUOSO_PASSWORD: ${VIRTUOSO_PASSWORD:-dba}
       VIRTUOSO_ISQL_SERVICE_URL: http://isql-service:8080
     volumes:
@@ -106,9 +106,5 @@ services:
       - ../cache:/app/cache
       - ../config:/app/config:ro
       - ${CIMPLE_MODELS_PATH:-../data/cimple-factors-models}:/app/data/cimple-factors-models
-    depends_on:
-      - virtuoso
-      - isql-service
-      - postgres
     profiles:
       - manual
