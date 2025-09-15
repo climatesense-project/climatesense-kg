@@ -165,7 +165,7 @@ cache:
 
 ## Querying the cache
 
-You can use pgAdmin or any PostgreSQL client to connect to the PostgreSQL cache database and run SQL queries.
+You can use any PostgreSQL client to connect to the PostgreSQL cache database and run SQL queries.
 
 ### Example SQL Queries
 

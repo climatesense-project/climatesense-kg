@@ -25,18 +25,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
-  pgadmin:
-    image: dpage/pgadmin4:latest
-    container_name: climatesense-pgadmin
-    environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@climatesense-project.eu}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
-      PGADMIN_CONFIG_SERVER_MODE: "False"
-    ports:
-      - "${PGADMIN_PORT:-8082}:80"
-    depends_on:
-      - postgres
-    restart: unless-stopped
 
   virtuoso:
     image: openlink/virtuoso-opensource-7:latest
