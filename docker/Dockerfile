@@ -15,6 +15,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 FROM python:3.11-slim-bookworm AS runtime
 
+WORKDIR /app
+
 COPY --from=builder --chown=app:app /app /app
 
 COPY src/ ./src/
