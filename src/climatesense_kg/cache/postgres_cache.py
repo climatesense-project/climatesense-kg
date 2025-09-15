@@ -117,7 +117,7 @@ class PostgresCache(CacheInterface):
                 self.logger.debug(f"Cache miss for {step} - {uri}")
                 return None
 
-            payload = self.extract_payload(result["payload"])
+            payload = result["payload"]
 
             if payload is not None:
                 self.logger.debug(f"Cache hit for {step} - {uri}")
@@ -139,7 +139,6 @@ class PostgresCache(CacheInterface):
         """Store data in cache for a URI and step."""
         try:
             cache_key = self.generate_cache_key(uri, step)
-            cache_value = self.create_cache_value(step, payload)
             success = self._determine_success(payload)
 
             with self.connection_pool.connection() as connection:
@@ -153,7 +152,7 @@ class PostgresCache(CacheInterface):
                             success = EXCLUDED.success,
                             payload = EXCLUDED.payload
                         """,
-                        (cache_key, step, uri, success, json.dumps(cache_value)),
+                        (cache_key, step, uri, success, json.dumps(payload)),
                     )
                     connection.commit()
 

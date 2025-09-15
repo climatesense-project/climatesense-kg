@@ -1,7 +1,6 @@
 """Cache interface definition."""
 
 from abc import ABC, abstractmethod
-from datetime import UTC, datetime
 import hashlib
 from typing import Any
 
@@ -70,43 +69,3 @@ class CacheInterface(ABC):
         """
         uri_hash = hashlib.sha256(uri.encode()).hexdigest()
         return f"climatesense:{step}:{uri_hash}"
-
-    def create_cache_value(
-        self,
-        step: str,
-        payload: dict[str, Any],
-    ) -> dict[str, Any]:
-        """
-        Create standardized cache value wrapper.
-
-        Args:
-            step: Step name
-            payload: Step-specific data
-
-        Returns:
-            Wrapped cache value with metadata
-        """
-        value: dict[str, Any] = {
-            "step": step,
-            "payload": payload,
-            "created_at": datetime.now(UTC).isoformat(),
-            "updated_at": datetime.now(UTC).isoformat(),
-        }
-
-        return value
-
-    def extract_payload(
-        self, cache_value: dict[str, Any] | None
-    ) -> dict[str, Any] | None:
-        """
-        Extract payload from cache value wrapper.
-
-        Args:
-            cache_value: Raw cache value or None
-
-        Returns:
-            Step-specific payload or None
-        """
-        if not cache_value:
-            return None
-        return cache_value.get("payload")
