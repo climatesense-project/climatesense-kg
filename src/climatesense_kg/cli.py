@@ -43,6 +43,11 @@ Examples:
         action="store_true",
         help="Enable DEBUG level logging",
     )
+    run_parser.add_argument(
+        "--skip-download",
+        action="store_true",
+        help="Skip data downloads and use only cached/already downloaded data",
+    )
 
     return parser
 
@@ -125,7 +130,8 @@ def run_pipeline(args: argparse.Namespace) -> int:
     try:
         pipeline = Pipeline(config)
         results = pipeline.run(
-            force_deployment=getattr(args, "force_deployment", False)
+            force_deployment=getattr(args, "force_deployment", False),
+            skip_download=getattr(args, "skip_download", False),
         )
     except Exception as e:
         print(f"Pipeline execution failed: {e}", file=sys.stderr)

@@ -77,7 +77,11 @@ class DataCache:
             return True
 
     def get(
-        self, source_name: str, config: dict[str, Any], ttl_hours: float | None = None
+        self,
+        source_name: str,
+        config: dict[str, Any],
+        ttl_hours: float | None = None,
+        ignore_expiry: bool = False,
     ) -> bytes | None:
         """Get cached data if available and not expired.
 
@@ -85,15 +89,17 @@ class DataCache:
             source_name: Name of the data source
             config: Configuration dict used to generate cache key
             ttl_hours: Cache TTL in hours, uses default if None
+            ignore_expiry: If True, ignore expiration and return data if it exists
 
         Returns:
             Cached data as bytes, or None if not available/expired
         """
         ttl_hours = ttl_hours or self.default_ttl_hours
         cache_key = self._generate_cache_key(source_name, config)
+        self.logger.debug(f"Looking for cache key: {cache_key}")
 
         with self._lock:
-            if self._is_expired(cache_key, ttl_hours):
+            if not ignore_expiry and self._is_expired(cache_key, ttl_hours):
                 self.logger.info(f"Cache miss/expired for {source_name}")
                 return None
 

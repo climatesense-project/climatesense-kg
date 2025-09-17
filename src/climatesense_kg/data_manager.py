@@ -57,12 +57,13 @@ class DataManager:
         }
 
     def get_data(
-        self, source_config: DataSourceConfig
+        self, source_config: DataSourceConfig, skip_download: bool = False
     ) -> Iterator[CanonicalClaimReview]:
         """Get processed data for a source, using cache when possible.
 
         Args:
             source_config: DataSourceConfig object containing all source configuration
+            skip_download: Skip data downloads and use only cached data
 
         Yields:
             CanonicalClaimReview objects
@@ -78,22 +79,39 @@ class DataManager:
         self.logger.info(f"Getting data for source: {source_name}")
 
         try:
-            # 1. Create provider (needed for cache key generation)
+            # 1. Create provider
             provider = self._create_provider(source_name, provider_config)
 
             # 2. Check cache
             cache_key_config = provider.get_cache_key_fields(provider_config)
-            raw_data = self.cache.get(source_name, cache_key_config, cache_ttl_hours)
+            raw_data = self.cache.get(
+                source_name,
+                cache_key_config,
+                cache_ttl_hours,
+                ignore_expiry=skip_download,
+            )
 
-            # 3. If cache miss, fetch from provider
-            if raw_data is None:
+            if skip_download and raw_data is not None:
                 self.logger.info(
-                    f"Cache miss for {source_name}, fetching from provider"
+                    f"Using cached data for {source_name} (--skip-download enabled, ignoring expiry)"
                 )
-                raw_data = provider.fetch(provider_config)
 
-                # Store in cache
-                self.cache.put(source_name, cache_key_config, raw_data)
+            # 3. If cache miss, fetch from provider (unless skip_download is True)
+            if raw_data is None:
+                if skip_download:
+                    self.logger.warning(
+                        f"No cached data found for {source_name} and --skip-download is enabled. "
+                        f"Skipping download - no data will be processed for this source."
+                    )
+                    return
+                else:
+                    self.logger.info(
+                        f"Cache miss for {source_name}, fetching from provider"
+                    )
+                    raw_data = provider.fetch(provider_config)
+
+                    # Store in cache
+                    self.cache.put(source_name, cache_key_config, raw_data)
 
             # 4. Process data
             processor = self._create_processor(source_name, source_type)

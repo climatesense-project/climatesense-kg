@@ -251,11 +251,14 @@ class Pipeline:
 
         return fully_processed_uris
 
-    def run(self, force_deployment: bool = False) -> PipelineResults:
+    def run(
+        self, force_deployment: bool = False, skip_download: bool = False
+    ) -> PipelineResults:
         """Execute the complete pipeline.
 
         Args:
             force_deployment: Force deployment even when no RDF changes are detected
+            skip_download: Skip data downloads and use only cached/already downloaded data
 
         Returns:
             Pipeline execution results and statistics
@@ -279,7 +282,7 @@ class Pipeline:
         try:
             # Step 1: Data Ingestion
             self.logger.info("Step 1: Data Ingestion")
-            canonical_reviews = self._run_ingestion()
+            canonical_reviews = self._run_ingestion(skip_download=skip_download)
             results["data_sources"] = {
                 "total_items": len(canonical_reviews),
                 "sources_processed": len(
@@ -379,8 +382,12 @@ class Pipeline:
 
         return results
 
-    def _run_ingestion(self) -> list[CanonicalClaimReview]:
-        """Run data ingestion using DataManager."""
+    def _run_ingestion(self, skip_download: bool = False) -> list[CanonicalClaimReview]:
+        """Run data ingestion using DataManager.
+
+        Args:
+            skip_download: Skip data downloads and use only cached data
+        """
         all_items: list[CanonicalClaimReview] = []
         total_items_before_filtering = 0
 
@@ -389,7 +396,11 @@ class Pipeline:
                 continue
 
             try:
-                items = list(self.data_manager.get_data(source_config))
+                items = list(
+                    self.data_manager.get_data(
+                        source_config, skip_download=skip_download
+                    )
+                )
                 total_items_before_filtering += len(items)
 
                 # Filter out already-processed items
