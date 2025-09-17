@@ -99,7 +99,7 @@ data_sources:
 enrichment:
   url_text_extraction:
     enabled: true
-    rate_limit_delay: 0.5
+    rate_limit_delay: 0
     timeout: 15
     max_retries: 2
 
@@ -109,7 +109,7 @@ enrichment:
     confidence: 0.6
     support: 30
     timeout: 20
-    rate_limit_delay: 0.2
+    rate_limit_delay: 0
 
   bert_factors:
     enabled: true
