@@ -62,9 +62,9 @@ test FILE="":
 # Runtime Commands
 # ============================================================================
 
-# Run pipeline with configuration
-run CONFIG:
-    uv run climatesense-kg run --config {{CONFIG}}
+# Run pipeline with configuration and optional extra arguments
+run CONFIG *ARGS="":
+    uv run climatesense-kg run --config {{CONFIG}} {{ARGS}}
 
 # ============================================================================
 # Docker Commands
