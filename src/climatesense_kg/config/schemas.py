@@ -73,11 +73,10 @@ class BertFactorsConfig:
     """Configuration for BERT factors enrichment."""
 
     enabled: bool = False
-    models_path: str = "/data/cimple-factors-models"
     batch_size: int = 32
-    device: Literal["auto", "cpu", "cuda"] = "auto"
     max_length: int = 128
-    auto_download: bool = True
+    timeout: int = 60
+    rate_limit_delay: float = 0.1
 
 
 @dataclass

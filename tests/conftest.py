@@ -1,6 +1,5 @@
 """Shared test fixtures for the ClimateSense KG Pipeline tests."""
 
-from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
@@ -62,11 +61,3 @@ def mock_cache():
     cache.get = Mock(return_value=None)
     cache.set = Mock(return_value=True)
     return cache
-
-
-@pytest.fixture
-def temp_models_path(tmp_path: Path) -> Path:
-    """Create a temporary directory for model files."""
-    models_dir: Path = tmp_path / "models"
-    models_dir.mkdir()
-    return models_dir

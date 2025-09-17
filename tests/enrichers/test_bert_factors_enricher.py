@@ -1,102 +1,114 @@
 """Tests for BertFactorsEnricher."""
 
-from pathlib import Path
+import os
 from typing import Any
 from unittest.mock import Mock, patch
 
 import pytest
+import requests
 from src.climatesense_kg.config.models import CanonicalClaimReview
 from src.climatesense_kg.enrichers.bert_factors_enricher import BertFactorsEnricher
 
 
 @pytest.fixture
-def bert_enricher(temp_models_path: Path) -> BertFactorsEnricher:
-    """Create BertFactorsEnricher instance with temporary models path."""
+def bert_enricher() -> BertFactorsEnricher:
+    """Create BertFactorsEnricher instance."""
     return BertFactorsEnricher(
-        models_path=str(temp_models_path),
         batch_size=2,
         max_length=64,
-        device="cpu",
-        auto_download=False,
+        timeout=10,
     )
 
 
 @pytest.fixture
-def bert_enricher_with_download(temp_models_path: Path) -> BertFactorsEnricher:
-    """Create BertFactorsEnricher instance with auto_download enabled."""
-    return BertFactorsEnricher(
-        models_path=str(temp_models_path),
-        auto_download=True,
-    )
+def bert_enricher_with_api() -> BertFactorsEnricher:
+    """Create BertFactorsEnricher instance with API configuration."""
+    with patch.dict(os.environ, {"CIMPLE_FACTORS_API_URL": "http://test-api:8000"}):
+        return BertFactorsEnricher()
 
 
 class TestBertFactorsEnricherInit:
     """Test BertFactorsEnricher initialization."""
 
-    def test_init_default_config(self, temp_models_path: Path) -> None:
+    def test_init_default_config(self) -> None:
         """Test initialization with default configuration."""
-        enricher = BertFactorsEnricher(models_path=str(temp_models_path))
+        enricher = BertFactorsEnricher()
 
         assert enricher.name == "bert_factors"
-        assert enricher.models_path == temp_models_path
+        assert enricher.api_url == "http://localhost:8000"
         assert enricher.batch_size == 32
         assert enricher.max_length == 128
-        assert enricher.device == "auto"
-        assert enricher.auto_download is True
+        assert enricher.timeout == 60
+        assert enricher.rate_limit_delay == 0.1
 
-    def test_init_custom_config(self, temp_models_path: Path) -> None:
+    def test_init_custom_config(self) -> None:
         """Test initialization with custom configuration."""
         enricher = BertFactorsEnricher(
-            models_path=str(temp_models_path),
             batch_size=16,
             max_length=256,
-            device="cuda",
-            auto_download=False,
+            timeout=30,
+            rate_limit_delay=0.5,
         )
 
         assert enricher.batch_size == 16
         assert enricher.max_length == 256
-        assert enricher.device == "cuda"
-        assert enricher.auto_download is False
+        assert enricher.timeout == 30
+        assert enricher.rate_limit_delay == 0.5
 
-    def test_init_missing_models_path_raises_error(self) -> None:
-        """Test initialization without models_path raises ValueError."""
-        with pytest.raises(ValueError, match="models_path must be provided"):
-            BertFactorsEnricher()
+    def test_init_with_environment_variable(self) -> None:
+        """Test initialization with environment variable for API URL."""
+        with patch.dict(
+            os.environ, {"CIMPLE_FACTORS_API_URL": "http://custom-api:9000"}
+        ):
+            enricher = BertFactorsEnricher()
+            assert enricher.api_url == "http://custom-api:9000"
 
 
 class TestBertFactorsEnricherAvailability:
-    """Test model availability checking."""
+    """Test API availability checking."""
 
-    def test_is_available_with_auto_download_true(
-        self, bert_enricher_with_download: BertFactorsEnricher
+    @patch("requests.get")
+    def test_is_available_api_healthy(
+        self, mock_get: Mock, bert_enricher: BertFactorsEnricher
     ) -> None:
-        """Test is_available returns True when auto_download is enabled."""
-        assert bert_enricher_with_download.is_available() is True
+        """Test is_available returns True when API is healthy."""
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_get.return_value = mock_response
 
-    def test_is_available_with_auto_download_false_missing_models(
-        self, bert_enricher: BertFactorsEnricher
+        assert bert_enricher.is_available() is True
+        mock_get.assert_called_once_with(
+            "http://localhost:8000/health", headers=bert_enricher.headers, timeout=5
+        )
+
+    @patch("requests.get")
+    def test_is_available_api_unhealthy(
+        self, mock_get: Mock, bert_enricher: BertFactorsEnricher
     ) -> None:
-        """Test is_available returns False when auto_download is disabled and models missing."""
+        """Test is_available returns False when API is unhealthy."""
+        mock_response = Mock()
+        mock_response.status_code = 500
+        mock_get.return_value = mock_response
+
         assert bert_enricher.is_available() is False
 
-    def test_is_available_with_auto_download_false_models_exist(
-        self, temp_models_path: Path
+    @patch("requests.get")
+    def test_is_available_api_connection_error(
+        self, mock_get: Mock, bert_enricher: BertFactorsEnricher
     ) -> None:
-        """Test is_available returns True when auto_download is disabled but models exist."""
-        with patch("pathlib.Path.exists", return_value=True):
-            enricher = BertFactorsEnricher(
-                models_path=str(temp_models_path),
-                auto_download=False,
-            )
-            assert enricher.is_available() is True
+        """Test is_available returns False when API connection fails."""
+        mock_get.side_effect = requests.ConnectionError("Connection failed")
+
+        assert bert_enricher.is_available() is False
 
 
 class TestBertFactorsEnricherEnrichment:
     """Test enrichment functionality."""
 
+    @patch.object(BertFactorsEnricher, "is_available", return_value=False)
     def test_enrich_not_available(
         self,
+        mock_available: Mock,
         bert_enricher: BertFactorsEnricher,
         sample_claim_review: CanonicalClaimReview,
     ) -> None:
@@ -106,54 +118,51 @@ class TestBertFactorsEnricherEnrichment:
         assert sample_claim_review.claim.emotion is None
         assert sample_claim_review.claim.sentiment is None
 
-    def test_enrich_no_uri(
+    @patch("requests.post")
+    @patch.object(BertFactorsEnricher, "is_available", return_value=True)
+    def test_enrich_success_with_mocked_api(
         self,
-        bert_enricher: BertFactorsEnricher,
-        sample_claim_review: CanonicalClaimReview,
-    ) -> None:
-        """Test enrichment when claim review has no URI."""
-        sample_claim_review.review_url = ""
-        result = bert_enricher.enrich([sample_claim_review])[0]
-        assert result == sample_claim_review
-
-    def test_enrich_success_with_mocked_models(
-        self,
+        mock_available: Mock,
+        mock_post: Mock,
         sample_claim_review: CanonicalClaimReview,
         mock_cache: Mock,
-        temp_models_path: Path,
     ) -> None:
-        """Test successful enrichment with mocked models."""
-        enricher = BertFactorsEnricher(
-            models_path=str(temp_models_path),
-            auto_download=False,
-        )
+        """Test successful enrichment with mocked API."""
+        enricher = BertFactorsEnricher()
         enricher.cache = mock_cache
         mock_cache.get_many.return_value = {}
 
-        sample_claim_review.claim.emotion = "Anger"
-        sample_claim_review.claim.sentiment = "Negative"
-        sample_claim_review.claim.political_leaning = "Left"
-        sample_claim_review.claim.conspiracies = {"mentioned": [], "promoted": []}
-
-        assert sample_claim_review.claim.emotion == "Anger"
-        assert sample_claim_review.claim.sentiment == "Negative"
-        assert sample_claim_review.claim.political_leaning == "Left"
-        assert sample_claim_review.claim.conspiracies == {
-            "mentioned": [],
-            "promoted": [],
+        # Mock API response
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "results": [
+                {
+                    "emotion": "Anger",
+                    "sentiment": "Negative",
+                    "political_leaning": "Left",
+                    "conspiracies": {"mentioned": [], "promoted": []},
+                }
+            ],
+            "processed_count": 1,
+            "total_count": 1,
         }
+        mock_post.return_value = mock_response
+
+        result = enricher.enrich([sample_claim_review])[0]
+
+        assert result.claim.emotion == "Anger"
+        assert result.claim.sentiment == "Negative"
+        assert result.claim.political_leaning == "Left"
+        assert result.claim.conspiracies == {"mentioned": [], "promoted": []}
 
     def test_enrich_with_cached_data(
         self,
         sample_claim_review: CanonicalClaimReview,
         mock_cache: Mock,
-        temp_models_path: Path,
     ) -> None:
         """Test enrichment with cached data."""
-        enricher = BertFactorsEnricher(
-            models_path=str(temp_models_path),
-            auto_download=False,
-        )
+        enricher = BertFactorsEnricher()
         enricher.cache = mock_cache
         cached_factors: dict[str, Any] = {
             "emotion": "Happiness",
@@ -183,8 +192,10 @@ class TestBertFactorsEnricherEnrichment:
 class TestBertFactorsEnricherBatch:
     """Test batch enrichment."""
 
+    @patch.object(BertFactorsEnricher, "is_available", return_value=False)
     def test_enrich_batch_not_available(
         self,
+        mock_available: Mock,
         bert_enricher: BertFactorsEnricher,
         sample_claim_reviews: list[CanonicalClaimReview],
     ) -> None:
@@ -197,30 +208,111 @@ class TestBertFactorsEnricherBatch:
             for result, original in zip(results, sample_claim_reviews, strict=False)
         )
 
+    @patch("requests.post")
     def test_enrich_batch_with_mixed_cache(
         self,
+        mock_post: Mock,
         sample_claim_reviews: list[CanonicalClaimReview],
         mock_cache: Mock,
-        temp_models_path: Path,
     ) -> None:
         """Test batch enrichment with mixed cached and uncached items."""
-        enricher = BertFactorsEnricher(
-            models_path=str(temp_models_path),
-            auto_download=False,
-        )
+        enricher = BertFactorsEnricher()
         enricher.cache = mock_cache
 
         def cache_side_effect(
             uris: list[str], namespace: str = ""
         ) -> dict[str, dict[str, Any]]:
-            result = {}
+            result: dict[str, dict[str, Any]] = {}
             for uri in uris:
                 if sample_claim_reviews[0].uri == uri:
                     result[uri] = {"emotion": "Fear", "sentiment": "Negative"}
             return result
 
         mock_cache.get_many.side_effect = cache_side_effect
-        results = enricher.enrich(sample_claim_reviews)
+
+        with patch.object(enricher, "is_available", return_value=True):
+            results = enricher.enrich(sample_claim_reviews)
 
         assert len(results) == 3
         assert all(isinstance(r, CanonicalClaimReview) for r in results)
+
+
+class TestBertFactorsEnricherAPIIntegration:
+    """Test API integration functionality through public interface."""
+
+    @patch("requests.post")
+    @patch.object(BertFactorsEnricher, "is_available", return_value=True)
+    def test_enrich_api_error_handling(
+        self,
+        mock_available: Mock,
+        mock_post: Mock,
+        bert_enricher: BertFactorsEnricher,
+        sample_claim_review: CanonicalClaimReview,
+        mock_cache: Mock,
+    ) -> None:
+        """Test enrichment with API error handling."""
+        enricher = BertFactorsEnricher()
+        enricher.cache = mock_cache
+        mock_cache.get_many.return_value = {}
+
+        # Test API error response
+        mock_response = Mock()
+        mock_response.status_code = 500
+        mock_response.text = "Internal Server Error"
+        mock_post.return_value = mock_response
+
+        result = enricher.enrich([sample_claim_review])[0]
+
+        # Should still return the original claim review, but without enrichment
+        assert result == sample_claim_review
+        assert result.claim.emotion is None
+        assert result.claim.sentiment is None
+
+    @patch("requests.post")
+    @patch.object(BertFactorsEnricher, "is_available", return_value=True)
+    def test_enrich_api_connection_error(
+        self,
+        mock_available: Mock,
+        mock_post: Mock,
+        bert_enricher: BertFactorsEnricher,
+        sample_claim_review: CanonicalClaimReview,
+        mock_cache: Mock,
+    ) -> None:
+        """Test enrichment with API connection error."""
+        enricher = BertFactorsEnricher()
+        enricher.cache = mock_cache
+        mock_cache.get_many.return_value = {}
+
+        # Test connection error
+        mock_post.side_effect = requests.ConnectionError("Connection failed")
+
+        result = enricher.enrich([sample_claim_review])[0]
+
+        # Should still return the original claim review, but without enrichment
+        assert result == sample_claim_review
+        assert result.claim.emotion is None
+        assert result.claim.sentiment is None
+
+    @patch("requests.post")
+    @patch.object(BertFactorsEnricher, "is_available", return_value=True)
+    def test_enrich_empty_text_handling(
+        self,
+        mock_available: Mock,
+        mock_post: Mock,
+        bert_enricher: BertFactorsEnricher,
+        sample_claim_review: CanonicalClaimReview,
+        mock_cache: Mock,
+    ) -> None:
+        """Test enrichment with empty claim text."""
+        enricher = BertFactorsEnricher()
+        enricher.cache = mock_cache
+        mock_cache.get_many.return_value = {}
+
+        # Set empty normalized text
+        sample_claim_review.claim.text = ""
+
+        result = enricher.enrich([sample_claim_review])[0]
+
+        # Should not make API call for empty text
+        mock_post.assert_not_called()
+        assert result == sample_claim_review

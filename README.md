@@ -147,11 +147,10 @@ enrichment:
 
   bert_factors:
     enabled: true
-    models_path: "data/cimple-factors-models"
-    auto_download: true
-    batch_size: 64
-    device: "auto"
+    batch_size: 32
     max_length: 128
+    timeout: 30
+    rate_limit_delay: 0.1
 
 output:
   format: "turtle"

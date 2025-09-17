@@ -1,346 +1,71 @@
-# pyright: reportMissingTypeStubs=false, reportUnknownMemberType=false, reportUnknownVariableType=false, reportAttributeAccessIssue=false, reportUnknownArgumentType=false, reportCallIssue=false, reportPossiblyUnboundVariable=false
-"""BERT-based factors enrichment for emotion, sentiment, political leaning, and conspiracy detection."""
+"""CIMPLE Factors API enrichment for emotion, sentiment, political leaning, and conspiracy detection."""
 
+import json
 import logging
-from pathlib import Path
+import os
+import time
 from typing import Any
-import warnings
 
 import requests
-from tqdm import tqdm
 
 from ..config.models import CanonicalClaimReview
 from .base import Enricher
 
-# Suppress specific huggingface-hub deprecation warning
-warnings.filterwarnings(
-    "ignore",
-    message=".*resume_download.*deprecated.*",
-    category=FutureWarning,
-    module="huggingface_hub",
-)
-
-import torch  # noqa: E402
-import torch.nn as nn  # noqa: E402
-from transformers import (  # noqa: E402
-    AutoTokenizer,
-    BertForPreTraining,
-)
-
 logger = logging.getLogger(__name__)
 
 
-class CovidTwitterBertClassifier(nn.Module):
-    """BERT classifier for COVID Twitter data."""
-
-    def __init__(self, n_classes: int):
-        super().__init__()
-        self.bert = BertForPreTraining.from_pretrained(
-            "digitalepidemiologylab/covid-twitter-bert-v2",
-            revision="b113bc3c2590d7b32ed62603fe1ebe32e1e5beee",
-        )
-        original_in_features = self.bert.cls.seq_relationship.in_features
-        self.bert.cls.seq_relationship = nn.Linear(original_in_features, n_classes)
-
-    def forward(
-        self,
-        input_ids: torch.Tensor,
-        token_type_ids: torch.Tensor,
-        input_mask: torch.Tensor,
-    ) -> torch.Tensor:
-        outputs = self.bert(
-            input_ids=input_ids,
-            token_type_ids=token_type_ids,
-            attention_mask=input_mask,
-        )
-        logits: torch.Tensor = outputs[1]
-        return logits
-
-
 class BertFactorsEnricher(Enricher):
-    """Enricher that uses BERT models for emotion, sentiment, political leaning, and conspiracy detection."""
-
-    # Constants for factor categories
-    EMOTIONS_LIST = ["None", "Happiness", "Anger", "Sadness", "Fear"]
-    POLITICAL_BIAS_LIST = ["Left", "Other", "Right"]
-    SENTIMENTS_LIST = ["Negative", "Neutral", "Positive"]
-    CONSPIRACIES_LIST = [
-        "Suppressed Cures",
-        "Behaviour and mind Control",
-        "Antivax",
-        "Fake virus",
-        "Intentional Pandemic",
-        "Harmful Radiation",
-        "Population Reduction",
-        "New World Order",
-        "Satanism",
-    ]
-    CONSPIRACY_LEVELS_LIST = ["No ", "Mentioning ", "Supporting "]
-
-    # Model download configuration
-    MODELS_BASE_URL = "https://data.cimple.eu/models"
-    REQUIRED_MODELS = [
-        "emotion.pth",
-        "sentiment.pth",
-        "political-leaning.pth",
-        "conspiracy.pth",
-    ]
-
-    tokenizer: AutoTokenizer | None = None
-    models: (
-        tuple[
-            CovidTwitterBertClassifier | None,
-            CovidTwitterBertClassifier | None,
-            CovidTwitterBertClassifier | None,
-            CovidTwitterBertClassifier | None,
-        ]
-        | None
-    ) = None
-    torch_device: torch.device | None = None
+    """Enricher that uses CIMPLE Factors API for emotion, sentiment, political leaning, and conspiracy detection."""
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__("bert_factors", **kwargs)
-        models_path = kwargs.get("models_path")
-        if models_path is None:
-            raise ValueError("models_path must be provided")
-        self.models_path = Path(models_path)
+
+        # API configuration
+        self.api_url = os.environ.get("CIMPLE_FACTORS_API_URL", "http://localhost:8000")
         self.batch_size = kwargs.get("batch_size", 32)
         self.max_length = kwargs.get("max_length", 128)
-        self.device = kwargs.get("device", "auto")
-        self.auto_download = kwargs.get("auto_download", True)
-        self._models_loaded = False
+        self.timeout = kwargs.get("timeout", 60)
+        self.rate_limit_delay = kwargs.get("rate_limit_delay", 0.1)
 
-    def _setup_device(self) -> None:
-        """Setup PyTorch device."""
-        if self.device == "auto":
-            self.torch_device = torch.device(
-                "cuda" if torch.cuda.is_available() else "cpu"
-            )
-        else:
-            self.torch_device = torch.device(self.device)
-
-        self.logger.info(f"Using PyTorch device: {self.torch_device}")
-
-    def _ensure_models_available(self) -> None:
-        """Ensure all required models are available, download if missing and auto_download is enabled."""
-        if not self.auto_download:
-            return
-
-        missing_models = self._get_missing_models()
-        if missing_models:
-            self.logger.info(f"Missing BERT models: {missing_models}")
-            self.logger.info("Downloading missing models...")
-
-            self.models_path.mkdir(parents=True, exist_ok=True)
-
-            for model_file in missing_models:
-                self._download_model(model_file)
-        else:
-            self.logger.info("All BERT models are available")
-
-    def _get_missing_models(self) -> list[str]:
-        """Get list of missing model files."""
-        missing = []
-        for model_file in self.REQUIRED_MODELS:
-            model_path = self.models_path / model_file
-            if not model_path.exists():
-                missing.append(model_file)
-        return missing
-
-    def _download_model(self, model_file: str) -> None:
-        """Download a single model file."""
-        url = f"{self.MODELS_BASE_URL}/{model_file}"
-        model_path = self.models_path / model_file
-
-        self.logger.info(f"Downloading {model_file} from {url}")
-
-        try:
-            response = requests.get(url, stream=True, timeout=60)
-            response.raise_for_status()
-
-            total_size = int(response.headers.get("content-length", 0))
-
-            with open(model_path, "wb") as f:
-                with tqdm(
-                    total=total_size,
-                    unit="B",
-                    unit_scale=True,
-                    desc=model_file,
-                    miniters=1,
-                ) as pbar:
-                    for chunk in response.iter_content(chunk_size=8192):
-                        if chunk:
-                            f.write(chunk)
-                            pbar.update(len(chunk))
-
-            self.logger.info(f"Successfully downloaded {model_file}")
-
-        except Exception as e:
-            self.logger.error(f"Failed to download {model_file}: {e}")
-            # Clean up partial download
-            if model_path.exists():
-                model_path.unlink()
-            raise RuntimeError(f"Could not download required model {model_file}") from e
-
-    def _load_models(self) -> None:
-        """Load BERT models and tokenizer."""
-        if not self.models_path.exists():
-            self.logger.error(f"Models path does not exist: {self.models_path}")
-            return
-
-        try:
-            # Load tokenizer
-            self.logger.info("Loading tokenizer...")
-            self.tokenizer = AutoTokenizer.from_pretrained(
-                "digitalepidemiologylab/covid-twitter-bert-v2",
-                revision="b113bc3c2590d7b32ed62603fe1ebe32e1e5beee",
-            )
-
-            # Load models
-            self.logger.info("Loading BERT factor models...")
-
-            # Emotion model
-            model_em: CovidTwitterBertClassifier | None = None
-            try:
-                model_em = CovidTwitterBertClassifier(len(self.EMOTIONS_LIST)).to(
-                    self.torch_device
-                )
-                emotion_path = self.models_path / "emotion.pth"
-                if emotion_path.exists():
-                    model_em.load_state_dict(
-                        torch.load(
-                            emotion_path,
-                            map_location=self.torch_device,
-                            weights_only=True,
-                        )
-                    )
-                    model_em.eval()
-                else:
-                    self.logger.warning(f"Emotion model not found at {emotion_path}")
-                    model_em = None
-            except Exception as e:
-                self.logger.warning(f"Failed to load emotion model: {e}")
-                model_em = None
-
-            # Political leaning model
-            model_pol: CovidTwitterBertClassifier | None = None
-            try:
-                model_pol = CovidTwitterBertClassifier(
-                    len(self.POLITICAL_BIAS_LIST)
-                ).to(self.torch_device)
-                political_path = self.models_path / "political-leaning.pth"
-                if political_path.exists():
-                    model_pol.load_state_dict(
-                        torch.load(
-                            political_path,
-                            map_location=self.torch_device,
-                            weights_only=True,
-                        )
-                    )
-                    model_pol.eval()
-                else:
-                    self.logger.warning(
-                        f"Political leaning model not found at {political_path}"
-                    )
-                    model_pol = None
-            except Exception as e:
-                self.logger.warning(f"Failed to load political leaning model: {e}")
-                model_pol = None
-
-            # Sentiment model
-            model_sent: CovidTwitterBertClassifier | None = None
-            try:
-                model_sent = CovidTwitterBertClassifier(len(self.SENTIMENTS_LIST)).to(
-                    self.torch_device
-                )
-                sentiment_path = self.models_path / "sentiment.pth"
-                if sentiment_path.exists():
-                    model_sent.load_state_dict(
-                        torch.load(
-                            sentiment_path,
-                            map_location=self.torch_device,
-                            weights_only=True,
-                        )
-                    )
-                    model_sent.eval()
-                else:
-                    self.logger.warning(
-                        f"Sentiment model not found at {sentiment_path}"
-                    )
-                    model_sent = None
-            except Exception as e:
-                self.logger.warning(f"Failed to load sentiment model: {e}")
-                model_sent = None
-
-            # Conspiracy model
-            model_con: CovidTwitterBertClassifier | None = None
-            try:
-                model_con = CovidTwitterBertClassifier(
-                    len(self.CONSPIRACIES_LIST) * len(self.CONSPIRACY_LEVELS_LIST)
-                ).to(self.torch_device)
-                conspiracy_path = self.models_path / "conspiracy.pth"
-                if conspiracy_path.exists():
-                    model_con.load_state_dict(
-                        torch.load(
-                            conspiracy_path,
-                            map_location=self.torch_device,
-                            weights_only=True,
-                        )
-                    )
-                    model_con.eval()
-                else:
-                    self.logger.warning(
-                        f"Conspiracy model not found at {conspiracy_path}"
-                    )
-                    model_con = None
-            except Exception as e:
-                self.logger.warning(f"Failed to load conspiracy model: {e}")
-                model_con = None
-
-            self.models = (model_em, model_pol, model_sent, model_con)
-
-        except Exception as e:
-            self.logger.error(f"Error loading BERT models: {e}")
-            self.models = None
-            self.tokenizer = None
-
-    def _ensure_models_loaded(self) -> None:
-        """Ensure models are loaded when needed."""
-        if not self._models_loaded:
-            self._setup_device()
-            self._ensure_models_available()
-            self._load_models()
-            self._models_loaded = True
+        # Headers for API requests
+        self.headers = {
+            "accept": "application/json",
+            "content-type": "application/json",
+            "User-Agent": "ClimateSense-Pipeline/1.0 (+https://github.com/climatesense-project)",
+        }
 
     def is_available(self) -> bool:
-        """Check if BERT enricher is available."""
-        if not self.auto_download:
-            missing_models = self._get_missing_models()
-            if missing_models:
-                self.logger.warning(f"Missing BERT models: {missing_models}")
-                return False
-
-        return True
+        """Check if CIMPLE Factors API is available."""
+        try:
+            response = requests.get(
+                f"{self.api_url}/health", headers=self.headers, timeout=5
+            )
+            return response.status_code == 200
+        except Exception as e:
+            self.logger.warning(f"CIMPLE Factors API not available: {e}")
+            return False
 
     def _process_item(self, claim_review: CanonicalClaimReview) -> CanonicalClaimReview:
-        """Process a single claim review with BERT-based factors."""
+        """Process a single claim review with CIMPLE Factors API."""
         if not self.is_available() or not claim_review.uri:
             return claim_review
 
         # Compute factors if text available
         if claim_review.claim.normalized_text:
-            self._ensure_models_loaded()
             factors_list = self._compute_factors([claim_review.claim.normalized_text])
             factors = factors_list[0] if factors_list else None
             if factors:
                 self._apply_factors(claim_review, factors, cache=True)
+
+        # Rate limiting
+        time.sleep(self.rate_limit_delay)
 
         return claim_review
 
     def apply_cached_data(
         self, claim_review: CanonicalClaimReview, cached_data: dict[str, Any]
     ) -> CanonicalClaimReview:
-        """Apply cached BERT factors data to a claim review."""
+        """Apply cached CIMPLE factors data to a claim review."""
         self._apply_factors(claim_review, cached_data)
         return claim_review
 
@@ -363,7 +88,7 @@ class BertFactorsEnricher(Enricher):
 
     def _compute_factors(self, texts: list[str]) -> list[dict[str, Any] | None]:
         """
-        Compute factors for a list of texts.
+        Compute factors for a list of texts using CIMPLE Factors API.
 
         Args:
             texts: List of texts to analyze
@@ -374,129 +99,88 @@ class BertFactorsEnricher(Enricher):
         if not texts:
             return []
 
-        if self.tokenizer is None or self.models is None:
-            self.logger.error("Tokenizer or models not loaded")
-            return [None] * len(texts)
-
         try:
             # Filter out empty texts
             valid_items = [
                 (i, text) for i, text in enumerate(texts) if text and text.strip()
             ]
-            valid_indices, valid_texts = (
-                zip(*valid_items, strict=False) if valid_items else ([], [])
-            )
-            valid_indices, valid_texts = list(valid_indices), list(valid_texts)
 
-            if not valid_texts:
+            if not valid_items:
                 return [None] * len(texts)
 
-            # Batch tokenization
-            tokenized_batch = self.tokenizer(
-                valid_texts,
-                max_length=self.max_length,
-                padding="max_length",
-                truncation=True,
-                return_tensors="pt",
+            valid_indices, valid_texts = zip(*valid_items, strict=False)
+            valid_indices, valid_texts = list(valid_indices), list(valid_texts)
+
+            # Prepare API request
+            payload: dict[str, Any] = {
+                "texts": valid_texts,
+                "batch_size": self.batch_size,
+                "max_length": self.max_length,
+            }
+
+            # Make API request
+            response = requests.post(
+                f"{self.api_url}/predict",
+                headers=self.headers,
+                data=json.dumps(payload),
+                timeout=self.timeout,
             )
 
-            input_ids = tokenized_batch["input_ids"].to(self.torch_device)
-            token_type_ids = tokenized_batch["token_type_ids"].to(self.torch_device)
-            attention_mask = tokenized_batch["attention_mask"].to(self.torch_device)
+            if response.status_code == 200:
+                api_data = response.json()
+                api_results = api_data.get("results", [])
 
-            model_em, model_pol, model_sent, model_con = self.models
-
-            with torch.no_grad():
-                # Batch predictions
+                # Convert API results to our format
                 batch_results: list[dict[str, Any] | None] = []
+                for api_result in api_results:
+                    if api_result is None:
+                        batch_results.append(None)
+                        continue
 
-                predictions_em = None
-                predictions_pol = None
-                predictions_sent = None
-                predictions_con = None
+                    result: dict[str, Any] = {}
 
-                if model_em:
-                    logits_em_batch = model_em(
-                        input_ids, token_type_ids, attention_mask
-                    )
-                    predictions_em = (
-                        logits_em_batch.detach().cpu().numpy().argmax(axis=1)
-                    )
+                    # Map emotion (filter out None values)
+                    if api_result.get("emotion"):
+                        result["emotion"] = api_result["emotion"]
 
-                if model_pol:
-                    logits_pol_batch = model_pol(
-                        input_ids, token_type_ids, attention_mask
-                    )
-                    predictions_pol = (
-                        logits_pol_batch.detach().cpu().numpy().argmax(axis=1)
-                    )
+                    # Map sentiment
+                    if api_result.get("sentiment"):
+                        result["sentiment"] = api_result["sentiment"]
 
-                if model_sent:
-                    logits_sent_batch = model_sent(
-                        input_ids, token_type_ids, attention_mask
-                    )
-                    predictions_sent = (
-                        logits_sent_batch.detach().cpu().numpy().argmax(axis=1)
-                    )
+                    # Map political leaning
+                    if api_result.get("political_leaning"):
+                        result["political_leaning"] = api_result["political_leaning"]
 
-                if model_con:
-                    logits_con_batch = model_con(
-                        input_ids, token_type_ids, attention_mask
-                    )
-
-                    num_conspiracies = len(self.CONSPIRACIES_LIST)
-                    num_levels = len(self.CONSPIRACY_LEVELS_LIST)
-
-                    predictions_con_reshaped = (
-                        logits_con_batch.detach()
-                        .cpu()
-                        .numpy()
-                        .reshape(-1, num_conspiracies, num_levels)
-                    )
-                    predictions_con = predictions_con_reshaped.argmax(axis=2)
-
-                # Process results for each valid text
-                for i in range(len(valid_texts)):
-                    results: dict[str, Any] = {}
-
-                    if predictions_em is not None:
-                        emotion = self.EMOTIONS_LIST[predictions_em[i]]
-                        results["emotion"] = emotion if emotion != "None" else None
-
-                    if predictions_pol is not None:
-                        results["political_leaning"] = self.POLITICAL_BIAS_LIST[
-                            predictions_pol[i]
-                        ]
-
-                    if predictions_sent is not None:
-                        results["sentiment"] = self.SENTIMENTS_LIST[predictions_sent[i]]
-
-                    if predictions_con is not None:
-                        conspiracy_indices = predictions_con[i]
-                        mentioned = []
-                        promoted = []
-
-                        for j, level_idx in enumerate(conspiracy_indices):
-                            conspiracy_name = self.CONSPIRACIES_LIST[j]
-                            if level_idx == 1:
-                                mentioned.append(conspiracy_name)
-                            elif level_idx == 2:
-                                promoted.append(conspiracy_name)
-
-                        results["conspiracies"] = {
-                            "mentioned": mentioned,
-                            "promoted": promoted,
+                    # Map conspiracies
+                    if "conspiracies" in api_result:
+                        result["conspiracies"] = {
+                            "mentioned": api_result["conspiracies"].get(
+                                "mentioned", []
+                            ),
+                            "promoted": api_result["conspiracies"].get("promoted", []),
                         }
 
-                    batch_results.append(results)
+                    batch_results.append(result)
 
                 # Map results back to original indices
                 final_results: list[dict[str, Any] | None] = [None] * len(texts)
                 for i, original_idx in enumerate(valid_indices):
-                    final_results[original_idx] = batch_results[i]
+                    if i < len(batch_results):
+                        final_results[original_idx] = batch_results[i]
 
                 return final_results
+            else:
+                self.logger.warning(
+                    f"CIMPLE Factors API returned status {response.status_code}: {response.text}"
+                )
+                return [None] * len(texts)
 
+        except requests.RequestException as e:
+            self.logger.error(f"CIMPLE Factors API request failed: {e}")
+            return [None] * len(texts)
+        except json.JSONDecodeError as e:
+            self.logger.error(f"Failed to decode JSON from CIMPLE Factors API: {e}")
+            return [None] * len(texts)
         except Exception as e:
-            self.logger.error(f"Error in BERT factors computation: {e}")
+            self.logger.error(f"Error in CIMPLE factors computation: {e}")
             return [None] * len(texts)

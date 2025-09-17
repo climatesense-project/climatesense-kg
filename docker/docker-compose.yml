@@ -88,11 +88,11 @@ services:
       VIRTUOSO_USER: ${VIRTUOSO_USER:-dba}
       VIRTUOSO_PASSWORD: ${VIRTUOSO_PASSWORD:-dba}
       VIRTUOSO_ISQL_SERVICE_URL: http://isql-service:8080
+      CIMPLE_FACTORS_API_URL: ${CIMPLE_FACTORS_API_URL:-http://localhost:8000}
     volumes:
       - ../data:/app/data
       - ../logs:/app/logs
       - ../cache:/app/cache
       - ../config:/app/config:ro
-      - ${CIMPLE_MODELS_PATH:-../data/cimple-factors-models}:/app/data/cimple-factors-models
     profiles:
       - manual

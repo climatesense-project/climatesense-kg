@@ -3,7 +3,6 @@
 /output/
 /data/
 /cache/
-/models/
 *.ttl
 *.nt
 *.rdf
