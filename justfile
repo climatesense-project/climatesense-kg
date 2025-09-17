@@ -50,8 +50,13 @@ pre-commit-all:
     uv run pre-commit run --all-files
 
 # Run tests
-test:
-    uv run pytest tests/ -v
+test FILE="":
+    #!/usr/bin/env bash
+    if [ -n "{{FILE}}" ]; then
+        uv run pytest "{{FILE}}" -v
+    else
+        uv run pytest tests/ -v
+    fi
 
 # ============================================================================
 # Runtime Commands
