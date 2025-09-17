@@ -25,13 +25,53 @@ class Enricher(ABC):
         self.step_name = f"enricher.{name}"
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
-    @abstractmethod
-    def enrich(self, claim_review: CanonicalClaimReview) -> CanonicalClaimReview:
+    def enrich(self, items: list[CanonicalClaimReview]) -> list[CanonicalClaimReview]:
         """
-        Enrich a canonical claim review with additional information.
+        Enrich a list of claim reviews.
 
         Args:
-            claim_review: The claim review to enrich
+            items: Single claim review or list of claim reviews
+
+        Returns:
+            Enriched single item or list (matches input type)
+        """
+        uris = [item.uri for item in items if item.uri]
+        cached_data = {}
+        if self.cache and uris:
+            cached_data = self.cache.get_many(uris, self.step_name)
+
+        # Process all items
+        results: list[CanonicalClaimReview] = []
+        for i, item in enumerate(items):
+            try:
+                if item.uri and item.uri in cached_data:
+                    # Apply cached data
+                    enriched = self.apply_cached_data(item, cached_data[item.uri])
+                else:
+                    # Process item and cache result
+                    enriched = self._process_item(item)
+                results.append(enriched)
+
+                if (i + 1) % 100 == 0 or (i + 1) == len(items):
+                    self.logger.info(
+                        f"Enriched {i + 1}/{len(items)} items ({((i + 1) / len(items)) * 100:.1f}%)"
+                    )
+
+            except Exception as e:
+                self.logger.error(f"Error enriching claim review {item.uri}: {e}")
+                results.append(item)
+
+        return results
+
+    @abstractmethod
+    def _process_item(self, claim_review: CanonicalClaimReview) -> CanonicalClaimReview:
+        """
+        Process a single item and cache the result.
+
+        This is the only method enrichers need to implement.
+
+        Args:
+            claim_review: The claim review to process
 
         Returns:
             CanonicalClaimReview: The enriched claim review
@@ -48,60 +88,30 @@ class Enricher(ABC):
         """
         pass
 
-    def get_cached(self, uri: str) -> dict[str, Any] | None:
+    @abstractmethod
+    def apply_cached_data(
+        self, claim_review: CanonicalClaimReview, cached_data: dict[str, Any]
+    ) -> CanonicalClaimReview:
         """
-        Get cached enrichment data for a URI.
+        Apply cached enrichment data to a claim review.
 
         Args:
-            uri: URI to look up
+            claim_review: Original claim review
+            cached_data: Cached enrichment data
 
         Returns:
-            Cached payload or None if not found/no cache
+            Enriched claim review with cached data applied
         """
+        pass
+
+    def get_cached(self, uri: str) -> dict[str, Any] | None:
+        """Get cached enrichment data for a URI."""
         if not self.cache:
             return None
-
         return self.cache.get(uri, self.step_name)
 
     def set_cached(self, uri: str, payload: dict[str, Any]) -> bool:
-        """
-        Store enrichment data in cache.
-
-        Args:
-            uri: URI to cache data for
-            payload: Enrichment data to cache
-
-        Returns:
-            True if successfully cached, False otherwise
-        """
+        """Store enrichment data in cache."""
         if not self.cache:
             return False
-
         return self.cache.set(uri, self.step_name, payload)
-
-    def enrich_batch(
-        self, claim_reviews: list[CanonicalClaimReview]
-    ) -> list[CanonicalClaimReview]:
-        """
-        Enrich a batch of claim reviews.
-
-        Args:
-            claim_reviews: List of claim reviews to enrich
-
-        Returns:
-            List[CanonicalClaimReview]: List of enriched claim reviews
-        """
-        enriched_reviews: list[CanonicalClaimReview] = []
-
-        for claim_review in claim_reviews:
-            try:
-                enriched = self.enrich(claim_review)
-                enriched_reviews.append(enriched)
-            except Exception as e:
-                self.logger.error(
-                    f"Error enriching claim review {claim_review.uri}: {e}"
-                )
-                # Return original if enrichment fails
-                enriched_reviews.append(claim_review)
-
-        return enriched_reviews

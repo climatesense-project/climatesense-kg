@@ -322,24 +322,9 @@ class BertFactorsEnricher(Enricher):
 
         return True
 
-    def enrich(self, claim_review: CanonicalClaimReview) -> CanonicalClaimReview:
-        """
-        Enrich claim review with BERT-based factors.
-
-        Args:
-            claim_review: Claim review to enrich
-
-        Returns:
-            CanonicalClaimReview: Enriched claim review
-        """
+    def _process_item(self, claim_review: CanonicalClaimReview) -> CanonicalClaimReview:
+        """Process a single claim review with BERT-based factors."""
         if not self.is_available() or not claim_review.uri:
-            return claim_review
-
-        # Check cache first
-        cached_data = self.get_cached(claim_review.uri)
-        if cached_data:
-            self._apply_factors(claim_review, cached_data)
-            self.logger.debug(f"Applied cached BERT factors for {claim_review.uri}")
             return claim_review
 
         # Compute factors if text available
@@ -352,65 +337,12 @@ class BertFactorsEnricher(Enricher):
 
         return claim_review
 
-    def enrich_batch(
-        self, claim_reviews: list[CanonicalClaimReview]
-    ) -> list[CanonicalClaimReview]:
-        """
-        Enrich a batch of claim reviews with optimized batch processing and caching.
-
-        Args:
-            claim_reviews: List of claim reviews to enrich
-
-        Returns:
-            List[CanonicalClaimReview]: List of enriched claim reviews
-        """
-        if not self.is_available() or not claim_reviews:
-            return claim_reviews
-
-        # First pass: handle cached items and collect uncached
-        uncached_items = []
-        cached_count = 0
-
-        for claim_review in claim_reviews:
-            if not claim_review.uri:
-                continue
-
-            cached_data = self.get_cached(claim_review.uri)
-            if cached_data:
-                self._apply_factors(claim_review, cached_data)
-                cached_count += 1
-                self.logger.debug(f"Applied cached BERT factors for {claim_review.uri}")
-            elif claim_review.claim.normalized_text:
-                uncached_items.append(claim_review)
-
-        if not uncached_items:
-            self.logger.info(f"All {len(claim_reviews)} claim reviews were cached")
-            return claim_reviews
-
-        self.logger.info(
-            f"Processing {len(uncached_items)} uncached items (cached: {cached_count})"
-        )
-
-        # Batch compute factors for uncached items
-        texts = [item.claim.normalized_text for item in uncached_items]
-        self._ensure_models_loaded()
-        all_factors = self._compute_factors(texts)
-
-        # Apply computed factors
-        processed_count = 0
-        for item, factors in zip(uncached_items, all_factors, strict=False):
-            if factors:
-                self._apply_factors(item, factors, cache=True)
-                processed_count += 1
-
-        self.logger.info(
-            f"BERT factors progress: {processed_count}/{len(uncached_items)}"
-        )
-        self.logger.info(
-            f"Completed BERT factors enrichment for {len(claim_reviews)} claim reviews"
-        )
-
-        return claim_reviews
+    def apply_cached_data(
+        self, claim_review: CanonicalClaimReview, cached_data: dict[str, Any]
+    ) -> CanonicalClaimReview:
+        """Apply cached BERT factors data to a claim review."""
+        self._apply_factors(claim_review, cached_data)
+        return claim_review
 
     def _apply_factors(
         self,

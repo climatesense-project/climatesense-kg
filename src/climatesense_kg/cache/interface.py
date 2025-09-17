@@ -56,6 +56,22 @@ class CacheInterface(ABC):
         """
         pass
 
+    @abstractmethod
+    def get_many(self, uris: list[str], step: str) -> dict[str, dict[str, Any]]:
+        """
+        Get cached data for multiple URIs and a single step.
+        Use this for bulk operations to avoid performance issues.
+
+        Args:
+            uris: List of canonical URIs to look up
+            step: Step name (e.g., 'enricher.dbpedia_spotlight')
+
+        Returns:
+            Dict mapping URIs to their cached payload dicts.
+            URIs not found in cache are not included in the result.
+        """
+        pass
+
     def generate_cache_key(self, uri: str, step: str) -> str:
         """
         Generate namespaced cache key.

@@ -109,9 +109,9 @@ class TestDBpediaEnricherEnrichment:
         mock_response.status_code = 200
         mock_response.json.return_value = sample_dbpedia_response
         mock_post.return_value = mock_response
-        mock_cache.get.return_value = None
+        mock_cache.get_many.return_value = {}
 
-        result = dbpedia_enricher.enrich(sample_claim_review)
+        result = dbpedia_enricher.enrich([sample_claim_review])[0]
 
         assert len(result.claim.entities) == 1
         assert (
@@ -122,8 +122,8 @@ class TestDBpediaEnricherEnrichment:
         assert result.claim.entities[0]["confidence"] == 0.85
         assert result.claim.entities[0]["source"] == "dbpedia_spotlight"
 
-        mock_cache.get.assert_called_once_with(
-            sample_claim_review.uri, "enricher.dbpedia_spotlight"
+        mock_cache.get_many.assert_called_once_with(
+            [sample_claim_review.uri], "enricher.dbpedia_spotlight"
         )
         mock_cache.set.assert_called_once()
         call_args = mock_cache.set.call_args[0]
@@ -145,15 +145,15 @@ class TestDBpediaEnricherEnrichment:
             "claim_entities": [{"uri": "cached_entity", "surface_form": "cached"}],
             "review_entities": [],
         }
-        mock_cache.get.return_value = cached_data
+        mock_cache.get_many.return_value = {sample_claim_review.uri: cached_data}
 
-        result = dbpedia_enricher.enrich(sample_claim_review)
+        result = dbpedia_enricher.enrich([sample_claim_review])[0]
 
         assert len(result.claim.entities) == 1
         assert result.claim.entities[0]["uri"] == "cached_entity"
 
-        mock_cache.get.assert_called_once_with(
-            sample_claim_review.uri, "enricher.dbpedia_spotlight"
+        mock_cache.get_many.assert_called_once_with(
+            [sample_claim_review.uri], "enricher.dbpedia_spotlight"
         )
         mock_cache.set.assert_not_called()
 
@@ -176,9 +176,9 @@ class TestDBpediaEnricherBatch:
         mock_response.status_code = 200
         mock_response.json.return_value = {"Resources": []}
         mock_post.return_value = mock_response
-        mock_cache.get.return_value = None
+        mock_cache.get_many.return_value = {}
 
-        results = dbpedia_enricher.enrich_batch(sample_claim_reviews)
+        results = dbpedia_enricher.enrich(sample_claim_reviews)
 
         assert len(results) == 3
         assert all(isinstance(r, CanonicalClaimReview) for r in results)

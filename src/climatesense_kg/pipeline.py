@@ -193,16 +193,15 @@ class Pipeline:
             return False
 
         # Check pipeline completion cache
-        pipeline_step = "pipeline.processed_items"
-        cached_data = self.cache.get(uri, pipeline_step)
-        if cached_data is None:
+        pipeline_data = self.cache.get(uri, "pipeline.processed_items")
+        if pipeline_data is None:
             return False
 
-        # Check cache for each enricher
+        # Check all enricher steps
         for enricher in self.enrichers:
             if enricher.is_available():
-                enricher_cached = self.cache.get(uri, enricher.step_name)
-                if enricher_cached is None:
+                enricher_data = self.cache.get(uri, enricher.step_name)
+                if enricher_data is None:
                     return False
 
         return True
@@ -215,7 +214,6 @@ class Pipeline:
             return
 
         step_name = "pipeline.processed_items"
-
         payload = {
             "source": source_name,
             "processed_at": datetime.now().isoformat(),
@@ -223,6 +221,35 @@ class Pipeline:
         }
 
         self.cache.set(uri, step_name, payload)
+
+    def _get_fully_processed_uris(self, uris: list[str]) -> set[str]:
+        """
+        Find which URIs are fully processed using bulk cache queries.
+
+        Returns:
+            Set of URIs that have completed all processing steps
+        """
+        if not self.cache or not uris:
+            return set()
+
+        # Check pipeline completion step
+        pipeline_cached = self.cache.get_many(uris, "pipeline.processed_items")
+        pipeline_processed_uris = set(pipeline_cached.keys())
+
+        if not pipeline_processed_uris:
+            return set()
+
+        # Check all enricher steps for pipeline-processed items
+        fully_processed_uris = pipeline_processed_uris
+        for enricher in self.enrichers:
+            if enricher.is_available():
+                enricher_cached = self.cache.get_many(
+                    list(fully_processed_uris), enricher.step_name
+                )
+                # Only keep URIs that have this enricher step cached
+                fully_processed_uris &= set(enricher_cached.keys())
+
+        return fully_processed_uris
 
     def run(self, force_deployment: bool = False) -> PipelineResults:
         """Execute the complete pipeline.
@@ -370,17 +397,19 @@ class Pipeline:
                     self.logger.info(
                         f"Filtering already processed items using cache for {source_config.name}..."
                     )
-                    new_items: list[CanonicalClaimReview] = []
-                    skipped_count = 0
-                    for item in items:
-                        if self._is_uri_processed(item.uri):
-                            skipped_count += 1
-                        else:
-                            new_items.append(item)
+                    uris = [item.uri for item in items if item.uri]
+                    fully_processed_uris = self._get_fully_processed_uris(uris)
+
+                    new_items = [
+                        item
+                        for item in items
+                        if not item.uri or item.uri not in fully_processed_uris
+                    ]
+                    skipped_count = len(items) - len(new_items)
 
                     self.logger.info(
                         f"Ingested {len(items)} items from {source_config.name}: "
-                        f"{len(new_items)} new, {skipped_count} already processed"
+                        f"{len(new_items)} to process, {skipped_count} already processed"
                     )
                     all_items.extend(new_items)
                 else:
@@ -416,7 +445,7 @@ class Pipeline:
             if enricher.is_available():
                 try:
                     self.logger.info(f"Applying enricher: {enricher.name}")
-                    enriched_reviews = enricher.enrich_batch(enriched_reviews)
+                    enriched_reviews = enricher.enrich(enriched_reviews)
                 except Exception as e:
                     self.logger.error(
                         f"Error in batch enrichment with {enricher.name}: {e}"

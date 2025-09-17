@@ -101,7 +101,7 @@ class TestBertFactorsEnricherEnrichment:
         sample_claim_review: CanonicalClaimReview,
     ) -> None:
         """Test enrichment when enricher is not available."""
-        result = bert_enricher.enrich(sample_claim_review)
+        result = bert_enricher.enrich([sample_claim_review])[0]
         assert result == sample_claim_review
         assert sample_claim_review.claim.emotion is None
         assert sample_claim_review.claim.sentiment is None
@@ -113,7 +113,7 @@ class TestBertFactorsEnricherEnrichment:
     ) -> None:
         """Test enrichment when claim review has no URI."""
         sample_claim_review.review_url = ""
-        result = bert_enricher.enrich(sample_claim_review)
+        result = bert_enricher.enrich([sample_claim_review])[0]
         assert result == sample_claim_review
 
     def test_enrich_success_with_mocked_models(
@@ -128,7 +128,7 @@ class TestBertFactorsEnricherEnrichment:
             auto_download=False,
         )
         enricher.cache = mock_cache
-        mock_cache.get.return_value = None
+        mock_cache.get_many.return_value = {}
 
         sample_claim_review.claim.emotion = "Anger"
         sample_claim_review.claim.sentiment = "Negative"
@@ -161,10 +161,10 @@ class TestBertFactorsEnricherEnrichment:
             "political_leaning": "Right",
             "conspiracies": {"mentioned": [], "promoted": ["New World Order"]},
         }
-        mock_cache.get.return_value = cached_factors
+        mock_cache.get_many.return_value = {sample_claim_review.uri: cached_factors}
 
         with patch.object(enricher, "is_available", return_value=True):
-            result = enricher.enrich(sample_claim_review)
+            result = enricher.enrich([sample_claim_review])[0]
 
         assert result.claim.emotion == "Happiness"
         assert result.claim.sentiment == "Positive"
@@ -174,8 +174,8 @@ class TestBertFactorsEnricherEnrichment:
             "promoted": ["New World Order"],
         }
 
-        mock_cache.get.assert_called_once_with(
-            sample_claim_review.uri, "enricher.bert_factors"
+        mock_cache.get_many.assert_called_once_with(
+            [sample_claim_review.uri], "enricher.bert_factors"
         )
         mock_cache.set.assert_not_called()
 
@@ -189,7 +189,7 @@ class TestBertFactorsEnricherBatch:
         sample_claim_reviews: list[CanonicalClaimReview],
     ) -> None:
         """Test batch enrichment when enricher is not available."""
-        results = bert_enricher.enrich_batch(sample_claim_reviews)
+        results = bert_enricher.enrich(sample_claim_reviews)
 
         assert len(results) == 3
         assert all(
@@ -210,13 +210,17 @@ class TestBertFactorsEnricherBatch:
         )
         enricher.cache = mock_cache
 
-        def cache_side_effect(uri: str, namespace: str = "") -> dict[str, Any] | None:
-            if sample_claim_reviews[0].uri == uri:
-                return {"emotion": "Fear", "sentiment": "Negative"}
-            return None
+        def cache_side_effect(
+            uris: list[str], namespace: str = ""
+        ) -> dict[str, dict[str, Any]]:
+            result = {}
+            for uri in uris:
+                if sample_claim_reviews[0].uri == uri:
+                    result[uri] = {"emotion": "Fear", "sentiment": "Negative"}
+            return result
 
-        mock_cache.get.side_effect = cache_side_effect
-        results = enricher.enrich_batch(sample_claim_reviews)
+        mock_cache.get_many.side_effect = cache_side_effect
+        results = enricher.enrich(sample_claim_reviews)
 
         assert len(results) == 3
         assert all(isinstance(r, CanonicalClaimReview) for r in results)

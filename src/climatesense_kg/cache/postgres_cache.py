@@ -187,6 +187,42 @@ class PostgresCache(CacheInterface):
             self.logger.error(f"Error deleting from cache for {step} - {uri}: {e}")
             return False
 
+    def get_many(self, uris: list[str], step: str) -> dict[str, dict[str, Any]]:
+        """Get cached data for multiple URIs and a single step."""
+        if not uris:
+            return {}
+
+        try:
+            cache_keys = [self.generate_cache_key(uri, step) for uri in uris]
+            uri_to_key = {uri: self.generate_cache_key(uri, step) for uri in uris}
+            key_to_uri = {key: uri for uri, key in uri_to_key.items()}
+
+            with self.connection_pool.connection() as connection:
+                with connection.cursor(row_factory=dict_row) as cursor:
+                    cursor.execute(
+                        "SELECT cache_key, payload FROM cache_entries WHERE cache_key = ANY(%s)",
+                        (cache_keys,),
+                    )
+                    results = cursor.fetchall()
+
+            # Map results back to URIs
+            uri_payloads: dict[str, dict[str, Any]] = {}
+            for result in results:
+                cache_key = result["cache_key"]
+                payload = result["payload"]
+                uri = key_to_uri[cache_key]
+                if payload is not None:
+                    uri_payloads[uri] = payload
+
+            self.logger.debug(
+                f"Batch cache lookup for {step}: {len(uri_payloads)}/{len(uris)} hits"
+            )
+            return uri_payloads
+
+        except Exception as e:
+            self.logger.error(f"Error reading batch from cache for {step}: {e}")
+            return {}
+
     def ping(self) -> bool:
         """Test PostgreSQL connection."""
         try:

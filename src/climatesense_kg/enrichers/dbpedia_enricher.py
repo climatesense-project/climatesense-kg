@@ -58,28 +58,9 @@ class DBpediaEnricher(Enricher):
             self.logger.warning(f"DBpedia Spotlight not available: {e}")
             return False
 
-    def enrich(self, claim_review: CanonicalClaimReview) -> CanonicalClaimReview:
-        """
-        Enrich claim review with DBpedia entities.
-
-        Args:
-            claim_review: Claim review to enrich
-
-        Returns:
-            CanonicalClaimReview: Enriched claim review
-        """
+    def _process_item(self, claim_review: CanonicalClaimReview) -> CanonicalClaimReview:
+        """Process a single claim review with DBpedia entity extraction."""
         if not claim_review.uri:
-            return claim_review
-
-        # Check cache first
-        cached_data = self.get_cached(claim_review.uri)
-        if cached_data:
-            # Apply cached enrichment data
-            if "claim_entities" in cached_data:
-                claim_review.claim.entities.extend(cached_data["claim_entities"])
-            if "review_entities" in cached_data:
-                claim_review.entities_in_review.extend(cached_data["review_entities"])
-            self.logger.debug(f"Applied cached DBpedia entities for {claim_review.uri}")
             return claim_review
 
         # Perform enrichment
@@ -108,14 +89,21 @@ class DBpediaEnricher(Enricher):
             "claim_entities": [asdict(e) for e in claim_entities],
             "review_entities": review_entities,
         }
-        self.set_cached(
-            claim_review.uri,
-            cache_payload,
-        )
+        self.set_cached(claim_review.uri, cache_payload)
 
         # Rate limiting
         time.sleep(self.rate_limit_delay)
 
+        return claim_review
+
+    def apply_cached_data(
+        self, claim_review: CanonicalClaimReview, cached_data: dict[str, Any]
+    ) -> CanonicalClaimReview:
+        """Apply cached DBpedia enrichment data to a claim review."""
+        if "claim_entities" in cached_data:
+            claim_review.claim.entities.extend(cached_data["claim_entities"])
+        if "review_entities" in cached_data:
+            claim_review.entities_in_review.extend(cached_data["review_entities"])
         return claim_review
 
     def _extract_entities(self, text: str) -> list[DBpediaSpotlightEntity]:
@@ -205,35 +193,3 @@ class DBpediaEnricher(Enricher):
                 continue
 
         return entities
-
-    def enrich_batch(
-        self, claim_reviews: list[CanonicalClaimReview]
-    ) -> list[CanonicalClaimReview]:
-        """
-        Enrich a batch of claim reviews with rate limiting.
-
-        Args:
-            claim_reviews: List of claim reviews to enrich
-
-        Returns:
-            List[CanonicalClaimReview]: List of enriched claim reviews
-        """
-        enriched_reviews: list[CanonicalClaimReview] = []
-        total = len(claim_reviews)
-
-        for i, claim_review in enumerate(claim_reviews):
-            try:
-                enriched = self.enrich(claim_review)
-                enriched_reviews.append(enriched)
-
-                if i % 10 == 0:  # Log progress every 10 items
-                    self.logger.info(f"DBpedia enrichment progress: {i + 1}/{total}")
-
-            except Exception as e:
-                self.logger.error(
-                    f"Error enriching claim review {claim_review.uri}: {e}"
-                )
-                enriched_reviews.append(claim_review)
-
-        self.logger.info(f"Completed DBpedia enrichment for {total} claim reviews")
-        return enriched_reviews

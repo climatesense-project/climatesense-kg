@@ -46,15 +46,15 @@ class TestURLTextEnricherEnrichment:
         mock_fetch.return_value = mock_result
 
         enricher = URLTextEnricher(cache=mock_cache, rate_limit_delay=0)
-        mock_cache.get.return_value = None
+        mock_cache.get_many.return_value = {}
 
-        result = enricher.enrich(sample_claim_review)
+        result = enricher.enrich([sample_claim_review])[0]
 
         assert result.review_url_text == extracted_text
         mock_fetch.assert_called_once_with(sample_claim_review.review_url)
 
-        mock_cache.get.assert_called_once_with(
-            sample_claim_review.uri, "enricher.url_text_extractor"
+        mock_cache.get_many.assert_called_once_with(
+            [sample_claim_review.uri], "enricher.url_text_extractor"
         )
         mock_cache.set.assert_called_once()
         call_args = mock_cache.set.call_args[0]
@@ -68,16 +68,16 @@ class TestURLTextEnricherEnrichment:
         mock_cache: Mock,
     ) -> None:
         """Test extraction with cache hit."""
-        cached_data = {"review_url_text": "Cached text"}
-        mock_cache.get.return_value = cached_data
+        cached_data = {sample_claim_review.uri: {"review_url_text": "Cached text"}}
+        mock_cache.get_many.return_value = cached_data
 
         enricher = URLTextEnricher(cache=mock_cache, rate_limit_delay=0)
-        result = enricher.enrich(sample_claim_review)
+        result = enricher.enrich([sample_claim_review])[0]
 
         assert result.review_url_text == "Cached text"
 
-        mock_cache.get.assert_called_once_with(
-            sample_claim_review.uri, "enricher.url_text_extractor"
+        mock_cache.get_many.assert_called_once_with(
+            [sample_claim_review.uri], "enricher.url_text_extractor"
         )
         mock_cache.set.assert_not_called()
 
@@ -85,7 +85,7 @@ class TestURLTextEnricherEnrichment:
         """Test enrichment with empty review URL."""
         sample_claim_review.review_url = ""
         enricher = URLTextEnricher()
-        result = enricher.enrich(sample_claim_review)
+        result = enricher.enrich([sample_claim_review])[0]
         assert result == sample_claim_review
         assert result.review_url_text is None
 
@@ -99,7 +99,7 @@ class TestURLTextEnricherEnrichment:
         mock_fetch.return_value = TextExtractionResult(success=True, content="Text")
 
         enricher = URLTextEnricher(rate_limit_delay=0)
-        results = enricher.enrich_batch(sample_claim_reviews)
+        results = enricher.enrich(sample_claim_reviews)
 
         assert len(results) == 3
         assert all(isinstance(r, CanonicalClaimReview) for r in results)

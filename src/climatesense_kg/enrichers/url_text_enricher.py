@@ -30,29 +30,13 @@ class URLTextEnricher(Enricher):
         """Check if URL text extraction is available."""
         return True
 
-    def enrich(self, claim_review: CanonicalClaimReview) -> CanonicalClaimReview:
-        """
-        Enrich claim review with extracted text from review URL.
-
-        Args:
-            claim_review: Claim review to enrich
-
-        Returns:
-            CanonicalClaimReview: Enriched claim review with URL text
-        """
+    def _process_item(self, claim_review: CanonicalClaimReview) -> CanonicalClaimReview:
+        """Process a single claim review with URL text extraction."""
         if not claim_review.review_url:
             self.logger.warning("No review URL available for text extraction")
             return claim_review
 
         if not claim_review.uri:
-            return claim_review
-
-        # Check cache first
-        cached_data = self.get_cached(claim_review.uri)
-        if cached_data:
-            # Apply cached URL text
-            claim_review.review_url_text = cached_data.get("review_url_text")
-            self.logger.debug(f"Applied cached URL text for {claim_review.uri}")
             return claim_review
 
         # Extract text from review URL
@@ -72,10 +56,7 @@ class URLTextEnricher(Enricher):
                 "review_url_text": result.content,
                 "review_url": claim_review.review_url,
             }
-            self.set_cached(
-                claim_review.uri,
-                cache_payload,
-            )
+            self.set_cached(claim_review.uri, cache_payload)
 
             # Rate limiting only after successful requests
             time.sleep(self.rate_limit_delay)
@@ -106,10 +87,7 @@ class URLTextEnricher(Enricher):
             self.logger.debug(
                 f"Caching extraction failure for {claim_review.uri}: {cache_payload['error_details']}"
             )
-            self.set_cached(
-                claim_review.uri,
-                cache_payload,
-            )
+            self.set_cached(claim_review.uri, cache_payload)
 
         return claim_review
 
@@ -163,36 +141,9 @@ class URLTextEnricher(Enricher):
 
         return last_result
 
-    def enrich_batch(
-        self, claim_reviews: list[CanonicalClaimReview]
-    ) -> list[CanonicalClaimReview]:
-        """
-        Enrich a batch of claim reviews with URL text extraction.
-
-        Args:
-            claim_reviews: List of claim reviews to enrich
-
-        Returns:
-            List[CanonicalClaimReview]: List of enriched claim reviews
-        """
-        enriched_reviews: list[CanonicalClaimReview] = []
-        total = len(claim_reviews)
-
-        for i, claim_review in enumerate(claim_reviews):
-            try:
-                enriched = self.enrich(claim_review)
-                enriched_reviews.append(enriched)
-
-                if (i + 1) % 10 == 0:  # Log progress every 10 items
-                    self.logger.info(
-                        f"URL text extraction progress: {i + 1}/{total} ({((i + 1) / total * 100):.1f}%)"
-                    )
-
-            except Exception as e:
-                self.logger.error(
-                    f"Error enriching claim review {claim_review.uri}: {e}"
-                )
-                enriched_reviews.append(claim_review)
-
-        self.logger.info(f"Completed URL text extraction for {total} claim reviews")
-        return enriched_reviews
+    def apply_cached_data(
+        self, claim_review: CanonicalClaimReview, cached_data: dict[str, Any]
+    ) -> CanonicalClaimReview:
+        """Apply cached URL text enrichment data to a claim review."""
+        claim_review.review_url_text = cached_data.get("review_url_text")
+        return claim_review
