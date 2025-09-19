@@ -52,10 +52,30 @@ class BertFactorsEnricher(Enricher):
 
         # Compute factors if text available
         if claim_review.claim.normalized_text:
-            factors_list = self._compute_factors([claim_review.claim.normalized_text])
-            factors = factors_list[0] if factors_list else None
-            if factors:
-                self._apply_factors(claim_review, factors, cache=True)
+            try:
+                factors_list = self._compute_factors(
+                    [claim_review.claim.normalized_text]
+                )
+                factors = factors_list[0] if factors_list else None
+                if factors:
+                    self._apply_factors(claim_review, factors, cache=True)
+                else:
+                    raise ValueError("CIMPLE Factors API returned None result")
+            except Exception as e:
+                self.logger.error(
+                    f"CIMPLE Factors enrichment failed for {claim_review.uri}: {e}"
+                )
+                self.cache_error(
+                    claim_review.uri,
+                    error_type="api_error",
+                    message=f"CIMPLE Factors API error: {e!s}",
+                    data={
+                        "emotion": None,
+                        "sentiment": None,
+                        "political_leaning": None,
+                        "conspiracies": {"mentioned": [], "promoted": []},
+                    },
+                )
 
         # Rate limiting
         time.sleep(self.rate_limit_delay)
@@ -66,7 +86,7 @@ class BertFactorsEnricher(Enricher):
         self, claim_review: CanonicalClaimReview, cached_data: dict[str, Any]
     ) -> CanonicalClaimReview:
         """Apply cached CIMPLE factors data to a claim review."""
-        self._apply_factors(claim_review, cached_data)
+        self._apply_factors(claim_review, cached_data["data"])
         return claim_review
 
     def _apply_factors(
@@ -84,7 +104,7 @@ class BertFactorsEnricher(Enricher):
         )
 
         if cache and claim_review.uri:
-            self.set_cached(claim_review.uri, factors)
+            self.cache_success(claim_review.uri, factors)
 
     def _compute_factors(self, texts: list[str]) -> list[dict[str, Any] | None]:
         """
@@ -173,14 +193,16 @@ class BertFactorsEnricher(Enricher):
                 self.logger.warning(
                     f"CIMPLE Factors API returned status {response.status_code}: {response.text}"
                 )
-                return [None] * len(texts)
+                raise requests.RequestException(
+                    f"API returned status {response.status_code}: {response.text}"
+                )
 
         except requests.RequestException as e:
             self.logger.error(f"CIMPLE Factors API request failed: {e}")
-            return [None] * len(texts)
+            raise
         except json.JSONDecodeError as e:
             self.logger.error(f"Failed to decode JSON from CIMPLE Factors API: {e}")
-            return [None] * len(texts)
+            raise
         except Exception as e:
             self.logger.error(f"Error in CIMPLE factors computation: {e}")
-            return [None] * len(texts)
+            raise

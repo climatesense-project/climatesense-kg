@@ -23,7 +23,6 @@ class TestExtractionErrorType:
             ExtractionErrorType.REQUEST_ERROR,
             ExtractionErrorType.DOWNLOAD_FAILED,
             ExtractionErrorType.UNKNOWN,
-            ExtractionErrorType.UNEXPECTED,
         ]
         for error_type in retryable:
             assert error_type.is_retryable is True

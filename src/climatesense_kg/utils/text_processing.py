@@ -26,7 +26,6 @@ class ExtractionErrorType(Enum):
     REQUEST_ERROR = "request"
     DOWNLOAD_FAILED = "download_failed"
     EXTRACTION_FAILED = "extraction_failed"
-    UNEXPECTED = "unexpected"
     UNKNOWN = "unknown"
 
     @property
@@ -38,7 +37,6 @@ class ExtractionErrorType(Enum):
             ExtractionErrorType.REQUEST_ERROR,
             ExtractionErrorType.DOWNLOAD_FAILED,
             ExtractionErrorType.UNKNOWN,
-            ExtractionErrorType.UNEXPECTED,
         }
         return self in retryable_types
 

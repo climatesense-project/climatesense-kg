@@ -115,3 +115,46 @@ class Enricher(ABC):
         if not self.cache:
             return False
         return self.cache.set(uri, self.step_name, payload)
+
+    def cache_error(
+        self,
+        uri: str,
+        error_type: str,
+        message: str,
+        data: dict[str, Any] | None = None,
+    ) -> bool:
+        """
+        Cache an error for the given URI.
+
+        Args:
+            uri: URI to cache error for
+            error_type: Type of error
+            message: Error description
+            data: Optional enricher-specific data
+
+        Returns:
+            True if successfully cached, False otherwise
+        """
+        payload: dict[str, Any] = {
+            "success": False,
+            "error": {
+                "type": error_type,
+                "message": message,
+            },
+            "data": data or {},
+        }
+        return self.set_cached(uri, payload)
+
+    def cache_success(self, uri: str, data: dict[str, Any]) -> bool:
+        """
+        Cache successful enrichment data for the given URI.
+
+        Args:
+            uri: URI to cache data for
+            data: Enricher-specific data to cache
+
+        Returns:
+            True if successfully cached, False otherwise
+        """
+        payload: dict[str, Any] = {"success": True, "data": data}
+        return self.set_cached(uri, payload)

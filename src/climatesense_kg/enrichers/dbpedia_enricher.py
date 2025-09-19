@@ -63,36 +63,52 @@ class DBpediaEnricher(Enricher):
         if not claim_review.uri:
             return claim_review
 
-        # Perform enrichment
-        claim_entities: list[DBpediaSpotlightEntity] = []
-        review_entities: list[dict[str, Any]] = []
+        try:
+            # Perform enrichment
+            claim_entities: list[DBpediaSpotlightEntity] = []
+            review_entities: list[dict[str, Any]] = []
 
-        # Extract entities from claim text
-        if claim_review.claim.normalized_text:
-            claim_entities = self._extract_entities(claim_review.claim.normalized_text)
-            claim_review.claim.entities.extend([asdict(e) for e in claim_entities])
+            # Extract entities from claim text
+            if claim_review.claim.normalized_text:
+                claim_entities = self._extract_entities(
+                    claim_review.claim.normalized_text
+                )
+                claim_review.claim.entities.extend([asdict(e) for e in claim_entities])
 
-        # Extract entities from review text if available
-        if claim_review.review_text:
-            review_text_entities = self._extract_entities(claim_review.review_text)
-            review_entities.extend([asdict(e) for e in review_text_entities])
+            # Extract entities from review text if available
+            if claim_review.review_text:
+                review_text_entities = self._extract_entities(claim_review.review_text)
+                review_entities.extend([asdict(e) for e in review_text_entities])
 
-        # Extract entities from review URL text if available
-        if claim_review.review_url_text:
-            url_text_entities = self._extract_entities(claim_review.review_url_text)
-            review_entities.extend([asdict(e) for e in url_text_entities])
+            # Extract entities from review URL text if available
+            if claim_review.review_url_text:
+                url_text_entities = self._extract_entities(claim_review.review_url_text)
+                review_entities.extend([asdict(e) for e in url_text_entities])
 
-        claim_review.entities_in_review.extend(review_entities)
+            claim_review.entities_in_review.extend(review_entities)
 
-        # Cache the results
-        cache_payload = {
-            "claim_entities": [asdict(e) for e in claim_entities],
-            "review_entities": review_entities,
-        }
-        self.set_cached(claim_review.uri, cache_payload)
+            # Cache the successful results
+            success_data = {
+                "claim_entities": [asdict(e) for e in claim_entities],
+                "review_entities": review_entities,
+            }
+            self.cache_success(claim_review.uri, success_data)
 
-        # Rate limiting
-        time.sleep(self.rate_limit_delay)
+            # Rate limiting
+            time.sleep(self.rate_limit_delay)
+
+        except Exception as e:
+            self.logger.error(f"DBpedia enrichment failed for {claim_review.uri}: {e}")
+
+            self.cache_error(
+                claim_review.uri,
+                error_type="api_error",
+                message=f"DBpedia Spotlight API error: {e!s}",
+                data={
+                    "claim_entities": [],
+                    "review_entities": [],
+                },
+            )
 
         return claim_review
 
@@ -100,10 +116,11 @@ class DBpediaEnricher(Enricher):
         self, claim_review: CanonicalClaimReview, cached_data: dict[str, Any]
     ) -> CanonicalClaimReview:
         """Apply cached DBpedia enrichment data to a claim review."""
-        if "claim_entities" in cached_data:
-            claim_review.claim.entities.extend(cached_data["claim_entities"])
-        if "review_entities" in cached_data:
-            claim_review.entities_in_review.extend(cached_data["review_entities"])
+        data = cached_data["data"]
+        if "claim_entities" in data:
+            claim_review.claim.entities.extend(data["claim_entities"])
+        if "review_entities" in data:
+            claim_review.entities_in_review.extend(data["review_entities"])
         return claim_review
 
     def _extract_entities(self, text: str) -> list[DBpediaSpotlightEntity]:
@@ -137,29 +154,31 @@ class DBpediaEnricher(Enricher):
                 self.logger.warning(
                     f"DBpedia API returned status {response.status_code}"
                 )
-                return []
+                raise requests.RequestException(
+                    f"API returned status {response.status_code}"
+                )
 
         except requests.RequestException as e:
             self.logger.error(f"DBpedia Spotlight API request failed: {e}")
-            return []
+            raise
         except json.JSONDecodeError as e:
             self.logger.error(f"Failed to decode JSON from DBpedia Spotlight: {e}")
-            return []
+            raise
         except Exception as e:
             self.logger.error(f"Error extracting entities: {e}")
-            return []
+            raise
 
     def _parse_dbpedia_response(
         self, data: dict[str, Any]
     ) -> list[DBpediaSpotlightEntity]:
         """
-        Parse DBpedia Spotlight response into standardized entity format.
+        Parse DBpedia Spotlight response into entity format.
 
         Args:
             data: Raw response from DBpedia Spotlight
 
         Returns:
-            List[DBpediaSpotlightEntity]: Standardized entity data
+            List[DBpediaSpotlightEntity]: Entity data
         """
         entities: list[DBpediaSpotlightEntity] = []
 

@@ -42,8 +42,6 @@ class URLTextEnricher(Enricher):
         # Extract text from review URL
         result = self._extract_url_text(claim_review.review_url)
 
-        cache_payload: dict[str, Any] = {}
-
         if result and result.success:
             claim_review.review_url_text = result.content
             self.logger.debug(
@@ -51,12 +49,12 @@ class URLTextEnricher(Enricher):
                 f"from URL: {claim_review.review_url}"
             )
 
-            # Cache the results
-            cache_payload = {
+            # Cache the successful results
+            success_data = {
                 "review_url_text": result.content,
                 "review_url": claim_review.review_url,
             }
-            self.set_cached(claim_review.uri, cache_payload)
+            self.cache_success(claim_review.uri, success_data)
 
             # Rate limiting only after successful requests
             time.sleep(self.rate_limit_delay)
@@ -67,27 +65,23 @@ class URLTextEnricher(Enricher):
             )
             claim_review.review_url_text = None  # Don't store error messages
 
-            # Cache the failure with error details
-            cache_payload = {
-                "review_url_text": None,
-                "review_url": claim_review.review_url,
-                "extraction_error": True,
-                "error_details": {
-                    "error_message": (
-                        result.error_message if result else "Unknown error"
-                    ),
-                    "error_type": (
-                        result.error_type.value
-                        if result and result.error_type
-                        else "unknown"
-                    ),
-                    "timestamp": time.time(),
-                },
-            }
-            self.logger.debug(
-                f"Caching extraction failure for {claim_review.uri}: {cache_payload['error_details']}"
+            # Cache the failure
+            error_message = result.error_message if result else "Unknown error"
+            error_type = (
+                result.error_type.value
+                if result and result.error_type
+                else "unknown_error"
             )
-            self.set_cached(claim_review.uri, cache_payload)
+
+            self.cache_error(
+                claim_review.uri,
+                error_type=error_type,
+                message=error_message,
+                data={
+                    "review_url_text": None,
+                    "review_url": claim_review.review_url,
+                },
+            )
 
         return claim_review
 
@@ -136,7 +130,7 @@ class URLTextEnricher(Enricher):
                     return TextExtractionResult(
                         success=False,
                         error_message=str(e),
-                        error_type=ExtractionErrorType.UNEXPECTED,
+                        error_type=ExtractionErrorType.UNKNOWN,
                     )
 
         return last_result
@@ -145,5 +139,6 @@ class URLTextEnricher(Enricher):
         self, claim_review: CanonicalClaimReview, cached_data: dict[str, Any]
     ) -> CanonicalClaimReview:
         """Apply cached URL text enrichment data to a claim review."""
-        claim_review.review_url_text = cached_data.get("review_url_text")
+        data = cached_data["data"]
+        claim_review.review_url_text = data.get("review_url_text")
         return claim_review

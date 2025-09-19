@@ -90,16 +90,6 @@ class PostgresCache(CacheInterface):
             self.logger.error(f"Error creating cache table: {e}")
             raise
 
-    def _determine_success(self, payload: dict[str, Any]) -> bool:
-        """Determine if the payload represents a successful operation."""
-        if payload.get("extraction_error"):
-            return False
-        if payload.get("error"):
-            return False
-        if payload.get("error_details"):
-            return False
-        return True
-
     def get(self, uri: str, step: str) -> dict[str, Any] | None:
         """Get cached data for a URI and step."""
         try:
@@ -139,7 +129,7 @@ class PostgresCache(CacheInterface):
         """Store data in cache for a URI and step."""
         try:
             cache_key = self.generate_cache_key(uri, step)
-            success = self._determine_success(payload)
+            success = bool(payload.get("success", True))
 
             with self.connection_pool.connection() as connection:
                 with connection.cursor() as cursor:
