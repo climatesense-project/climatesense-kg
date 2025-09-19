@@ -128,18 +128,33 @@ isql:
 
 # Run SPARQL query against Virtuoso
 sparql QUERY:
-    curl -X POST \
-        -H "Content-Type: application/sparql-query" \
-        -H "Accept: application/json" \
-        -d "{{QUERY}}" \
-        "http://localhost:8890/sparql"
+    @cd docker && \
+    docker compose exec -T virtuoso sh -c '\
+        tmp=$(mktemp) || exit 1; \
+        printf "%s" "$1" > "$tmp" && \
+        wget -q -O - \
+            --header="Content-Type: application/sparql-query" \
+            --header="Accept: application/json" \
+            --post-file="$tmp" \
+            "http://localhost:8890/sparql"; \
+        rc=$?; \
+        rm -f "$tmp"; \
+        exit $rc' -- "{{QUERY}}"
 
 # Show Virtuoso graph statistics
 virtuoso-stats:
-    @curl -s -X POST \
-        -H "Content-Type: application/sparql-query" \
-        -H "Accept: application/json" \
-        -d "SELECT ?g (COUNT(*) as ?triples) WHERE { GRAPH ?g { ?s ?p ?o } } GROUP BY ?g ORDER BY DESC(?triples)" \
-        "http://localhost:8890/sparql" | \
-    jq -r '["Graph", "Triples"], ["-----", "-------"], (.results.bindings[] | [ .g.value, .triples.value ]) | @tsv' | \
-    column -t -s $'\t' || echo "No data found or Virtuoso not running."
+    @cd docker && \
+    docker compose exec -T virtuoso sh -c '\
+        tmp=$(mktemp) || exit 1; \
+        printf "%s" "$1" > "$tmp" && \
+        wget -q -O - \
+            --header="Content-Type: application/sparql-query" \
+            --header="Accept: application/json" \
+            --post-file="$tmp" \
+            "http://localhost:8890/sparql"; \
+        rc=$?; \
+        rm -f "$tmp"; \
+        exit $rc' -- "SELECT ?g (COUNT(?s) AS ?triples) WHERE { GRAPH ?g { ?s a [] } } GROUP BY ?g ORDER BY DESC(?triples)" | \
+    jq -r '.results.bindings[] | [.g.value, .triples.value] | @tsv' | \
+    awk 'BEGIN {printf "%-80s %10s\n", "Graph", "Triples"; printf "%-80s %10s\n", "-----", "-------"} {printf "%-80s %10s\n", $1, $2}' \
+    || echo "No data found or Virtuoso not running."
