@@ -60,7 +60,8 @@ class TestURLTextEnricherEnrichment:
         call_args = mock_cache.set.call_args[0]
         assert call_args[0] == sample_claim_review.uri
         cached_payload = call_args[2]
-        assert cached_payload["review_url_text"] == extracted_text
+        assert cached_payload["success"] is True
+        assert cached_payload["data"]["review_url_text"] == extracted_text
 
     def test_extraction_with_cache_hit(
         self,
@@ -68,7 +69,9 @@ class TestURLTextEnricherEnrichment:
         mock_cache: Mock,
     ) -> None:
         """Test extraction with cache hit."""
-        cached_data = {sample_claim_review.uri: {"review_url_text": "Cached text"}}
+        cached_data = {
+            sample_claim_review.uri: {"data": {"review_url_text": "Cached text"}}
+        }
         mock_cache.get_many.return_value = cached_data
 
         enricher = URLTextEnricher(cache=mock_cache, rate_limit_delay=0)

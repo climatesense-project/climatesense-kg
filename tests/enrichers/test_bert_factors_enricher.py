@@ -165,10 +165,12 @@ class TestBertFactorsEnricherEnrichment:
         enricher = BertFactorsEnricher()
         enricher.cache = mock_cache
         cached_factors: dict[str, Any] = {
-            "emotion": "Happiness",
-            "sentiment": "Positive",
-            "political_leaning": "Right",
-            "conspiracies": {"mentioned": [], "promoted": ["New World Order"]},
+            "data": {
+                "emotion": "Happiness",
+                "sentiment": "Positive",
+                "political_leaning": "Right",
+                "conspiracies": {"mentioned": [], "promoted": ["New World Order"]},
+            }
         }
         mock_cache.get_many.return_value = {sample_claim_review.uri: cached_factors}
 

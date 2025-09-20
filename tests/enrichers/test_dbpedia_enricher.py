@@ -129,8 +129,9 @@ class TestDBpediaEnricherEnrichment:
         call_args = mock_cache.set.call_args[0]
         assert call_args[0] == sample_claim_review.uri
         cached_payload = call_args[2]
-        assert "claim_entities" in cached_payload
-        assert len(cached_payload["claim_entities"]) == 1
+        assert cached_payload["success"] is True
+        assert "claim_entities" in cached_payload["data"]
+        assert len(cached_payload["data"]["claim_entities"]) == 1
 
         mock_sleep.assert_called_once_with(0.1)
 
@@ -142,8 +143,10 @@ class TestDBpediaEnricherEnrichment:
     ) -> None:
         """Test enrichment with cache hit."""
         cached_data: dict[str, Any] = {
-            "claim_entities": [{"uri": "cached_entity", "surface_form": "cached"}],
-            "review_entities": [],
+            "data": {
+                "claim_entities": [{"uri": "cached_entity", "surface_form": "cached"}],
+                "review_entities": [],
+            }
         }
         mock_cache.get_many.return_value = {sample_claim_review.uri: cached_data}
 
