@@ -9,7 +9,7 @@ data_sources:
 
 output:
   format: "nt"
-  output_path: "data/rdf/{DATE}/{SOURCE}.nt"
+  output_path: "data/rdf/{DATE}/{SOURCE}_{DATETIME}.nt"
   base_uri: "http://data.climatesense-project.eu"
 
 cache:

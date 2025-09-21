@@ -93,6 +93,7 @@ class Pipeline:
         self.deployment_handler: VirtuosoDeploymentHandler | None = None
         self.cache: CacheInterface | None = None
         self._initialize_components()
+        self._run_datetime: datetime | None = None
 
     def _initialize_components(self) -> None:
         """Initialize pipeline components from configuration."""
@@ -264,6 +265,7 @@ class Pipeline:
             Pipeline execution results and statistics
         """
         start_time = time.time()
+        self._run_datetime = datetime.now()
         self.logger.info("Starting ClimateSense KG Pipeline")
 
         results: PipelineResults = {
@@ -363,6 +365,7 @@ class Pipeline:
             results["end_time"] = end_time
             results["duration"] = end_time - start_time
 
+            self._run_datetime = None
             if results["success"]:
                 self.logger.info(
                     f"Pipeline completed successfully in {results['duration']:.2f} seconds"
@@ -380,6 +383,7 @@ class Pipeline:
             results["end_time"] = end_time
             results["duration"] = end_time - start_time
 
+        self._run_datetime = None
         return results
 
     def _run_ingestion(self, skip_download: bool = False) -> list[CanonicalClaimReview]:
@@ -624,8 +628,18 @@ class Pipeline:
         self, path_template: str, source_name: str | None = None
     ) -> str:
         """Process dynamic path templates."""
-        current_date = datetime.now().strftime("%Y-%m-%d")
-        processed_path = path_template.replace("{DATE}", current_date)
+        reference_dt = self._run_datetime or datetime.now()
+
+        replacements = {
+            "{DATE}": reference_dt.strftime("%Y-%m-%d"),
+            "{TIME}": reference_dt.strftime("%H%M%S"),
+            "{DATETIME}": reference_dt.strftime("%Y-%m-%d_%H%M%S"),
+            "{TIMESTAMP}": reference_dt.strftime("%Y%m%d%H%M%S"),
+        }
+
+        processed_path = path_template
+        for placeholder, value in replacements.items():
+            processed_path = processed_path.replace(placeholder, value)
 
         if source_name:
             processed_path = processed_path.replace("{SOURCE}", source_name)
