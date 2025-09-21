@@ -252,13 +252,10 @@ class Pipeline:
 
         return fully_processed_uris
 
-    def run(
-        self, force_deployment: bool = False, skip_download: bool = False
-    ) -> PipelineResults:
+    def run(self, skip_download: bool = False) -> PipelineResults:
         """Execute the complete pipeline.
 
         Args:
-            force_deployment: Force deployment even when no RDF changes are detected
             skip_download: Skip data downloads and use only cached/already downloaded data
 
         Returns:
@@ -294,36 +291,8 @@ class Pipeline:
 
             if not canonical_reviews:
                 self.logger.info("No new items to process.")
-
-                # Check if force deployment is requested even with no new data
-                if force_deployment and self.deployment_handler:
-                    self.logger.info(
-                        "Force deployment requested - deploying existing RDF files"
-                    )
-                    # Find existing RDF files to redeploy
-                    existing_rdf_stats = self._find_existing_rdf_files()
-                    if existing_rdf_stats.get("generated_files"):
-                        deployment_success = self._run_deployment(
-                            existing_rdf_stats, force_deployment
-                        )
-                        generated_files_count = len(
-                            existing_rdf_stats["generated_files"]
-                        )
-                        results["deployment"] = {
-                            "success": deployment_success,
-                            "files_deployed": (
-                                generated_files_count if deployment_success else 0
-                            ),
-                            "total_files": generated_files_count,
-                        }
-                        results["success"] = deployment_success
-                    else:
-                        self.logger.warning("No existing RDF files found to redeploy")
-                        results["success"] = True
-                else:
-                    self.logger.info("Pipeline completed successfully.")
-                    results["success"] = True
-
+                self.logger.info("Pipeline completed successfully.")
+                results["success"] = True
                 results["total_processed"] = 0
                 end_time = time.time()
                 results["end_time"] = end_time
@@ -346,7 +315,7 @@ class Pipeline:
             # Step 4: Deployment
             if self.deployment_handler:
                 self.logger.info("Step 4: Deploying RDF data")
-                deployment_success = self._run_deployment(rdf_stats, force_deployment)
+                deployment_success = self._run_deployment(rdf_stats)
             else:
                 deployment_success = True
                 results["deployment"] = {
@@ -551,9 +520,7 @@ class Pipeline:
                 "error": str(e),
             }
 
-    def _run_deployment(
-        self, rdf_stats: RDFGenerationResults, force: bool = False
-    ) -> bool:
+    def _run_deployment(self, rdf_stats: RDFGenerationResults) -> bool:
         """Run deployment step."""
         if not self.deployment_handler:
             return True
@@ -584,45 +551,6 @@ class Pipeline:
                 )
 
         return all(deployment_results)
-
-    def _find_existing_rdf_files(self) -> RDFGenerationResults:
-        """Find existing RDF files for redeployment."""
-        generated_files: list[GeneratedFileInfo] = []
-
-        for source_config in self.config.data_sources:
-            if not source_config.enabled:
-                continue
-
-            output_path = Path(
-                self._process_dynamic_path(
-                    str(self.config.output.output_path), source_config.name
-                )
-            )
-
-            if output_path.exists():
-                file_size = output_path.stat().st_size
-                generated_files.append(
-                    {
-                        "source": source_config.name,
-                        "path": str(output_path),
-                        "items": 0,  # Unknown for existing files
-                        "file_size": file_size,
-                    }
-                )
-                self.logger.info(
-                    f"Found existing RDF file for redeployment: {output_path}"
-                )
-            else:
-                self.logger.debug(f"No existing RDF file found: {output_path}")
-
-        return {
-            "generated_files": generated_files,
-            "total_files": len(generated_files),
-            "input_items": 0,
-            "output_format": self.config.output.format,
-            "total_file_size": sum(f["file_size"] for f in generated_files),
-            "error": None,
-        }
 
     def _process_dynamic_path(
         self, path_template: str, source_name: str | None = None

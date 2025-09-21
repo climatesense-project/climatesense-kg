@@ -34,11 +34,6 @@ Examples:
     run_parser = subparsers.add_parser("run", help="Run the pipeline")
     run_parser.add_argument("--config", "-c", type=str, help="Configuration file path")
     run_parser.add_argument(
-        "--force-deployment",
-        action="store_true",
-        help="Force deployment even when no RDF changes are detected",
-    )
-    run_parser.add_argument(
         "--debug",
         action="store_true",
         help="Enable DEBUG level logging",
@@ -130,7 +125,6 @@ def run_pipeline(args: argparse.Namespace) -> int:
     try:
         pipeline = Pipeline(config)
         results = pipeline.run(
-            force_deployment=getattr(args, "force_deployment", False),
             skip_download=getattr(args, "skip_download", False),
         )
     except Exception as e:
