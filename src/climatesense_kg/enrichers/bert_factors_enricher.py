@@ -47,7 +47,29 @@ class BertFactorsEnricher(Enricher):
 
     def _process_item(self, claim_review: CanonicalClaimReview) -> CanonicalClaimReview:
         """Process a single claim review with CIMPLE Factors API."""
-        if not self.is_available() or not claim_review.uri:
+        if not claim_review.uri:
+            return claim_review
+
+        if not claim_review.claim.normalized_text:
+            self.cache_error(
+                claim_review.uri,
+                error_type="missing_text",
+                message="No normalized claim text available for enrichment",
+                data=self._empty_factors_payload(),
+            )
+            return claim_review
+
+        if not self.is_available():
+            self.logger.warning(
+                "CIMPLE Factors API unavailable, caching failure for %s",
+                claim_review.uri,
+            )
+            self.cache_error(
+                claim_review.uri,
+                error_type="service_unavailable",
+                message="CIMPLE Factors API health check failed",
+                data=self._empty_factors_payload(),
+            )
             return claim_review
 
         # Compute factors if text available
@@ -69,18 +91,22 @@ class BertFactorsEnricher(Enricher):
                     claim_review.uri,
                     error_type="api_error",
                     message=f"CIMPLE Factors API error: {e!s}",
-                    data={
-                        "emotion": None,
-                        "sentiment": None,
-                        "political_leaning": None,
-                        "conspiracies": {"mentioned": [], "promoted": []},
-                    },
+                    data=self._empty_factors_payload(),
                 )
 
         # Rate limiting
         time.sleep(self.rate_limit_delay)
 
         return claim_review
+
+    def _empty_factors_payload(self) -> dict[str, Any]:
+        """Return an empty factors payload structure for caching errors."""
+        return {
+            "emotion": None,
+            "sentiment": None,
+            "political_leaning": None,
+            "conspiracies": {"mentioned": [], "promoted": []},
+        }
 
     def apply_cached_data(
         self, claim_review: CanonicalClaimReview, cached_data: dict[str, Any]

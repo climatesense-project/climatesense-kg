@@ -111,12 +111,22 @@ class TestBertFactorsEnricherEnrichment:
         mock_available: Mock,
         bert_enricher: BertFactorsEnricher,
         sample_claim_review: CanonicalClaimReview,
+        mock_cache: Mock,
     ) -> None:
         """Test enrichment when enricher is not available."""
+        bert_enricher.cache = mock_cache
+        mock_cache.get_many.return_value = {}
+
         result = bert_enricher.enrich([sample_claim_review])[0]
         assert result == sample_claim_review
         assert sample_claim_review.claim.emotion is None
         assert sample_claim_review.claim.sentiment is None
+
+        mock_cache.set.assert_called_once()
+        _, step_name, payload = mock_cache.set.call_args[0]
+        assert step_name == "enricher.bert_factors"
+        assert payload["success"] is False
+        assert payload["error"]["type"] == "service_unavailable"
 
     @patch("requests.post")
     @patch.object(BertFactorsEnricher, "is_available", return_value=True)
@@ -189,6 +199,28 @@ class TestBertFactorsEnricherEnrichment:
             [sample_claim_review.uri], "enricher.bert_factors"
         )
         mock_cache.set.assert_not_called()
+
+    @patch.object(BertFactorsEnricher, "is_available", return_value=True)
+    def test_enrich_missing_text_records_error(
+        self,
+        mock_available: Mock,
+        sample_claim_review: CanonicalClaimReview,
+        mock_cache: Mock,
+    ) -> None:
+        """Ensure items without claim text cache an error so they are not retried forever."""
+        sample_claim_review.claim.text = ""
+        enricher = BertFactorsEnricher()
+        enricher.cache = mock_cache
+        mock_cache.get_many.return_value = {}
+
+        result = enricher.enrich([sample_claim_review])[0]
+
+        assert result.claim.emotion is None
+        mock_cache.set.assert_called_once()
+        _, step_name, payload = mock_cache.set.call_args[0]
+        assert step_name == "enricher.bert_factors"
+        assert payload["success"] is False
+        assert payload["error"]["type"] == "missing_text"
 
 
 class TestBertFactorsEnricherBatch:
