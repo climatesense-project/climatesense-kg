@@ -37,12 +37,12 @@ pre-commit-install:
 
 # Run code formatting
 format:
-    uv run ruff format src
-    uv run ruff check --fix src
+    uv run ruff format src services
+    uv run ruff check --fix src services
 
 # Run all quality checks
 check:
-    uv run ruff check src
+    uv run ruff check src services
     uv run ty check
 
 # Run pre-commit on all files
