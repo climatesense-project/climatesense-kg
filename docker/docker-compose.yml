@@ -120,9 +120,9 @@ services:
     build:
       context: ..
       dockerfile: apps/analytics-ui/Dockerfile
+      args:
+        NEXT_PUBLIC_ANALYTICS_API_URL: ${NEXT_PUBLIC_ANALYTICS_API_URL:-http://localhost:${ANALYTICS_API_PORT:-8000}}
     container_name: climatesense-analytics-ui
-    environment:
-      NEXT_PUBLIC_ANALYTICS_API_URL: ${NEXT_PUBLIC_ANALYTICS_API_URL:-http://localhost:${ANALYTICS_API_PORT:-8000}}
     depends_on:
       - analytics-api
     ports:
