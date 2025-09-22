@@ -1,0 +1,17 @@
+PREFIX schema: <http://schema.org/>
+PREFIX cimple: <http://data.cimple.eu/ontology#>
+
+SELECT (COUNT(?claim) AS ?totalClaims)
+       (COUNT(?emotion) AS ?claimsWithEmotion)
+       (COUNT(?sentiment) AS ?claimsWithSentiment)
+       (COUNT(?leaning) AS ?claimsWithPoliticalLeaning)
+       (COUNT(?conspiracy) AS ?claimsWithConspiracy)
+WHERE {
+  ?claim a schema:Claim .
+  OPTIONAL { ?claim cimple:hasEmotion ?emotion . }
+  OPTIONAL { ?claim cimple:hasSentiment ?sentiment . }
+  OPTIONAL { ?claim cimple:hasPoliticalLeaning ?leaning . }
+  OPTIONAL {
+    ?claim cimple:mentionsConspiracy ?conspiracy .
+  }
+}

@@ -1,0 +1,10 @@
+PREFIX schema: <http://schema.org/>
+
+SELECT ?entity (COUNT(?entity) AS ?count)
+WHERE {
+  ?claim a schema:Claim ;
+         schema:mentions ?entity .
+}
+GROUP BY ?entity
+ORDER BY DESC(?count)
+LIMIT 25

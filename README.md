@@ -93,18 +93,24 @@ just run config/minimal.yaml
    ```
 
    Edit `.env` to configure:
-   - `GITHUB_TOKEN`: Your GitHub token for private repositories
-   - `VIRTUOSO_HOST`: Virtuoso server host (default: localhost)
-   - `VIRTUOSO_PORT`: Virtuoso SQL port (default: 8890)
-   - `VIRTUOSO_USER`: Virtuoso database username (default: dba)
-   - `VIRTUOSO_PASSWORD`: Virtuoso database password (default: dba)
-   - `VIRTUOSO_ISQL_SERVICE_URL`: URL of ISQL HTTP service (default: http://isql-service:8080)
-   - `ISQL_SERVICE_PORT`: Port for Virtuoso ISQL interface (default: 8080)
-   - `POSTGRES_HOST`: PostgreSQL host (default: postgres)
-   - `POSTGRES_PORT`: PostgreSQL port (default: 5432)
-   - `POSTGRES_DB`: Database name (default: climatesense)
-   - `POSTGRES_USER`: Database user (default: postgres)
-   - `POSTGRES_PASSWORD`: Database password (required)
+   - `GITHUB_TOKEN`: GitHub token used for private repositories
+   - `VIRTUOSO_HOST`: Virtuoso host name (default `virtuoso`)
+   - `VIRTUOSO_PORT`: Virtuoso HTTP/SPARQL port (default `8890`)
+   - `VIRTUOSO_USER`: Virtuoso database user (default `dba`)
+   - `VIRTUOSO_PASSWORD`: Virtuoso database password (default `dba`)
+   - `VIRTUOSO_ISQL_SERVICE_URL`: Virtuoso ISQL HTTP endpoint (default `http://isql-service:8080`)
+   - `ISQL_SERVICE_PORT`: Published port for the ISQL helper service (default `8080`)
+   - `CIMPLE_FACTORS_API_URL`: CIMPLE Factors API base URL (default `http://localhost:8000`)
+   - `POSTGRES_HOST`: Cache database host (default `postgres`)
+   - `POSTGRES_PORT`: Cache database port (default `5432`)
+   - `POSTGRES_DB`: Cache database name (default `climatesense_cache`)
+   - `POSTGRES_USER`: Cache database user (default `postgres`)
+   - `POSTGRES_PASSWORD`: Cache database password (required)
+   - `ANALYTICS_SPARQL_ENDPOINT`: Virtuoso SPARQL endpoint for analytics (default `http://virtuoso:8890/sparql`)
+   - `ANALYTICS_ALLOWED_ORIGINS`: Comma-separated origins permitted to call the analytics API (default `http://localhost:3000`)
+   - `ANALYTICS_CACHE_TTL`: Analytics API cache TTL in seconds (default `60`)
+   - `ANALYTICS_SPARQL_TIMEOUT`: SPARQL timeout in seconds for analytics queries (default `20`)
+   - `ANALYTICS_API_PORT`: Published port for the analytics API container (default `8000`)
 
 3. Start the services:
 

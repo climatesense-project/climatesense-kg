@@ -1,0 +1,10 @@
+PREFIX schema: <http://schema.org/>
+PREFIX prov: <http://www.w3.org/ns/prov#>
+
+SELECT ?graph (COUNT(*) AS ?tripleCount)
+WHERE {
+  GRAPH ?graph { ?s ?p ?o }
+}
+GROUP BY ?graph
+ORDER BY DESC(?tripleCount)
+LIMIT 25

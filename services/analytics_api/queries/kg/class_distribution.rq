@@ -1,0 +1,9 @@
+PREFIX schema: <http://schema.org/>
+
+SELECT ?class (COUNT(?entity) AS ?count)
+WHERE {
+  ?entity a ?class .
+}
+GROUP BY ?class
+ORDER BY DESC(?count)
+LIMIT 50

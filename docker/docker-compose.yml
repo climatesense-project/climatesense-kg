@@ -96,3 +96,22 @@ services:
       - ../config:/app/config:ro
     profiles:
       - manual
+
+  analytics-api:
+    build:
+      context: ..
+      dockerfile: docker/analytics-api.Dockerfile
+    container_name: climatesense-analytics-api
+    environment:
+      ANALYTICS_SPARQL_ENDPOINT: ${ANALYTICS_SPARQL_ENDPOINT:-http://virtuoso:8890/sparql}
+      ANALYTICS_SPARQL_USER: ${ANALYTICS_SPARQL_USER:-}
+      ANALYTICS_SPARQL_PASSWORD: ${ANALYTICS_SPARQL_PASSWORD:-}
+      ANALYTICS_ALLOWED_ORIGINS: ${ANALYTICS_ALLOWED_ORIGINS:-http://localhost:3000}
+      ANALYTICS_CACHE_TTL: ${ANALYTICS_CACHE_TTL:-60}
+      ANALYTICS_SPARQL_TIMEOUT: ${ANALYTICS_SPARQL_TIMEOUT:-20}
+    depends_on:
+      - postgres
+      - virtuoso
+    ports:
+      - "${ANALYTICS_API_PORT:-8000}:8000"
+    restart: unless-stopped
