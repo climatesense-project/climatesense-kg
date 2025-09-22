@@ -110,7 +110,9 @@ just run config/minimal.yaml
    - `ANALYTICS_ALLOWED_ORIGINS`: Comma-separated origins permitted to call the analytics API (default `http://localhost:3000`)
    - `ANALYTICS_CACHE_TTL`: Analytics API cache TTL in seconds (default `60`)
    - `ANALYTICS_SPARQL_TIMEOUT`: SPARQL timeout in seconds for analytics queries (default `20`)
+   - `NEXT_PUBLIC_ANALYTICS_API_URL`: Base URL the dashboard uses for the analytics API (default `http://localhost:8000`)
    - `ANALYTICS_API_PORT`: Published port for the analytics API container (default `8000`)
+   - `ANALYTICS_UI_PORT`: Published port for the analytics UI container (default `3000`)
 
 3. Start the services:
 

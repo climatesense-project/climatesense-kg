@@ -115,3 +115,16 @@ services:
     ports:
       - "${ANALYTICS_API_PORT:-8000}:8000"
     restart: unless-stopped
+
+  analytics-ui:
+    build:
+      context: ..
+      dockerfile: apps/analytics-ui/Dockerfile
+    container_name: climatesense-analytics-ui
+    environment:
+      NEXT_PUBLIC_ANALYTICS_API_URL: ${NEXT_PUBLIC_ANALYTICS_API_URL:-http://localhost:${ANALYTICS_API_PORT:-8000}}
+    depends_on:
+      - analytics-api
+    ports:
+      - "${ANALYTICS_UI_PORT:-3000}:3000"
+    restart: unless-stopped

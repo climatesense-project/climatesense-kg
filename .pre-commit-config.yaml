@@ -44,3 +44,12 @@ repos:
     hooks:
       - id: conventional-pre-commit
         stages: [commit-msg]
+
+  - repo: local
+    hooks:
+      - id: npm-lint-analytics-ui
+        name: npm run lint (apps/analytics-ui)
+        entry: npm
+        args: ["run", "lint", "--prefix", "apps/analytics-ui"]
+        language: system
+        pass_filenames: false
