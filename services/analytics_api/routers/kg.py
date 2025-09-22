@@ -5,15 +5,24 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from ..schemas.kg import (
+    ClaimFactorDistributions,
     ClassDistribution,
+    CoreCounts,
     EnrichmentCoverage,
     EntityTypeCount,
+    FactorDistributionItem,
     GraphTripleCount,
-    ProvenanceCompleteness,
 )
 from ..services.sparql import sparql_select
 
 router = APIRouter(prefix="/metrics/kg", tags=["knowledge-graph"])
+
+
+def _format_factor_label(value: str) -> str:
+    """Convert a slug string into a human friendly label."""
+    if not value:
+        return "Unknown"
+    return value.replace("_", " ").replace("-", " ").title()
 
 
 @router.get("/triple-volume", response_model=list[GraphTripleCount])
@@ -37,15 +46,14 @@ async def class_distribution() -> list[ClassDistribution]:
     ]
 
 
-@router.get("/provenance", response_model=ProvenanceCompleteness)
-async def provenance() -> ProvenanceCompleteness:
-    rows = sparql_select("kg", "provenance_completeness.rq")
+@router.get("/core-counts", response_model=CoreCounts)
+async def core_counts() -> CoreCounts:
+    rows = sparql_select("kg", "core_counts.rq")
     row = rows[0] if rows else {}
-    return ProvenanceCompleteness(
-        total_reviews=int(row.get("totalReviews", 0)),
-        reviews_with_author=int(row.get("reviewsWithAuthor", 0)),
-        reviews_with_rating=int(row.get("reviewsWithRating", 0)),
-        reviews_with_normalized_rating=int(row.get("reviewsWithNormalizedRating", 0)),
+    return CoreCounts(
+        total_claim_reviews=int(row.get("totalClaimReviews", 0)),
+        total_claims=int(row.get("totalClaims", 0)),
+        total_ratings=int(row.get("totalRatings", 0)),
     )
 
 
@@ -69,3 +77,35 @@ async def entity_types() -> list[EntityTypeCount]:
         EntityTypeCount(type_uri=row.get("entity"), count=int(row.get("count", 0)))
         for row in rows
     ]
+
+
+@router.get("/claim-factors", response_model=ClaimFactorDistributions)
+async def claim_factors() -> ClaimFactorDistributions:
+    rows = sparql_select("kg", "claim_factors_distribution.rq")
+
+    buckets: dict[str, list[FactorDistributionItem]] = {
+        "sentiment": [],
+        "political_leaning": [],
+        "emotion": [],
+        "conspiracies_mentioned": [],
+        "conspiracies_promoted": [],
+    }
+
+    for row in rows:
+        category = row.get("category")
+        if category not in buckets:
+            continue
+
+        raw_value = (row.get("value") or "").strip()
+        count = int(row.get("count", 0))
+        item = FactorDistributionItem(
+            value=raw_value,
+            label=_format_factor_label(raw_value),
+            count=count,
+        )
+        buckets[category].append(item)
+
+    for values in buckets.values():
+        values.sort(key=lambda item: item.count, reverse=True)
+
+    return ClaimFactorDistributions(**buckets)

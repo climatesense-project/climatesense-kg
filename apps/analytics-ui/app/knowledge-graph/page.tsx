@@ -1,6 +1,6 @@
 "use client";
 
-import { Database, Layers, Link2, Sparkles } from "lucide-react";
+import { Database, FileCheckIcon, FileIcon, StarIcon } from "lucide-react";
 
 import { MetricProgress } from "@/components/charts/metric-progress";
 import {
@@ -21,9 +21,9 @@ import {
 } from "@/components/ui/table";
 import {
   useKgClassDistribution,
-  useKgEnrichmentCoverage,
+  useKgClaimFactors,
+  useKgCoreCounts,
   useKgEntityTypes,
-  useKgProvenance,
   useKgTripleStats,
 } from "@/lib/hooks";
 
@@ -31,13 +31,37 @@ export default function KnowledgeGraphPage() {
   const { data: tripleStats, loading: tripleLoading } = useKgTripleStats();
   const { data: classDistribution, loading: classLoading } =
     useKgClassDistribution();
-  const { data: provenance, loading: provenanceLoading } = useKgProvenance();
-  const { data: enrichment, loading: enrichmentLoading } =
-    useKgEnrichmentCoverage();
+  const { data: coreCounts, loading: coreCountsLoading } = useKgCoreCounts();
   const { data: entityTypes, loading: entityLoading } = useKgEntityTypes();
+  const { data: claimFactors, loading: factorsLoading } = useKgClaimFactors();
 
   const totalTriples =
     tripleStats?.reduce((acc, row) => acc + row.triple_count, 0) ?? 0;
+  const namedGraphs = tripleStats?.length ?? 0;
+  const sentimentTotal = claimFactors
+    ? claimFactors.sentiment.reduce((acc, item) => acc + item.count, 0)
+    : 0;
+  const leaningTotal = claimFactors
+    ? claimFactors.political_leaning.reduce((acc, item) => acc + item.count, 0)
+    : 0;
+  const emotionMax =
+    claimFactors && claimFactors.emotion.length > 0
+      ? claimFactors.emotion[0].count
+      : 0;
+  const mentionedMax =
+    claimFactors && claimFactors.conspiracies_mentioned.length > 0
+      ? claimFactors.conspiracies_mentioned[0].count
+      : 0;
+  const promotedMax =
+    claimFactors && claimFactors.conspiracies_promoted.length > 0
+      ? claimFactors.conspiracies_promoted[0].count
+      : 0;
+  const conspiracyFactors =
+    claimFactors &&
+    (claimFactors.conspiracies_mentioned.length > 0 ||
+      claimFactors.conspiracies_promoted.length > 0)
+      ? claimFactors
+      : null;
 
   return (
     <div className="space-y-6">
@@ -64,67 +88,121 @@ export default function KnowledgeGraphPage() {
                 {totalTriples.toLocaleString()}
               </div>
             )}
-            <CardDescription>Summed across named graphs</CardDescription>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Named graphs</CardTitle>
-            <Layers className="h-4 w-4 text-primary" />
-          </CardHeader>
-          <CardContent>
-            {tripleLoading ? (
-              <Skeleton className="h-8 w-16" />
-            ) : (
-              <div className="text-2xl font-bold">
-                {tripleStats?.length ?? 0}
-              </div>
-            )}
-            <CardDescription>Graphs with recorded triples</CardDescription>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Reviews with authors
-            </CardTitle>
-            <Link2 className="h-4 w-4 text-primary" />
-          </CardHeader>
-          <CardContent>
-            {provenanceLoading ? (
-              <Skeleton className="h-8 w-20" />
-            ) : (
-              <div className="text-2xl font-bold">
-                {provenance?.reviews_with_author.toLocaleString() ?? "0"}
-              </div>
-            )}
             <CardDescription>
-              Out of {provenance?.total_reviews.toLocaleString() ?? "0"} reviews
+              Summed across {namedGraphs.toLocaleString()} named graphs
             </CardDescription>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Claims with enrichment
-            </CardTitle>
-            <Sparkles className="h-4 w-4 text-primary" />
+            <CardTitle className="text-sm font-medium">Total claims</CardTitle>
+            <FileIcon className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
-            {enrichmentLoading ? (
+            {coreCountsLoading ? (
               <Skeleton className="h-8 w-20" />
             ) : (
               <div className="text-2xl font-bold">
-                {enrichment?.claims_with_sentiment.toLocaleString() ?? "0"}
+                {coreCounts?.total_claims.toLocaleString() ?? "0"}
               </div>
             )}
-            <CardDescription>Claims enriched with sentiment</CardDescription>
+            <CardDescription>Unique claims in the KG</CardDescription>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Claim reviews</CardTitle>
+            <FileCheckIcon className="h-4 w-4 text-primary" />
+          </CardHeader>
+          <CardContent>
+            {coreCountsLoading ? (
+              <Skeleton className="h-8 w-20" />
+            ) : (
+              <div className="text-2xl font-bold">
+                {coreCounts?.total_claim_reviews.toLocaleString() ?? "0"}
+              </div>
+            )}
+            <CardDescription>Total reviews linked to claims</CardDescription>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total ratings</CardTitle>
+            <StarIcon className="h-4 w-4 text-primary" />
+          </CardHeader>
+          <CardContent>
+            {coreCountsLoading ? (
+              <Skeleton className="h-8 w-20" />
+            ) : (
+              <div className="text-2xl font-bold">
+                {coreCounts?.total_ratings.toLocaleString() ?? "0"}
+              </div>
+            )}
+            <CardDescription>Ratings associated with reviews</CardDescription>
           </CardContent>
         </Card>
       </div>
+
+      <section className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Claim sentiment split</CardTitle>
+            <CardDescription>
+              Distribution of sentiment-enriched claims
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {factorsLoading ? (
+              <Skeleton className="h-24 w-full" />
+            ) : claimFactors && claimFactors.sentiment.length > 0 ? (
+              claimFactors.sentiment.map((item) => (
+                <MetricProgress
+                  key={item.value}
+                  label={`${item.label} (${item.count.toLocaleString()})`}
+                  value={item.count}
+                  max={sentimentTotal || 1}
+                  showRatio
+                />
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No sentiment enrichment data available.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Political leaning split</CardTitle>
+            <CardDescription>
+              Claims grouped by inferred political leaning
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {factorsLoading ? (
+              <Skeleton className="h-24 w-full" />
+            ) : claimFactors && claimFactors.political_leaning.length > 0 ? (
+              claimFactors.political_leaning.map((item) => (
+                <MetricProgress
+                  key={item.value}
+                  label={`${item.label} (${item.count.toLocaleString()})`}
+                  value={item.count}
+                  max={leaningTotal || 1}
+                  showRatio
+                />
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No political leaning data available.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      </section>
 
       <section className="grid gap-4 lg:grid-cols-2">
         <Card>
@@ -205,43 +283,114 @@ export default function KnowledgeGraphPage() {
       <section className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Provenance completeness</CardTitle>
+            <CardTitle>Top emotions</CardTitle>
             <CardDescription>
-              Coverage of critical review linkages
+              Most common emotion assignments from enrichment
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {provenanceLoading ? (
-              <Skeleton className="h-32 w-full" />
-            ) : provenance ? (
-              <>
-                <MetricProgress
-                  label="Reviews with authors"
-                  value={provenance.reviews_with_author}
-                  max={provenance.total_reviews}
-                  showRatio
-                />
-                <MetricProgress
-                  label="Reviews with ratings"
-                  value={provenance.reviews_with_rating}
-                  max={provenance.total_reviews}
-                  showRatio
-                />
-                <MetricProgress
-                  label="Reviews with normalized ratings"
-                  value={provenance.reviews_with_normalized_rating}
-                  max={provenance.total_reviews}
-                  showRatio
-                />
-              </>
+            {factorsLoading ? (
+              <Skeleton className="h-48 w-full" />
+            ) : claimFactors && claimFactors.emotion.length > 0 ? (
+              claimFactors.emotion.slice(0, 10).map((item) => (
+                <div key={item.value} className="space-y-1">
+                  <div className="flex items-center justify-between text-sm">
+                    <span>{item.label}</span>
+                    <span className="font-medium">
+                      {item.count.toLocaleString()}
+                    </span>
+                  </div>
+                  <MetricProgress
+                    value={item.count}
+                    max={emotionMax || 1}
+                  />
+                </div>
+              ))
             ) : (
               <p className="text-sm text-muted-foreground">
-                No provenance data available.
+                No emotion data available.
               </p>
             )}
           </CardContent>
         </Card>
 
+        <Card>
+          <CardHeader>
+            <CardTitle>Conspiracy references</CardTitle>
+            <CardDescription>
+              Claims mentioning or promoting conspiracy topics
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {factorsLoading ? (
+              <Skeleton className="h-48 w-full" />
+            ) : conspiracyFactors ? (
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <h4 className="text-sm font-medium">Mentioned</h4>
+                  {conspiracyFactors.conspiracies_mentioned.length > 0 ? (
+                    conspiracyFactors.conspiracies_mentioned
+                      .slice(0, 10)
+                      .map((item) => (
+                        <div key={`mentioned-${item.value}`} className="space-y-1">
+                          <div className="flex items-center justify-between text-sm">
+                            <span>{item.label}</span>
+                            <span className="font-medium">
+                              {item.count.toLocaleString()}
+                            </span>
+                          </div>
+                          <MetricProgress
+                            value={item.count}
+                            max={mentionedMax || 1}
+                          />
+                        </div>
+                      ))
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      No conspiracies mentioned.
+                    </p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <h4 className="text-sm font-medium">Promoted</h4>
+                  {conspiracyFactors.conspiracies_promoted.length > 0 ? (
+                    conspiracyFactors.conspiracies_promoted
+                      .slice(0, 10)
+                      .map((item) => (
+                        <div key={`promoted-${item.value}`} className="space-y-1">
+                          <div className="flex items-center justify-between text-sm">
+                            <span>{item.label}</span>
+                            <span className="font-medium">
+                              {item.count.toLocaleString()}
+                            </span>
+                          </div>
+                          <MetricProgress
+                            value={item.count}
+                            max={promotedMax || 1}
+                          />
+                        </div>
+                      ))
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      No conspiracies promoted.
+                    </p>
+                  )}
+                </div>
+              </div>
+            ) : claimFactors ? (
+              <p className="text-sm text-muted-foreground">
+                No conspiracy enrichment data available.
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Conspiracy enrichment results unavailable.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>Top entities</CardTitle>

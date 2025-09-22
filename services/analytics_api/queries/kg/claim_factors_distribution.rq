@@ -1,0 +1,38 @@
+PREFIX schema: <http://schema.org/>
+PREFIX cimple: <http://data.cimple.eu/ontology#>
+
+SELECT ?category ?value (COUNT(DISTINCT ?claim) AS ?count)
+WHERE {
+  ?claim a schema:Claim .
+  {
+    ?claim cimple:hasSentiment ?sentiment .
+    BIND("sentiment" AS ?category)
+    BIND(STRAFTER(STR(?sentiment), "/sentiment/") AS ?value)
+  }
+  UNION
+  {
+    ?claim cimple:hasPoliticalLeaning ?leaning .
+    BIND("political_leaning" AS ?category)
+    BIND(STRAFTER(STR(?leaning), "/political-leaning/") AS ?value)
+  }
+  UNION
+  {
+    ?claim cimple:hasEmotion ?emotion .
+    BIND("emotion" AS ?category)
+    BIND(STRAFTER(STR(?emotion), "/emotion/") AS ?value)
+  }
+  UNION
+  {
+    ?claim cimple:mentionsConspiracy ?mentioned .
+    BIND("conspiracies_mentioned" AS ?category)
+    BIND(STRAFTER(STR(?mentioned), "/conspiracy/") AS ?value)
+  }
+  UNION
+  {
+    ?claim cimple:promotesConspiracy ?promoted .
+    BIND("conspiracies_promoted" AS ?category)
+    BIND(STRAFTER(STR(?promoted), "/conspiracy/") AS ?value)
+  }
+}
+GROUP BY ?category ?value
+ORDER BY ?category ?value

@@ -15,11 +15,10 @@ class ClassDistribution(BaseModel):
     count: int = Field(ge=0)
 
 
-class ProvenanceCompleteness(BaseModel):
-    total_reviews: int = Field(ge=0)
-    reviews_with_author: int = Field(ge=0)
-    reviews_with_rating: int = Field(ge=0)
-    reviews_with_normalized_rating: int = Field(ge=0)
+class CoreCounts(BaseModel):
+    total_claim_reviews: int = Field(ge=0)
+    total_claims: int = Field(ge=0)
+    total_ratings: int = Field(ge=0)
 
 
 class EnrichmentCoverage(BaseModel):
@@ -33,3 +32,17 @@ class EnrichmentCoverage(BaseModel):
 class EntityTypeCount(BaseModel):
     type_uri: str | None = None
     count: int = Field(ge=0)
+
+
+class FactorDistributionItem(BaseModel):
+    value: str
+    label: str
+    count: int = Field(ge=0)
+
+
+class ClaimFactorDistributions(BaseModel):
+    sentiment: list[FactorDistributionItem] = Field(default_factory=list)
+    political_leaning: list[FactorDistributionItem] = Field(default_factory=list)
+    emotion: list[FactorDistributionItem] = Field(default_factory=list)
+    conspiracies_mentioned: list[FactorDistributionItem] = Field(default_factory=list)
+    conspiracies_promoted: list[FactorDistributionItem] = Field(default_factory=list)

@@ -1,0 +1,22 @@
+PREFIX schema: <http://schema.org/>
+PREFIX cimple: <http://data.cimple.eu/ontology#>
+
+SELECT (COUNT(DISTINCT ?review) AS ?totalClaimReviews)
+       (COUNT(DISTINCT ?claim) AS ?totalClaims)
+       (COUNT(DISTINCT ?rating) AS ?totalRatings)
+WHERE {
+  {
+    SELECT ?review
+    WHERE { ?review a schema:ClaimReview }
+  }
+  UNION
+  {
+    SELECT ?claim
+    WHERE { ?claim a schema:Claim }
+  }
+  UNION
+  {
+    SELECT ?rating
+    WHERE { ?rating a schema:Rating }
+  }
+}

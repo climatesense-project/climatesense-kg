@@ -43,11 +43,10 @@ export type ClassDistribution = {
   count: number;
 };
 
-export type ProvenanceCompleteness = {
-  total_reviews: number;
-  reviews_with_author: number;
-  reviews_with_rating: number;
-  reviews_with_normalized_rating: number;
+export type CoreCounts = {
+  total_claim_reviews: number;
+  total_claims: number;
+  total_ratings: number;
 };
 
 export type EnrichmentCoverage = {
@@ -61,6 +60,20 @@ export type EnrichmentCoverage = {
 export type EntityTypeCount = {
   type_uri: string | null;
   count: number;
+};
+
+export type FactorDistributionItem = {
+  value: string;
+  label: string;
+  count: number;
+};
+
+export type ClaimFactorDistributions = {
+  sentiment: FactorDistributionItem[];
+  political_leaning: FactorDistributionItem[];
+  emotion: FactorDistributionItem[];
+  conspiracies_mentioned: FactorDistributionItem[];
+  conspiracies_promoted: FactorDistributionItem[];
 };
 
 export type UseAnalyticsResult<T> = {
@@ -159,8 +172,8 @@ export function useKgClassDistribution(): UseAnalyticsResult<ClassDistribution[]
   return useAnalyticsData<ClassDistribution[]>("/metrics/kg/class-distribution");
 }
 
-export function useKgProvenance(): UseAnalyticsResult<ProvenanceCompleteness> {
-  return useAnalyticsData<ProvenanceCompleteness>("/metrics/kg/provenance");
+export function useKgCoreCounts(): UseAnalyticsResult<CoreCounts> {
+  return useAnalyticsData<CoreCounts>("/metrics/kg/core-counts");
 }
 
 export function useKgEnrichmentCoverage(): UseAnalyticsResult<EnrichmentCoverage> {
@@ -169,4 +182,8 @@ export function useKgEnrichmentCoverage(): UseAnalyticsResult<EnrichmentCoverage
 
 export function useKgEntityTypes(): UseAnalyticsResult<EntityTypeCount[]> {
   return useAnalyticsData<EntityTypeCount[]>("/metrics/kg/entity-types");
+}
+
+export function useKgClaimFactors(): UseAnalyticsResult<ClaimFactorDistributions> {
+  return useAnalyticsData<ClaimFactorDistributions>("/metrics/kg/claim-factors");
 }
