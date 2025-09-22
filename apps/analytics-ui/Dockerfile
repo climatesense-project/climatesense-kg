@@ -6,7 +6,7 @@ COPY apps/analytics-ui/package.json ./
 COPY apps/analytics-ui/tsconfig.json ./
 COPY apps/analytics-ui/next.config.ts ./
 COPY apps/analytics-ui/postcss.config.mjs ./
-COPY apps/analytics-ui/.eslintrc.json ./
+COPY apps/analytics-ui/eslint.config.mjs ./
 COPY apps/analytics-ui/next-env.d.ts ./
 COPY apps/analytics-ui/.gitignore ./
 COPY apps/analytics-ui/app ./app
