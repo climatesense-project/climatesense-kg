@@ -1,5 +1,6 @@
-"""GitHub provider for fetching release data."""
+"""GitHub provider for fetching release assets or repository files."""
 
+import base64
 from dataclasses import dataclass
 import io
 import os
@@ -21,7 +22,7 @@ class GitHubAsset:
 
 
 class GitHubProvider(BaseProvider):
-    """Provider for fetching data from GitHub releases."""
+    """Provider for fetching data from GitHub releases or repositories."""
 
     def __init__(self, name: str):
         """Initialize GitHub provider.
@@ -35,24 +36,42 @@ class GitHubProvider(BaseProvider):
         self.api_base = "https://api.github.com"
 
     def fetch(self, config: ProviderConfig) -> bytes:
-        """Fetch data from GitHub release.
-
-        Args:
-            config: Must contain 'repository', optionally 'asset_pattern', 'extract_file'
-
-        Returns:
-            Raw data as bytes (JSON or extracted file content)
-        """
+        """Fetch data from GitHub based on configured mode."""
         repository = config.repository
         if not repository:
             raise ValueError("GitHubProvider requires 'repository' in config")
 
+        mode = getattr(config, "mode", "release")
+
+        if mode == "repository":
+            path = config.repository_path
+            if not path:
+                raise ValueError(
+                    "GitHubProvider configured for repository mode requires 'repository_path'"
+                )
+
+            ref = config.repository_ref or "main"
+            self.logger.info(f"Fetching repository file {path} from {repository}@{ref}")
+            return self._fetch_repository_file(
+                repository=repository,
+                path=path,
+                ref=ref,
+                timeout=config.timeout,
+            )
+
+        if mode != "release":
+            raise ValueError(f"Unsupported GitHub provider mode: {mode}")
+
+        return self._fetch_latest_release_asset(config)
+
+    def _fetch_latest_release_asset(self, config: ProviderConfig) -> bytes:
+        repository = config.repository
         asset_pattern = config.asset_pattern
         extract_file = config.extract_file
 
         self.logger.info(f"Fetching latest release from {repository}")
 
-        release = self._get_latest_release(repository)
+        release = self._get_latest_release(repository, timeout=config.timeout)
         if not release:
             raise RuntimeError(f"No release found for {repository}")
 
@@ -60,7 +79,6 @@ class GitHubProvider(BaseProvider):
         if not raw_assets:
             raise RuntimeError(f"No assets found in release for {repository}")
 
-        # Convert raw dict assets to GitHubAsset objects
         assets: list[GitHubAsset] = [
             GitHubAsset(name=asset["name"], url=asset["url"], size=asset["size"])
             for asset in raw_assets
@@ -75,27 +93,24 @@ class GitHubProvider(BaseProvider):
         asset = target_assets[0]
         self.logger.info(f"Downloading asset: {asset.name} ({asset.size} bytes)")
 
-        asset_data = self._download_asset(asset)
+        asset_data = self._download_asset(asset, timeout=max(config.timeout, 300))
 
         if asset.name.endswith(".zip") and extract_file:
             return self._extract_from_zip(asset_data, extract_file)
-        else:
-            return asset_data
+        return asset_data
 
-    def _get_latest_release(self, repository: str) -> dict[str, Any] | None:
+    def _get_latest_release(
+        self, repository: str, timeout: int
+    ) -> dict[str, Any] | None:
         """Get latest release from repository."""
         url = f"{self.api_base}/repos/{repository}/releases/latest"
 
-        headers = {
-            "Accept": "application/vnd.github.v3+json",
-            "User-Agent": "ClimateSense-Pipeline/2.0",
-        }
-
-        if self.github_token:
-            headers["Authorization"] = f"token {self.github_token}"
-
         try:
-            response = requests.get(url, headers=headers, timeout=30)
+            response = requests.get(
+                url,
+                headers=self._build_headers(accept="application/vnd.github.v3+json"),
+                timeout=timeout,
+            )
             response.raise_for_status()
             result = response.json()
             if isinstance(result, dict):
@@ -115,17 +130,14 @@ class GitHubProvider(BaseProvider):
         else:
             return [asset for asset in assets if asset.name == pattern]
 
-    def _download_asset(self, asset: GitHubAsset) -> bytes:
+    def _download_asset(self, asset: GitHubAsset, timeout: int) -> bytes:
         """Download asset data."""
-        headers = {
-            "Accept": "application/octet-stream",
-            "User-Agent": "ClimateSense-Pipeline/1.0 (+https://github.com/climatesense-project)",
-        }
-
-        if self.github_token:
-            headers["Authorization"] = f"token {self.github_token}"
-
-        response = requests.get(asset.url, headers=headers, timeout=300, stream=True)
+        response = requests.get(
+            asset.url,
+            headers=self._build_headers("application/octet-stream", for_download=True),
+            timeout=timeout,
+            stream=True,
+        )
         response.raise_for_status()
 
         total_size = int(response.headers.get("content-length", 0))
@@ -169,8 +181,96 @@ class GitHubProvider(BaseProvider):
 
     def get_cache_key_fields(self, config: ProviderConfig) -> dict[str, Any]:
         """Repository and asset pattern affect cache."""
-        return {
+        fields: dict[str, Any] = {
             "repository": config.repository,
-            "asset_pattern": config.asset_pattern,
-            "extract_file": config.extract_file,
+            "mode": getattr(config, "mode", "release"),
         }
+
+        if fields["mode"] == "release":
+            fields["asset_pattern"] = config.asset_pattern
+            fields["extract_file"] = config.extract_file
+        else:
+            fields["repository_path"] = config.repository_path
+            fields["repository_ref"] = config.repository_ref
+
+        return fields
+
+    def _build_headers(
+        self, accept: str, *, for_download: bool = False
+    ) -> dict[str, str]:
+        """Build headers for GitHub API requests."""
+        user_agent = (
+            "ClimateSense-Pipeline/1.0 (+https://github.com/climatesense-project)"
+            if for_download
+            else "ClimateSense-Pipeline/2.0"
+        )
+        headers = {
+            "Accept": accept,
+            "User-Agent": user_agent,
+        }
+
+        if self.github_token:
+            headers["Authorization"] = f"token {self.github_token}"
+
+        return headers
+
+    def _fetch_repository_file(
+        self, repository: str, path: str, ref: str, timeout: int
+    ) -> bytes:
+        """Fetch a file directly from a GitHub repository."""
+        url = f"{self.api_base}/repos/{repository}/contents/{path}"
+        params: dict[str, str] = {}
+        if ref:
+            params["ref"] = ref
+
+        response = requests.get(
+            url,
+            headers=self._build_headers("application/vnd.github.v3+json"),
+            params=params or None,
+            timeout=timeout,
+        )
+        response.raise_for_status()
+
+        payload = response.json()
+        if payload.get("type") != "file":
+            raise ValueError(
+                f"Path '{path}' in {repository}@{ref} is not a file (type={payload.get('type')})"
+            )
+
+        content = payload.get("content")
+        encoding = payload.get("encoding")
+        if content and encoding == "base64":
+            return base64.b64decode(content)
+
+        blob_sha = payload.get("sha")
+        if blob_sha:
+            return self._download_blob(repository, blob_sha, timeout)
+
+        download_url = payload.get("download_url")
+        if download_url:
+            return self._download_raw(download_url, timeout)
+
+        raise RuntimeError(
+            f"Unable to retrieve file content for {repository}/{path} at {ref}"
+        )
+
+    def _download_blob(self, repository: str, sha: str, timeout: int) -> bytes:
+        """Download a blob from the GitHub Git data API."""
+        url = f"{self.api_base}/repos/{repository}/git/blobs/{sha}"
+        response = requests.get(
+            url,
+            headers=self._build_headers("application/vnd.github.raw"),
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        return response.content
+
+    def _download_raw(self, url: str, timeout: int) -> bytes:
+        """Download raw file content using provided URL."""
+        response = requests.get(
+            url,
+            headers=self._build_headers("application/octet-stream", for_download=True),
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        return response.content

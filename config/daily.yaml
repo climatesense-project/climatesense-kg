@@ -4,6 +4,7 @@ data_sources:
     provider:
       provider_type: "github"
       repository: "MartinoMensio/claimreview-data"
+      mode: "release"
       asset_pattern: "*.zip"
       extract_file: "claim_reviews.json"
   - name: "euroclimatecheck"
@@ -11,6 +12,7 @@ data_sources:
     provider:
       provider_type: "github"
       repository: "climatesense-project/euroclimatecheck-scraper"
+      mode: "release"
       asset_pattern: "all_articles.json"
   - name: "defacto"
     type: "defacto"
