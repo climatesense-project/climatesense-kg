@@ -13,6 +13,7 @@ from ..config.models import (
     CanonicalOrganization,
     CanonicalRating,
 )
+from ..utils.ratings import VALID_NORMALIZED_RATINGS
 from ..utils.text_processing import sanitize_url
 
 logger = logging.getLogger(__name__)
@@ -233,8 +234,11 @@ class RDFGenerator:
         if rating_uri:
             self.graph.add((review_uri, self.SCHEMA.reviewRating, rating_uri))
 
-            # Add normalizedRating link to normalized rating URI
-            if claim_review.rating and claim_review.rating.label:
+            if (
+                claim_review.rating
+                and claim_review.rating.label
+                and self._is_valid_normalized_rating(claim_review.rating.label)
+            ):
                 normalized_rating_uri = URIRef(
                     self.get_full_uri(f"rating/{claim_review.rating.label}")
                 )
@@ -392,6 +396,9 @@ class RDFGenerator:
             self.graph.add((rating_uri, self.SCHEMA.author, organization_uri))
 
         return rating_uri
+
+    def _is_valid_normalized_rating(self, label: str) -> bool:
+        return label in VALID_NORMALIZED_RATINGS
 
     def get_full_uri(self, relative_uri: str) -> str:
         """
