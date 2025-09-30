@@ -117,16 +117,34 @@ class TestSanitizeUrl:
         assert result is None
 
     def test_invalid_scheme(self) -> None:
-        """Test invalid URL scheme - ftp URLs get https prefix added."""
+        """Test invalid URL scheme is rejected."""
         url = "ftp://example.com"
         result = sanitize_url(url)
-        assert result == "https://ftp://example.com"
+        assert result is None
 
     def test_no_netloc(self) -> None:
         """Test URL with no netloc."""
         url = "https://"
         result = sanitize_url(url)
         assert result is None
+
+    def test_netloc_with_whitespace(self) -> None:
+        """Test URL whose netloc contains whitespace characters."""
+        url = "http://foo bar.com/path"
+        result = sanitize_url(url)
+        assert result is None
+
+    def test_invalid_port(self) -> None:
+        """Test URL containing an invalid port component."""
+        url = "http://example.com:abc/path"
+        result = sanitize_url(url)
+        assert result is None
+
+    def test_unicode_hostname(self) -> None:
+        """Test URL with unicode hostname gets converted to punycode."""
+        url = "https://mañana.com/path"
+        result = sanitize_url(url)
+        assert result == "https://xn--maana-pta.com/path"
 
     def test_malformed_url_exception(self) -> None:
         """Test malformed URL that raises exception."""

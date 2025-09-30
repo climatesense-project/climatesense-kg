@@ -72,48 +72,83 @@ def normalize_text(text: str) -> str:
 
 
 def sanitize_url(url: str) -> str | None:
-    """
-    Sanitize URL by properly encoding invalid URI characters.
+    """Sanitize a URL and ensure it is safe for RDF serialization."""
 
-    Args:
-        url: URL to sanitize
-
-    Returns:
-        str | None: Sanitized URL or None if invalid
-    """
     if not url:
         return None
 
-    if not url.startswith(("http://", "https://")):
-        url = "https://" + url
+    candidate = url.strip()
+    if not candidate:
+        return None
+
+    has_scheme = bool(re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", candidate))
+    to_parse = candidate if has_scheme else f"https://{candidate}"
 
     try:
-        parsed = urlparse(url)
-        if parsed.scheme not in ("http", "https"):
-            logger.debug(f"Invalid scheme '{parsed.scheme}' in URL: {url}")
-            return None
-        if not parsed.netloc:
-            logger.debug(f"No netloc found in URL: {url}")
-            return None
-
-        path = quote(parsed.path, safe="/")
-        query = quote(parsed.query, safe="=&?")
-        fragment = quote(parsed.fragment, safe="")
-
-        sanitized = urlunparse(
-            (
-                parsed.scheme,
-                parsed.netloc,
-                path,
-                parsed.params,
-                query,
-                fragment,
-            )
-        )
-        return str(sanitized) if sanitized else None
-    except Exception as e:
-        logger.warning(f"Failed to sanitize URL '{url}': {e}")
+        parsed = urlparse(to_parse)
+    except Exception as exc:  # pragma: no cover - defensive logging
+        logger.warning(f"Failed to parse URL '{candidate}': {exc}")
         return None
+
+    if parsed.scheme not in ("http", "https"):
+        logger.debug(f"Invalid scheme '{parsed.scheme}' in URL: {candidate}")
+        return None
+
+    if not parsed.netloc:
+        logger.debug(f"No netloc found in URL: {candidate}")
+        return None
+
+    hostname = parsed.hostname
+    if not hostname:
+        logger.debug(f"Hostname missing in URL: {candidate}")
+        return None
+
+    if any(ch.isspace() for ch in hostname):
+        logger.debug(f"Whitespace found in hostname for URL: {candidate}")
+        return None
+
+    if any(ch in '"<>' for ch in hostname):
+        logger.debug(f"Invalid character in hostname for URL: {candidate}")
+        return None
+
+    try:
+        hostname_ascii = hostname.encode("idna").decode("ascii")
+    except UnicodeError:
+        logger.debug(f"Hostname contains invalid characters: {hostname}")
+        return None
+
+    netloc = hostname_ascii
+    try:
+        port = parsed.port
+    except ValueError:
+        logger.debug(f"Invalid port in URL: {candidate}")
+        return None
+
+    if port is not None:
+        netloc = f"{netloc}:{port}"
+
+    if parsed.username:
+        userinfo = quote(parsed.username, safe="")
+        if parsed.password:
+            userinfo += f":{quote(parsed.password, safe='')}"
+        netloc = f"{userinfo}@{netloc}"
+
+    path = quote(parsed.path, safe="/")
+    query = quote(parsed.query, safe="=&?")
+    fragment = quote(parsed.fragment, safe="")
+
+    sanitized = urlunparse(
+        (
+            parsed.scheme,
+            netloc,
+            path,
+            parsed.params,
+            query,
+            fragment,
+        )
+    )
+
+    return sanitized if sanitized else None
 
 
 def fetch_and_extract_text(url: str) -> TextExtractionResult:
