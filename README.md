@@ -18,6 +18,7 @@
   - [DeFacto](https://defacto-observatoire.fr/Fact-checks/)
   - [DBKF](https://dbkf.ontotext.com/)
   - [DeSmog](https://github.com/climatesense-project/climate-disinformation-database)
+  - [Climafacts (Skeptical-Science)](https://github.com/climatesense-project/climafacts-kg)
 - Data enrichment with:
   - Text extraction from URLs using [trafilatura](https://trafilatura.readthedocs.io/)
   - Entity linking using [DBpedia Spotlight](https://www.dbpedia-spotlight.org/)
