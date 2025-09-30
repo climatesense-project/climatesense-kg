@@ -45,6 +45,7 @@ class DataSourceConfig:
     name: str
     type: Literal[
         "claimreviewdata",
+        "climafacts",
         "euroclimatecheck",
         "dbkf",
         "defacto",

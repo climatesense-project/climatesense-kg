@@ -105,6 +105,14 @@ data_sources:
       repository_path: "graphs/climate-disinformation-database.ttl"
       repository_ref: "main"
       timeout: 120
+  - name: "climafacts"
+    type: "climafacts"
+    provider:
+      provider_type: "github"
+      repository: "climatesense-project/climafacts-kg"
+      mode: "release"
+      asset_pattern: "climafacts_kg.ttl"
+      timeout: 120
 
 # Enrichment configuration
 enrichment:

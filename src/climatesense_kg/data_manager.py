@@ -8,6 +8,7 @@ from .config.models import CanonicalClaimReview
 from .config.schemas import DataSourceConfig, ProviderConfig
 from .processors import (
     ClaimReviewDataProcessor,
+    ClimafactsProcessor,
     DbkfProcessor,
     DefactoProcessor,
     DesmogProcessor,
@@ -52,6 +53,7 @@ class DataManager:
         # Processor type mapping
         self._processors: dict[str, type[BaseProcessor]] = {
             "claimreviewdata": ClaimReviewDataProcessor,
+            "climafacts": ClimafactsProcessor,
             "euroclimatecheck": EuroClimateCheckProcessor,
             "dbkf": DbkfProcessor,
             "defacto": DefactoProcessor,
