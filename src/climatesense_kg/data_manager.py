@@ -10,6 +10,7 @@ from .processors import (
     ClaimReviewDataProcessor,
     DbkfProcessor,
     DefactoProcessor,
+    DesmogProcessor,
     EuroClimateCheckProcessor,
 )
 from .processors.base import BaseProcessor
@@ -54,6 +55,7 @@ class DataManager:
             "euroclimatecheck": EuroClimateCheckProcessor,
             "dbkf": DbkfProcessor,
             "defacto": DefactoProcessor,
+            "desmog": DesmogProcessor,
         }
 
     def get_data(

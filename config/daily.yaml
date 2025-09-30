@@ -96,6 +96,15 @@ data_sources:
           }
         }
       batch_size: 100
+  - name: "desmog"
+    type: "desmog"
+    provider:
+      provider_type: "github"
+      repository: "climatesense-project/climate-disinformation-database"
+      mode: "repository"
+      repository_path: "graphs/climate-disinformation-database.ttl"
+      repository_ref: "main"
+      timeout: 120
 
 # Enrichment configuration
 enrichment:
