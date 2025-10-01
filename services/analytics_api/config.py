@@ -13,13 +13,26 @@ def _build_default_dsn() -> str:
     if env_dsn:
         return env_dsn
 
-    host = os.getenv("POSTGRES_HOST", "postgres")
-    port = os.getenv("POSTGRES_PORT", "5432")
-    database = os.getenv("POSTGRES_DB", "climatesense_cache")
-    user = os.getenv("POSTGRES_USER", "postgres")
-    password = os.getenv("POSTGRES_PASSWORD", "postgres")
+    required_vars = {
+        "POSTGRES_HOST": os.getenv("POSTGRES_HOST"),
+        "POSTGRES_PORT": os.getenv("POSTGRES_PORT"),
+        "POSTGRES_DB": os.getenv("POSTGRES_DB"),
+        "POSTGRES_USER": os.getenv("POSTGRES_USER"),
+        "POSTGRES_PASSWORD": os.getenv("POSTGRES_PASSWORD"),
+    }
+    missing = [k for k, v in required_vars.items() if not v]
+    if missing:
+        raise RuntimeError(
+            f"Missing required environment variables: {', '.join(missing)}"
+        )
 
-    return f"postgresql+asyncpg://{user}:{password}@{host}:{port}/{database}"
+    return (
+        f"postgresql+asyncpg://{required_vars['POSTGRES_USER']}:"
+        f"{required_vars['POSTGRES_PASSWORD']}@"
+        f"{required_vars['POSTGRES_HOST']}:"
+        f"{required_vars['POSTGRES_PORT']}/"
+        f"{required_vars['POSTGRES_DB']}"
+    )
 
 
 class Settings(BaseModel):
