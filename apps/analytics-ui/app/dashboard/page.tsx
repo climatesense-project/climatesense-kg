@@ -14,7 +14,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
   TableBody,
-  TableCaption,
   TableCell,
   TableHead,
   TableHeader,
@@ -212,7 +211,6 @@ export default function DashboardPage() {
                     </TableRow>
                   ))}
                 </TableBody>
-                <TableCaption>Limited to the top 25 error signatures.</TableCaption>
               </Table>
             ) : (
               <p className="text-sm text-muted-foreground">No errors recorded for the selected window.</p>
