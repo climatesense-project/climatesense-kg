@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
-from .routers import kg, pipeline
+from .routers import cache, kg, pipeline
 
 app = FastAPI(
     title="ClimateSense Analytics API",
@@ -22,6 +22,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(cache.router)
 app.include_router(pipeline.router)
 app.include_router(kg.router)
 

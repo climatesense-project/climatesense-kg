@@ -44,9 +44,6 @@ class Settings(BaseModel):
             "http://localhost:3000",
         ).split(",")
     )
-    cache_ttl_seconds: int = Field(
-        default_factory=lambda: int(os.getenv("ANALYTICS_CACHE_TTL", "60"))
-    )
     sparql_timeout_seconds: int = Field(
         default_factory=lambda: int(os.getenv("ANALYTICS_SPARQL_TIMEOUT", "20"))
     )

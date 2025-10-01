@@ -1,9 +1,8 @@
-"""Helpers for running parameterised SQL analytics queries."""
+"""SQL query execution."""
 
 from __future__ import annotations
 
 from pathlib import Path
-import time
 from typing import Any
 
 from sqlalchemy import bindparam, text
@@ -11,10 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.types import DateTime, Integer, String
 
 _QUERY_CACHE: dict[str, str] = {}
-_RESULT_CACHE: dict[str, tuple[list[dict[str, Any]], float]] = {}
+_RESULT_CACHE: dict[str, list[dict[str, Any]]] = {}
 _BASE_DIR = Path(__file__).resolve().parent.parent / "queries"
-
-CACHE_TTL = 86400  # 24 hours
 
 
 def _load_query(namespace: str, filename: str) -> str:
@@ -35,14 +32,25 @@ async def run_query(
     params: dict[str, Any] | None = None,
     use_cache: bool = True,
 ) -> list[dict[str, Any]]:
-    """Execute a query and return rows as plain dictionaries."""
+    """Execute a query and return rows as plain dictionaries.
+
+    Args:
+        session: Async database session
+        namespace: Query namespace (e.g., 'pipeline', 'kg')
+        filename: SQL file name
+        params: Optional query parameters
+        use_cache: If True, use cached results when available; if False, bypass cache
+
+    Returns:
+        List of result rows as dictionaries
+    """
     cache_key = f"{namespace}:{filename}"
 
+    # Return cached result if available and caching is enabled
     if use_cache and cache_key in _RESULT_CACHE:
-        cached_result, cached_time = _RESULT_CACHE[cache_key]
-        if time.time() - cached_time < CACHE_TTL:
-            return cached_result
+        return _RESULT_CACHE[cache_key]
 
+    # Execute the query
     raw_sql = _load_query(namespace, filename)
     stmt = text(raw_sql)
 
@@ -61,13 +69,31 @@ async def run_query(
     result = await session.execute(stmt, params or {})
     rows = [dict(row) for row in result.mappings().all()]
 
+    # Cache the results
     if use_cache:
-        _RESULT_CACHE[cache_key] = (rows, time.time())
+        _RESULT_CACHE[cache_key] = rows
 
     return rows
 
 
 def clear_cache() -> int:
+    """Clear all cached SQL query results.
+
+    Returns:
+        Number of cache entries that were removed
+    """
     entries_removed = len(_RESULT_CACHE)
     _RESULT_CACHE.clear()
     return entries_removed
+
+
+def get_cache_stats() -> dict[str, Any]:
+    """Get statistics about the current cache state.
+
+    Returns:
+        Dictionary with cache statistics including entry count and cached queries
+    """
+    return {
+        "entry_count": len(_RESULT_CACHE),
+        "cached_queries": list(_RESULT_CACHE.keys()),
+    }
