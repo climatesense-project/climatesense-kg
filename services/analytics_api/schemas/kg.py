@@ -41,8 +41,18 @@ class FactorDistributionItem(BaseModel):
 
 
 class ClaimFactorDistributions(BaseModel):
-    sentiment: list[FactorDistributionItem] = Field(default_factory=list)
-    political_leaning: list[FactorDistributionItem] = Field(default_factory=list)
-    emotion: list[FactorDistributionItem] = Field(default_factory=list)
-    conspiracies_mentioned: list[FactorDistributionItem] = Field(default_factory=list)
-    conspiracies_promoted: list[FactorDistributionItem] = Field(default_factory=list)
+    sentiment: list[FactorDistributionItem] = Field(
+        default_factory=list[FactorDistributionItem]
+    )
+    political_leaning: list[FactorDistributionItem] = Field(
+        default_factory=list[FactorDistributionItem]
+    )
+    emotion: list[FactorDistributionItem] = Field(
+        default_factory=list[FactorDistributionItem]
+    )
+    conspiracies_mentioned: list[FactorDistributionItem] = Field(
+        default_factory=list[FactorDistributionItem]
+    )
+    conspiracies_promoted: list[FactorDistributionItem] = Field(
+        default_factory=list[FactorDistributionItem]
+    )
