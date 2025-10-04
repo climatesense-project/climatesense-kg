@@ -51,6 +51,7 @@ class DataSourceConfig:
         "dbkf",
         "defacto",
         "desmog",
+        "climate-fever",
     ]
     enabled: bool = True
     provider: ProviderConfig | None = None

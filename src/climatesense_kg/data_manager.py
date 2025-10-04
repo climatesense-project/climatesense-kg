@@ -9,6 +9,7 @@ from .config.schemas import DataSourceConfig, ProviderConfig
 from .processors import (
     ClaimReviewDataProcessor,
     ClimafactsProcessor,
+    ClimateFeverProcessor,
     DbkfProcessor,
     DefactoProcessor,
     DesmogProcessor,
@@ -56,6 +57,7 @@ class DataManager:
         self._processors: dict[str, type[BaseProcessor]] = {
             "claimreviewdata": ClaimReviewDataProcessor,
             "climafacts": ClimafactsProcessor,
+            "climate-fever": ClimateFeverProcessor,
             "euroclimatecheck": EuroClimateCheckProcessor,
             "dbkf": DbkfProcessor,
             "defacto": DefactoProcessor,
