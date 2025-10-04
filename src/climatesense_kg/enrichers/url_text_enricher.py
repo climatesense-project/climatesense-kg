@@ -2,6 +2,7 @@
 
 import time
 from typing import Any
+from urllib.parse import urlparse
 
 from ..config.models import CanonicalClaimReview
 from ..utils.text_processing import (
@@ -37,6 +38,14 @@ class URLTextEnricher(Enricher):
             return claim_review
 
         if not claim_review.uri:
+            return claim_review
+
+        parsed_url = urlparse(claim_review.review_url)
+        if parsed_url.scheme not in {"http", "https"}:
+            self.logger.debug(
+                "Skipping text extraction for non-HTTP review URL: %s",
+                claim_review.review_url,
+            )
             return claim_review
 
         # Extract text from review URL
