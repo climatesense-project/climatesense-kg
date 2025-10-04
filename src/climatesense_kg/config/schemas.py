@@ -9,7 +9,7 @@ from typing import Any, Literal
 class ProviderConfig:
     """Configuration for data providers."""
 
-    provider_type: Literal["file", "github", "graphql", "xwiki"]
+    provider_type: Literal["file", "github", "graphql", "xwiki", "http"]
 
     # Common parameters
     file_path: str | Path | None = None
@@ -31,6 +31,7 @@ class ProviderConfig:
 
     # REST API provider parameters
     base_url: str = ""
+    url: str = ""
     tags: list[str] = field(default_factory=list[str])
 
     # Common network parameters

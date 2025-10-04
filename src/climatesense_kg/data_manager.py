@@ -19,6 +19,7 @@ from .providers import (
     FileProvider,
     GitHubProvider,
     GraphQLProvider,
+    HttpProvider,
     XWikiProvider,
 )
 from .providers.base import BaseProvider
@@ -47,6 +48,7 @@ class DataManager:
             "file": FileProvider,
             "github": GitHubProvider,
             "graphql": GraphQLProvider,
+            "http": HttpProvider,
             "xwiki": XWikiProvider,
         }
 
