@@ -113,6 +113,13 @@ data_sources:
       mode: "release"
       asset_pattern: "climafacts_kg.ttl"
       timeout: 120
+  - name: "climate-fever"
+    type: "climate-fever"
+    provider:
+      provider_type: "http"
+      url: "https://www.sustainablefinance.uzh.ch/dam/jcr:df02e448-baa1-4db8-921a-58507be4838e/climate-fever-dataset-r1.jsonl"
+      timeout: 120
+    cache_ttl_hours: 8760
 
 # Enrichment configuration
 enrichment:
