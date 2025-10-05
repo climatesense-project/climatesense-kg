@@ -23,6 +23,18 @@ WHERE {
   }
   UNION
   {
+    ?claim cimple:hasTrope ?trope .
+    BIND("tropes" AS ?category)
+    BIND(STRAFTER(STR(?trope), "/trope/") AS ?value)
+  }
+  UNION
+  {
+    ?claim cimple:hasPersuasionTechnique ?persuasion .
+    BIND("persuasion_techniques" AS ?category)
+    BIND(STRAFTER(STR(?persuasion), "/persuasion-technique/") AS ?value)
+  }
+  UNION
+  {
     ?claim cimple:mentionsConspiracy ?mentioned .
     BIND("conspiracies_mentioned" AS ?category)
     BIND(STRAFTER(STR(?mentioned), "/conspiracy/") AS ?value)

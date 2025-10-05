@@ -84,14 +84,20 @@ The RDF generator creates additional URIs for enrichment data using the followin
 **Pattern**: `{base_uri}/conspiracy/{conspiracy_name}`
 **Example**: `http://data.climatesense-project.eu/conspiracy/climate_change_hoax`
 
-Conspiracy names are normalized by replacing spaces with underscores and converting to lowercase.
+### Tropes
+
+**Pattern**: `{base_uri}/trope/{trope_name}`
+**Example**: `http://data.climatesense-project.eu/trope/time_will_tell`
+
+### Persuasion Techniques
+
+**Pattern**: `{base_uri}/persuasion-technique/{technique_name}`
+**Example**: `http://data.climatesense-project.eu/persuasion-technique/appeal_to_authority`
 
 ### Normalized Ratings
 
 **Pattern**: `{base_uri}/rating/{normalized_label}`
 **Example**: `http://data.climatesense-project.eu/rating/false`
-
-These provide stable URIs for normalized rating values across different fact-checking organizations.
 
 ## RDF Namespace Declarations
 

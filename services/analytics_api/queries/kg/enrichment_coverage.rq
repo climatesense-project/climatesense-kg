@@ -6,6 +6,8 @@ SELECT (COUNT(?claim) AS ?totalClaims)
        (COUNT(?sentiment) AS ?claimsWithSentiment)
        (COUNT(?leaning) AS ?claimsWithPoliticalLeaning)
        (COUNT(?conspiracy) AS ?claimsWithConspiracy)
+       (COUNT(?trope) AS ?claimsWithTropes)
+       (COUNT(?persuasionTechnique) AS ?claimsWithPersuasionTechniques)
 WHERE {
   ?claim a schema:Claim .
   OPTIONAL { ?claim cimple:hasEmotion ?emotion . }
@@ -14,4 +16,6 @@ WHERE {
   OPTIONAL {
     ?claim cimple:mentionsConspiracy ?conspiracy .
   }
+  OPTIONAL { ?claim cimple:hasTrope ?trope . }
+  OPTIONAL { ?claim cimple:hasPersuasionTechnique ?persuasionTechnique . }
 }

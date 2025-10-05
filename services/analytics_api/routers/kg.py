@@ -67,6 +67,10 @@ async def enrichment_coverage() -> EnrichmentCoverage:
         claims_with_sentiment=int(row.get("claimsWithSentiment", 0)),
         claims_with_political_leaning=int(row.get("claimsWithPoliticalLeaning", 0)),
         claims_with_conspiracy=int(row.get("claimsWithConspiracy", 0)),
+        claims_with_tropes=int(row.get("claimsWithTropes", 0)),
+        claims_with_persuasion_techniques=int(
+            row.get("claimsWithPersuasionTechniques", 0)
+        ),
     )
 
 
@@ -87,6 +91,8 @@ async def claim_factors() -> ClaimFactorDistributions:
         "sentiment": [],
         "political_leaning": [],
         "emotion": [],
+        "tropes": [],
+        "persuasion_techniques": [],
         "conspiracies_mentioned": [],
         "conspiracies_promoted": [],
     }

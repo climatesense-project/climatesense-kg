@@ -337,6 +337,24 @@ class RDFGenerator:
             )
             self.graph.add((claim_uri, self.CIMPLE.hasPoliticalLeaning, political_uri))
 
+        # Tropes
+        for trope in claim.tropes:
+            if not trope:
+                continue
+            slug = trope.strip().replace(" ", "_").lower()
+            trope_uri = URIRef(f"{self.base_uri}/trope/{slug}")
+            self.graph.add((claim_uri, self.CIMPLE.hasTrope, trope_uri))
+
+        # Persuasion techniques
+        for technique in claim.persuasion_techniques:
+            if not technique:
+                continue
+            slug = technique.strip().replace(" ", "_").lower()
+            technique_uri = URIRef(f"{self.base_uri}/persuasion-technique/{slug}")
+            self.graph.add(
+                (claim_uri, self.CIMPLE.hasPersuasionTechnique, technique_uri)
+            )
+
         # Conspiracies
         for conspiracy in claim.conspiracies["mentioned"]:
             conspiracy_uri = URIRef(

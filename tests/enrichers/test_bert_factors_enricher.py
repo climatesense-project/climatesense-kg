@@ -121,6 +121,8 @@ class TestBertFactorsEnricherEnrichment:
         assert result == sample_claim_review
         assert sample_claim_review.claim.emotion is None
         assert sample_claim_review.claim.sentiment is None
+        assert sample_claim_review.claim.tropes == []
+        assert sample_claim_review.claim.persuasion_techniques == []
 
         mock_cache.set.assert_called_once()
         _, step_name, payload = mock_cache.set.call_args[0]
@@ -151,6 +153,8 @@ class TestBertFactorsEnricherEnrichment:
                     "emotion": "Anger",
                     "sentiment": "Negative",
                     "political_leaning": "Left",
+                    "tropes": ["Time Will Tell"],
+                    "persuasion_techniques": ["Appeal to authority"],
                     "conspiracies": {"mentioned": [], "promoted": []},
                 }
             ],
@@ -164,6 +168,8 @@ class TestBertFactorsEnricherEnrichment:
         assert result.claim.emotion == "Anger"
         assert result.claim.sentiment == "Negative"
         assert result.claim.political_leaning == "Left"
+        assert result.claim.tropes == ["Time Will Tell"]
+        assert result.claim.persuasion_techniques == ["Appeal to authority"]
         assert result.claim.conspiracies == {"mentioned": [], "promoted": []}
 
     def test_enrich_with_cached_data(
@@ -179,6 +185,8 @@ class TestBertFactorsEnricherEnrichment:
                 "emotion": "Happiness",
                 "sentiment": "Positive",
                 "political_leaning": "Right",
+                "tropes": ["Test trope"],
+                "persuasion_techniques": ["Loaded language"],
                 "conspiracies": {"mentioned": [], "promoted": ["New World Order"]},
             }
         }
@@ -190,6 +198,8 @@ class TestBertFactorsEnricherEnrichment:
         assert result.claim.emotion == "Happiness"
         assert result.claim.sentiment == "Positive"
         assert result.claim.political_leaning == "Right"
+        assert result.claim.tropes == ["Test trope"]
+        assert result.claim.persuasion_techniques == ["Loaded language"]
         assert result.claim.conspiracies == {
             "mentioned": [],
             "promoted": ["New World Order"],

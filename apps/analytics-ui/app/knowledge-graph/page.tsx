@@ -48,6 +48,14 @@ export default function KnowledgeGraphPage() {
     claimFactors && claimFactors.emotion.length > 0
       ? claimFactors.emotion[0].count
       : 0;
+  const tropeMax =
+    claimFactors && claimFactors.tropes.length > 0
+      ? claimFactors.tropes[0].count
+      : 0;
+  const persuasionMax =
+    claimFactors && claimFactors.persuasion_techniques.length > 0
+      ? claimFactors.persuasion_techniques[0].count
+      : 0;
   const mentionedMax =
     claimFactors && claimFactors.conspiracies_mentioned.length > 0
       ? claimFactors.conspiracies_mentioned[0].count
@@ -384,6 +392,68 @@ export default function KnowledgeGraphPage() {
             ) : (
               <p className="text-sm text-muted-foreground">
                 Conspiracy enrichment results unavailable.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Top tropes</CardTitle>
+            <CardDescription>
+              Most common narrative tropes detected in claims
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {factorsLoading ? (
+              <Skeleton className="h-48 w-full" />
+            ) : claimFactors && claimFactors.tropes.length > 0 ? (
+              claimFactors.tropes.slice(0, 10).map((item) => (
+                <div key={item.value} className="space-y-1">
+                  <div className="flex items-center justify-between text-sm">
+                    <span>{item.label}</span>
+                    <span className="font-medium">
+                      {item.count.toLocaleString()}
+                    </span>
+                  </div>
+                  <MetricProgress value={item.count} max={tropeMax || 1} />
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No trope enrichment data available.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Persuasion techniques</CardTitle>
+            <CardDescription>
+              Detected persuasive techniques within claim language
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {factorsLoading ? (
+              <Skeleton className="h-48 w-full" />
+            ) : claimFactors && claimFactors.persuasion_techniques.length > 0 ? (
+              claimFactors.persuasion_techniques.slice(0, 10).map((item) => (
+                <div key={item.value} className="space-y-1">
+                  <div className="flex items-center justify-between text-sm">
+                    <span>{item.label}</span>
+                    <span className="font-medium">
+                      {item.count.toLocaleString()}
+                    </span>
+                  </div>
+                  <MetricProgress value={item.count} max={persuasionMax || 1} />
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No persuasion technique data available.
               </p>
             )}
           </CardContent>

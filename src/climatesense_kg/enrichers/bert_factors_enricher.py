@@ -1,4 +1,4 @@
-"""CIMPLE Factors API enrichment for emotion, sentiment, political leaning, and conspiracy detection."""
+"""CIMPLE Factors API enrichment for emotion, sentiment, political leaning, narrative tropes, persuasion techniques, and conspiracy detection."""
 
 import json
 import logging
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class BertFactorsEnricher(Enricher):
-    """Enricher that uses CIMPLE Factors API for emotion, sentiment, political leaning, and conspiracy detection."""
+    """Enrich claims with sentiment, emotion, political leaning, tropes, persuasion techniques, and conspiracy signals from the CIMPLE Factors API."""
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__("bert_factors", **kwargs)
@@ -105,6 +105,8 @@ class BertFactorsEnricher(Enricher):
             "emotion": None,
             "sentiment": None,
             "political_leaning": None,
+            "tropes": [],
+            "persuasion_techniques": [],
             "conspiracies": {"mentioned": [], "promoted": []},
         }
 
@@ -125,6 +127,10 @@ class BertFactorsEnricher(Enricher):
         claim_review.claim.emotion = factors.get("emotion")
         claim_review.claim.sentiment = factors.get("sentiment")
         claim_review.claim.political_leaning = factors.get("political_leaning")
+        claim_review.claim.tropes = factors.get("tropes", []) or []
+        claim_review.claim.persuasion_techniques = (
+            factors.get("persuasion_techniques", []) or []
+        )
         claim_review.claim.conspiracies = factors.get(
             "conspiracies", {"mentioned": [], "promoted": []}
         )
@@ -196,6 +202,16 @@ class BertFactorsEnricher(Enricher):
                     # Map political leaning
                     if api_result.get("political_leaning"):
                         result["political_leaning"] = api_result["political_leaning"]
+
+                    # Map tropes
+                    if api_result.get("tropes"):
+                        result["tropes"] = api_result.get("tropes", [])
+
+                    # Map persuasion techniques
+                    if api_result.get("persuasion_techniques"):
+                        result["persuasion_techniques"] = api_result.get(
+                            "persuasion_techniques", []
+                        )
 
                     # Map conspiracies
                     if "conspiracies" in api_result:
