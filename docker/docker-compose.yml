@@ -35,6 +35,7 @@ services:
       SPARQL_UPDATE: true
     ports:
       - "${VIRTUOSO_PORT:-8890}:8890"
+      - "${VIRTUOSO_ISQL_PORT:-1111}:1111"
     volumes:
       - virtuoso_data:/database
       - ./virtuoso/initdb.d:/initdb.d:ro

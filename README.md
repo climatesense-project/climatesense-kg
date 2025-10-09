@@ -99,6 +99,7 @@ just run config/minimal.yaml
    - `GITHUB_TOKEN`: GitHub token used for private repositories
    - `VIRTUOSO_HOST`: Virtuoso host name (default `virtuoso`)
    - `VIRTUOSO_PORT`: Virtuoso HTTP/SPARQL port (default `8890`)
+   - `VIRTUOSO_ISQL_PORT`: Virtuoso ISQL port (default `1111`)
    - `VIRTUOSO_USER`: Virtuoso database user (default `dba`)
    - `VIRTUOSO_PASSWORD`: Virtuoso database password (default `dba`)
    - `VIRTUOSO_ISQL_SERVICE_URL`: Virtuoso ISQL HTTP endpoint (default `http://isql-service:8080`)
