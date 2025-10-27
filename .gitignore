@@ -3,6 +3,7 @@
 /output/
 /data/
 /cache/
+/config/dev.yaml
 *.ttl
 *.nt
 *.rdf
