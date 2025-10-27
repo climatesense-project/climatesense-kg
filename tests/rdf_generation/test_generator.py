@@ -1,6 +1,7 @@
 """Tests for RDF generator."""
 
-from rdflib import Graph, Namespace, URIRef
+from rdflib import Graph, Literal, Namespace, URIRef
+from rdflib.namespace import XSD
 from src.climatesense_kg.config.models import (
     CanonicalClaim,
     CanonicalClaimReview,
@@ -53,3 +54,54 @@ def test_generator_skips_normalized_rating_for_unknown_labels() -> None:
 
     triples = list(graph.triples((review_uri, CIMPLE.normalizedReviewRating, None)))
     assert triples == []
+
+
+def test_generator_adds_dbpedia_entity_properties() -> None:
+    review = _build_review(None)
+    entity_uri = "http://dbpedia.org/resource/Paris"
+    review.claim.entities.append(
+        {
+            "uri": entity_uri,
+            "dbpedia_properties": {
+                "http://www.w3.org/2003/01/geo/wgs84_pos#lat": [
+                    {
+                        "value": "48.8566",
+                        "type": "typed-literal",
+                        "datatype": str(XSD.float),
+                    }
+                ],
+                "http://www.w3.org/2003/01/geo/wgs84_pos#long": [
+                    {
+                        "value": "2.3522",
+                        "type": "typed-literal",
+                        "datatype": str(XSD.float),
+                    }
+                ],
+                "http://www.opengis.net/ont/geosparql#geometry": [
+                    {
+                        "value": "POINT(2.3522 48.8566)",
+                        "type": "literal",
+                        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+                    }
+                ],
+            },
+        }
+    )
+
+    graph, _ = _generate_graph(review)
+
+    subject = URIRef(entity_uri)
+    lat_predicate = URIRef("http://www.w3.org/2003/01/geo/wgs84_pos#lat")
+    long_predicate = URIRef("http://www.w3.org/2003/01/geo/wgs84_pos#long")
+    geometry_predicate = URIRef("http://www.opengis.net/ont/geosparql#geometry")
+
+    expected_lat = Literal("48.8566", datatype=XSD.float)
+    expected_long = Literal("2.3522", datatype=XSD.float)
+    expected_geometry = Literal(
+        "POINT(2.3522 48.8566)",
+        datatype=URIRef("http://www.opengis.net/ont/geosparql#wktLiteral"),
+    )
+
+    assert (subject, lat_predicate, expected_lat) in graph
+    assert (subject, long_predicate, expected_long) in graph
+    assert (subject, geometry_predicate, expected_geometry) in graph

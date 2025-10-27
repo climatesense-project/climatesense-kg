@@ -272,6 +272,9 @@ class RDFGenerator:
                 try:
                     entity_uri = URIRef(entity["uri"])
                     self.graph.add((review_uri, self.SCHEMA.mentions, entity_uri))
+                    self._add_entity_properties(
+                        entity_uri, entity.get("dbpedia_properties")
+                    )
                 except Exception:
                     self.logger.warning(f"Invalid entity URI: {entity.get('uri')}")
 
@@ -280,7 +283,6 @@ class RDFGenerator:
     ) -> URIRef:
         """Generate RDF for an organization."""
         org_uri = URIRef(self.get_full_uri(organization.uri))
-
         if str(org_uri) in generated_uris:
             return org_uri
 
@@ -383,6 +385,9 @@ class RDFGenerator:
                 try:
                     entity_uri = URIRef(entity["uri"])
                     self.graph.add((claim_uri, self.SCHEMA.mentions, entity_uri))
+                    self._add_entity_properties(
+                        entity_uri, entity.get("dbpedia_properties")
+                    )
                 except Exception:
                     self.logger.warning(f"Invalid entity URI: {entity.get('uri')}")
 
@@ -414,6 +419,63 @@ class RDFGenerator:
             self.graph.add((rating_uri, self.SCHEMA.author, organization_uri))
 
         return rating_uri
+
+    def _add_entity_properties(
+        self,
+        entity_uri: URIRef,
+        properties: dict[str, list[dict[str, Any]]] | None,
+    ) -> None:
+        """Add additional DBpedia properties for a referenced entity."""
+        if not properties:
+            return
+
+        for property_uri, values in properties.items():
+            if not property_uri:
+                continue
+
+            try:
+                predicate = URIRef(property_uri)
+            except Exception:
+                self.logger.warning(
+                    "Invalid DBpedia property URI for entity %s: %s",
+                    entity_uri,
+                    property_uri,
+                )
+                continue
+
+            for value in values or []:
+                node = self._convert_property_value(value)
+                if node is None:
+                    continue
+                self.graph.add((entity_uri, predicate, node))
+
+    def _convert_property_value(self, value: dict[str, Any]) -> URIRef | Literal | None:
+        """Convert a property value dictionary into an rdflib node."""
+        raw_value = value.get("value")
+        if raw_value is None:
+            return None
+
+        value_type = value.get("type", "literal")
+
+        try:
+            if value_type == "uri":
+                return URIRef(raw_value)
+
+            datatype = value.get("datatype")
+            lang = value.get("lang")
+
+            if datatype:
+                return Literal(raw_value, datatype=URIRef(datatype))
+
+            if lang:
+                return Literal(raw_value, lang=lang)
+
+            return Literal(raw_value)
+        except Exception as exc:  # pragma: no cover - rdflib handles most conversions
+            self.logger.warning(
+                "Failed to convert DBpedia property value %s: %s", value, exc
+            )
+            return None
 
     def _is_valid_normalized_rating(self, label: str) -> bool:
         return label in VALID_NORMALIZED_RATINGS

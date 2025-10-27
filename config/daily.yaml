@@ -137,6 +137,18 @@ enrichment:
     timeout: 20
     rate_limit_delay: 0
 
+  dbpedia_entity_properties:
+    enabled: true
+    sparql_endpoint: "https://dbpedia.org/sparql"
+    properties:
+      - "http://www.w3.org/2003/01/geo/wgs84_pos#geometry"
+      - "http://www.w3.org/2003/01/geo/wgs84_pos#lat"
+      - "http://www.w3.org/2003/01/geo/wgs84_pos#long"
+      - "http://www.georss.org/georss/point"
+      - "http://www.opengis.net/ont/geosparql#asWKT"
+    timeout: 30
+    rate_limit_delay: 0
+
   bert_factors:
     enabled: true
     batch_size: 64

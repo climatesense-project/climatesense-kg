@@ -18,6 +18,7 @@ from .deployment.virtuoso import VirtuosoDeploymentHandler
 from .enrichers.base import Enricher as BaseEnricher
 from .enrichers.bert_factors_enricher import BertFactorsEnricher
 from .enrichers.dbpedia_enricher import DBpediaEnricher
+from .enrichers.dbpedia_property_enricher import DBpediaPropertyEnricher
 from .enrichers.url_text_enricher import URLTextEnricher
 from .rdf_generation.generator import RDFGenerator
 from .utils.logging import configure_external_loggers, setup_logging
@@ -131,6 +132,14 @@ class Pipeline:
                 )
                 if dbpedia_enricher.is_available():
                     enrichers.append(dbpedia_enricher)
+
+            # DBpedia entity properties enricher
+            if config.dbpedia_entity_properties.enabled:
+                dbpedia_property_enricher = DBpediaPropertyEnricher(
+                    cache=self.cache, **vars(config.dbpedia_entity_properties)
+                )
+                if dbpedia_property_enricher.is_available():
+                    enrichers.append(dbpedia_property_enricher)
 
             # BERT factors enricher
             if config.bert_factors.enabled:

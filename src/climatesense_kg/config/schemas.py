@@ -81,6 +81,18 @@ class DbpediaSpotlightConfig:
 
 
 @dataclass
+class DbpediaEntityPropertiesConfig:
+    """Configuration for DBpedia entity property enrichment."""
+
+    enabled: bool = False
+    sparql_endpoint: str = "https://dbpedia.org/sparql"
+    properties: list[str] = field(default_factory=list[str])
+    timeout: int = 20
+    rate_limit_delay: float = 0.1
+    max_retries: int = 2
+
+
+@dataclass
 class BertFactorsConfig:
     """Configuration for BERT factors enrichment."""
 
@@ -97,6 +109,9 @@ class EnrichmentConfig:
 
     dbpedia_spotlight: DbpediaSpotlightConfig = field(
         default_factory=DbpediaSpotlightConfig
+    )
+    dbpedia_entity_properties: DbpediaEntityPropertiesConfig = field(
+        default_factory=DbpediaEntityPropertiesConfig
     )
     bert_factors: BertFactorsConfig = field(default_factory=BertFactorsConfig)
     url_text_extraction: UrlTextExtractionConfig = field(
