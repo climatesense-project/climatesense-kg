@@ -29,6 +29,7 @@ class EnrichmentCoverage(BaseModel):
     claims_with_conspiracy: int = Field(ge=0)
     claims_with_tropes: int = Field(ge=0)
     claims_with_persuasion_techniques: int = Field(ge=0)
+    claims_with_climate_relatedness: int = Field(ge=0)
 
 
 class EntityTypeCount(BaseModel):
@@ -47,6 +48,9 @@ class ClaimFactorDistributions(BaseModel):
         default_factory=list[FactorDistributionItem]
     )
     political_leaning: list[FactorDistributionItem] = Field(
+        default_factory=list[FactorDistributionItem]
+    )
+    climate_related: list[FactorDistributionItem] = Field(
         default_factory=list[FactorDistributionItem]
     )
     emotion: list[FactorDistributionItem] = Field(

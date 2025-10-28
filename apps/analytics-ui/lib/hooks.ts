@@ -57,6 +57,7 @@ export type EnrichmentCoverage = {
   claims_with_conspiracy: number;
   claims_with_tropes: number;
   claims_with_persuasion_techniques: number;
+  claims_with_climate_relatedness: number;
 };
 
 export type EntityTypeCount = {
@@ -73,6 +74,7 @@ export type FactorDistributionItem = {
 export type ClaimFactorDistributions = {
   sentiment: FactorDistributionItem[];
   political_leaning: FactorDistributionItem[];
+  climate_related: FactorDistributionItem[];
   emotion: FactorDistributionItem[];
   tropes: FactorDistributionItem[];
   persuasion_techniques: FactorDistributionItem[];

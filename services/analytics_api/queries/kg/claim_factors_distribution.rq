@@ -1,5 +1,6 @@
 PREFIX schema: <http://schema.org/>
 PREFIX cimple: <http://data.cimple.eu/ontology#>
+PREFIX cs: <http://data.climatesense-project.eu/ontology#>
 
 SELECT ?category ?value (COUNT(DISTINCT ?claim) AS ?count)
 WHERE {
@@ -44,6 +45,12 @@ WHERE {
     ?claim cimple:promotesConspiracy ?promoted .
     BIND("conspiracies_promoted" AS ?category)
     BIND(STRAFTER(STR(?promoted), "/conspiracy/") AS ?value)
+  }
+  UNION
+  {
+    ?claim cs:isClimateRelated ?climateFlag .
+    BIND("climate_related" AS ?category)
+    BIND(STR(?climateFlag) AS ?value)
   }
 }
 GROUP BY ?category ?value

@@ -44,6 +44,11 @@ export default function KnowledgeGraphPage() {
   const leaningTotal = claimFactors
     ? claimFactors.political_leaning.reduce((acc, item) => acc + item.count, 0)
     : 0;
+  const climateRelatedData = claimFactors?.climate_related ?? [];
+  const climateRelatedTotal = climateRelatedData.reduce(
+    (acc, item) => acc + item.count,
+    0
+  );
   const emotionMax =
     claimFactors && claimFactors.emotion.length > 0
       ? claimFactors.emotion[0].count
@@ -154,7 +159,7 @@ export default function KnowledgeGraphPage() {
         </Card>
       </div>
 
-      <section className="grid gap-4 lg:grid-cols-2">
+      <section className="grid gap-4 lg:grid-cols-3">
         <Card>
           <CardHeader>
             <CardTitle>Claim sentiment split</CardTitle>
@@ -206,6 +211,34 @@ export default function KnowledgeGraphPage() {
             ) : (
               <p className="text-sm text-muted-foreground">
                 No political leaning data available.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Climate relatedness</CardTitle>
+            <CardDescription>
+              Claims flagged by the climate relevance classifier
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {factorsLoading ? (
+              <Skeleton className="h-24 w-full" />
+            ) : climateRelatedData.length > 0 ? (
+              climateRelatedData.map((item) => (
+                <MetricProgress
+                  key={item.value}
+                  label={`${item.label} (${item.count.toLocaleString()})`}
+                  value={item.count}
+                  max={climateRelatedTotal || 1}
+                  showRatio
+                />
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No climate relatedness data available.
               </p>
             )}
           </CardContent>

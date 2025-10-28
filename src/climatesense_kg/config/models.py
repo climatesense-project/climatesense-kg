@@ -57,6 +57,7 @@ class CanonicalClaim:
     conspiracies: dict[str, list[str]] = field(
         default_factory=lambda: {"mentioned": [], "promoted": []}
     )
+    climate_related: bool | None = None
     readability_score: float | None = None
 
     @property

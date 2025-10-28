@@ -108,6 +108,7 @@ class BertFactorsEnricher(Enricher):
             "tropes": [],
             "persuasion_techniques": [],
             "conspiracies": {"mentioned": [], "promoted": []},
+            "climate_related": None,
         }
 
     def apply_cached_data(
@@ -134,6 +135,8 @@ class BertFactorsEnricher(Enricher):
         claim_review.claim.conspiracies = factors.get(
             "conspiracies", {"mentioned": [], "promoted": []}
         )
+        if "climate_related" in factors:
+            claim_review.claim.climate_related = factors.get("climate_related")
 
         if cache and claim_review.uri:
             self.cache_success(claim_review.uri, factors)
@@ -221,6 +224,13 @@ class BertFactorsEnricher(Enricher):
                             ),
                             "promoted": api_result["conspiracies"].get("promoted", []),
                         }
+
+                    # Map climate relatedness
+                    if "climate_related" in api_result:
+                        climate_value = api_result.get("climate_related")
+                        result["climate_related"] = (
+                            None if climate_value is None else bool(climate_value)
+                        )
 
                     batch_results.append(result)
 

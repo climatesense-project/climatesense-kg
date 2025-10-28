@@ -18,10 +18,16 @@ from ..services.sparql import sparql_select
 router = APIRouter(prefix="/metrics/kg", tags=["knowledge-graph"])
 
 
-def _format_factor_label(value: str) -> str:
+def _format_factor_label(value: str, category: str | None = None) -> str:
     """Convert a slug string into a human friendly label."""
     if not value:
         return "Unknown"
+    if category == "climate_related":
+        lowered = value.lower()
+        if lowered == "true":
+            return "Climate Related"
+        if lowered == "false":
+            return "Not Climate Related"
     return value.replace("_", " ").replace("-", " ").title()
 
 
@@ -71,6 +77,7 @@ async def enrichment_coverage() -> EnrichmentCoverage:
         claims_with_persuasion_techniques=int(
             row.get("claimsWithPersuasionTechniques", 0)
         ),
+        claims_with_climate_relatedness=int(row.get("claimsWithClimateRelatedness", 0)),
     )
 
 
@@ -90,6 +97,7 @@ async def claim_factors() -> ClaimFactorDistributions:
     buckets: dict[str, list[FactorDistributionItem]] = {
         "sentiment": [],
         "political_leaning": [],
+        "climate_related": [],
         "emotion": [],
         "tropes": [],
         "persuasion_techniques": [],
@@ -106,7 +114,7 @@ async def claim_factors() -> ClaimFactorDistributions:
         count = int(row.get("count", 0))
         item = FactorDistributionItem(
             value=raw_value,
-            label=_format_factor_label(raw_value),
+            label=_format_factor_label(raw_value, category),
             count=count,
         )
         buckets[category].append(item)

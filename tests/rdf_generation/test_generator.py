@@ -105,3 +105,14 @@ def test_generator_adds_dbpedia_entity_properties() -> None:
     assert (subject, lat_predicate, expected_lat) in graph
     assert (subject, long_predicate, expected_long) in graph
     assert (subject, geometry_predicate, expected_geometry) in graph
+
+
+def test_generator_emits_climate_relatedness_boolean() -> None:
+    review = _build_review(None)
+    review.claim.climate_related = True
+
+    graph, generator = _generate_graph(review)
+    claim_uri = URIRef(generator.get_full_uri(review.claim.uri))
+
+    expected_object = Literal(True, datatype=XSD.boolean)
+    assert (claim_uri, CIMPLE.isClimateRelated, expected_object) in graph

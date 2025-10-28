@@ -1,5 +1,6 @@
 PREFIX schema: <http://schema.org/>
 PREFIX cimple: <http://data.cimple.eu/ontology#>
+PREFIX cs: <http://data.climatesense-project.eu/ontology#>
 
 SELECT (COUNT(?claim) AS ?totalClaims)
        (COUNT(?emotion) AS ?claimsWithEmotion)
@@ -8,6 +9,7 @@ SELECT (COUNT(?claim) AS ?totalClaims)
        (COUNT(?conspiracy) AS ?claimsWithConspiracy)
        (COUNT(?trope) AS ?claimsWithTropes)
        (COUNT(?persuasionTechnique) AS ?claimsWithPersuasionTechniques)
+       (COUNT(?climateRelated) AS ?claimsWithClimateRelatedness)
 WHERE {
   ?claim a schema:Claim .
   OPTIONAL { ?claim cimple:hasEmotion ?emotion . }
@@ -18,4 +20,5 @@ WHERE {
   }
   OPTIONAL { ?claim cimple:hasTrope ?trope . }
   OPTIONAL { ?claim cimple:hasPersuasionTechnique ?persuasionTechnique . }
+  OPTIONAL { ?claim cs:isClimateRelated ?climateRelated . }
 }

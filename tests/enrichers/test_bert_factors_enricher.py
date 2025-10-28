@@ -156,6 +156,7 @@ class TestBertFactorsEnricherEnrichment:
                     "tropes": ["Time Will Tell"],
                     "persuasion_techniques": ["Appeal to authority"],
                     "conspiracies": {"mentioned": [], "promoted": []},
+                    "climate_related": True,
                 }
             ],
             "processed_count": 1,
@@ -171,6 +172,7 @@ class TestBertFactorsEnricherEnrichment:
         assert result.claim.tropes == ["Time Will Tell"]
         assert result.claim.persuasion_techniques == ["Appeal to authority"]
         assert result.claim.conspiracies == {"mentioned": [], "promoted": []}
+        assert result.claim.climate_related is True
 
     def test_enrich_with_cached_data(
         self,
@@ -188,6 +190,7 @@ class TestBertFactorsEnricherEnrichment:
                 "tropes": ["Test trope"],
                 "persuasion_techniques": ["Loaded language"],
                 "conspiracies": {"mentioned": [], "promoted": ["New World Order"]},
+                "climate_related": False,
             }
         }
         mock_cache.get_many.return_value = {sample_claim_review.uri: cached_factors}
@@ -204,6 +207,7 @@ class TestBertFactorsEnricherEnrichment:
             "mentioned": [],
             "promoted": ["New World Order"],
         }
+        assert result.claim.climate_related is False
 
         mock_cache.get_many.assert_called_once_with(
             [sample_claim_review.uri], "enricher.bert_factors"
@@ -226,6 +230,7 @@ class TestBertFactorsEnricherEnrichment:
         result = enricher.enrich([sample_claim_review])[0]
 
         assert result.claim.emotion is None
+        assert result.claim.climate_related is None
         mock_cache.set.assert_called_once()
         _, step_name, payload = mock_cache.set.call_args[0]
         assert step_name == "enricher.bert_factors"

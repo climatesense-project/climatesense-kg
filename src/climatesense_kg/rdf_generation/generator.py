@@ -72,6 +72,7 @@ class RDFGenerator:
 
         self.SCHEMA = Namespace(self.namespaces["schema"])
         self.CIMPLE = Namespace(self.namespaces["cimple"])
+        self.CLIMATESENSE = Namespace(self.namespaces["climatesense"])
 
     def _bind_namespaces(self) -> None:
         """Bind namespaces to graph."""
@@ -338,6 +339,15 @@ class RDFGenerator:
                 f"{self.base_uri}/political-leaning/{claim.political_leaning.lower()}"
             )
             self.graph.add((claim_uri, self.CIMPLE.hasPoliticalLeaning, political_uri))
+
+        if claim.climate_related is not None:
+            self.graph.add(
+                (
+                    claim_uri,
+                    self.CLIMATESENSE.isClimateRelated,
+                    Literal(claim.climate_related, datatype=XSD.boolean),
+                )
+            )
 
         # Tropes
         for trope in claim.tropes:
