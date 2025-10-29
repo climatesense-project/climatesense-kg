@@ -11,6 +11,7 @@ from ..config.models import (
     CanonicalClaim,
     CanonicalClaimReview,
     CanonicalOrganization,
+    CanonicalPerson,
     CanonicalRating,
 )
 from ..utils.ratings import VALID_NORMALIZED_RATINGS
@@ -73,6 +74,7 @@ class RDFGenerator:
         self.SCHEMA = Namespace(self.namespaces["schema"])
         self.CIMPLE = Namespace(self.namespaces["cimple"])
         self.CLIMATESENSE = Namespace(self.namespaces["climatesense"])
+        self.SKOS = Namespace(self.namespaces["skos"])
 
     def _bind_namespaces(self) -> None:
         """Bind namespaces to graph."""
@@ -169,6 +171,53 @@ class RDFGenerator:
         normalized = format_name.lower()
         return format_mapping.get(normalized, normalized)
 
+    def _generate_people_rdf(
+        self, people: list[CanonicalPerson], generated_uris: set[str]
+    ) -> list[URIRef]:
+        """Generate RDF nodes for canonical people and return their URIs."""
+
+        person_nodes: list[URIRef] = []
+        for person in people or []:
+            node = self._generate_person_rdf(person, generated_uris)
+            if node is not None:
+                person_nodes.append(node)
+        return person_nodes
+
+    def _generate_person_rdf(
+        self, person: CanonicalPerson, generated_uris: set[str]
+    ) -> URIRef | None:
+        """Create RDF triples for a person and return the node used."""
+
+        if not person.name and not person.website:
+            return None
+
+        person_uri = URIRef(self.get_full_uri(person.uri))
+        if str(person_uri) in generated_uris:
+            return person_uri
+
+        generated_uris.add(str(person_uri))
+
+        self.graph.add((person_uri, RDF.type, self.SCHEMA.Person))
+        if person.name:
+            self.graph.add((person_uri, self.SCHEMA.name, Literal(person.name)))
+
+        if person.website:
+            sanitized = sanitize_url(person.website)
+            if sanitized:
+                self.graph.add((person_uri, self.SCHEMA.url, URIRef(sanitized)))
+
+        if person.role:
+            self.graph.add((person_uri, self.SCHEMA.jobTitle, Literal(person.role)))
+
+        if person.source_uri:
+            sanitized_source = sanitize_url(person.source_uri)
+            if sanitized_source:
+                self.graph.add(
+                    (person_uri, self.SCHEMA.sameAs, URIRef(sanitized_source))
+                )
+
+        return person_uri
+
     def _generate_claim_review_rdf(
         self, claim_review: CanonicalClaimReview, generated_uris: set[str]
     ) -> None:
@@ -180,6 +229,9 @@ class RDFGenerator:
             if claim_review.organization
             else None
         )
+
+        # Generate people RDF
+        person_uris = self._generate_people_rdf(claim_review.authors, generated_uris)
 
         # Generate claim RDF
         claim_uri = self._generate_claim_rdf(claim_review.claim, generated_uris)
@@ -203,6 +255,9 @@ class RDFGenerator:
         # Link to organization
         if org_uri:
             self.graph.add((review_uri, self.SCHEMA.author, org_uri))
+
+        for person_uri in person_uris:
+            self.graph.add((review_uri, self.SCHEMA.author, person_uri))
 
         # Review URL
         if claim_review.review_url:
@@ -251,10 +306,22 @@ class RDFGenerator:
                     )
                 )
 
-        # Review text if available
+        # Review body text
         if claim_review.review_text:
             self.graph.add(
                 (review_uri, self.SCHEMA.text, Literal(claim_review.review_text))
+            )
+
+        # Description
+        if claim_review.description:
+            self.graph.add(
+                (review_uri, self.SCHEMA.description, Literal(claim_review.description))
+            )
+
+        # Abstract
+        if claim_review.abstract:
+            self.graph.add(
+                (review_uri, self.SCHEMA.abstract, Literal(claim_review.abstract))
             )
 
         # Review URL text if available
@@ -266,6 +333,28 @@ class RDFGenerator:
                     Literal(claim_review.review_url_text),
                 )
             )
+
+        # Keywords
+        for keyword in claim_review.keywords:
+            if not keyword:
+                continue
+            self.graph.add((review_uri, self.SCHEMA.keywords, Literal(keyword)))
+
+        # License
+        if claim_review.license_url:
+            sanitized_license = sanitize_url(claim_review.license_url)
+            if sanitized_license:
+                self.graph.add(
+                    (review_uri, self.SCHEMA.license, URIRef(sanitized_license))
+                )
+            else:
+                self.graph.add(
+                    (
+                        review_uri,
+                        self.SCHEMA.license,
+                        Literal(claim_review.license_url),
+                    )
+                )
 
         # Entities in review
         for entity in claim_review.entities_in_review:
@@ -315,6 +404,10 @@ class RDFGenerator:
         self.graph.add((claim_uri, RDF.type, self.SCHEMA.Claim))
         self.graph.add((claim_uri, self.SCHEMA.text, Literal(claim.normalized_text)))
 
+        # Headline
+        if claim.headline:
+            self.graph.add((claim_uri, self.SCHEMA.headline, Literal(claim.headline)))
+
         # Appearances
         for appearance_url in claim.appearances:
             sanitized_url = sanitize_url(appearance_url)
@@ -322,6 +415,12 @@ class RDFGenerator:
                 self.graph.add(
                     (claim_uri, self.SCHEMA.appearance, URIRef(sanitized_url))
                 )
+
+        # Keywords
+        for keyword in claim.keywords:
+            if not keyword:
+                continue
+            self.graph.add((claim_uri, self.SCHEMA.keywords, Literal(keyword)))
 
         # Enrichment data
         if claim.emotion and claim.emotion != "None":
@@ -421,8 +520,43 @@ class RDFGenerator:
         self.graph.add((rating_uri, RDF.type, self.SCHEMA.Rating))
 
         # Rating properties
-        self.graph.add((rating_uri, self.SCHEMA.ratingValue, Literal(rating.label)))
-        self.graph.add((rating_uri, self.SCHEMA.name, Literal(rating.label)))
+        label_for_name = rating.original_label or rating.label
+        if label_for_name:
+            self.graph.add((rating_uri, self.SCHEMA.name, Literal(label_for_name)))
+
+        if rating.rating_value is not None:
+            self.graph.add(
+                (
+                    rating_uri,
+                    self.SCHEMA.ratingValue,
+                    Literal(rating.rating_value, datatype=XSD.float),
+                )
+            )
+        elif rating.label:
+            self.graph.add((rating_uri, self.SCHEMA.ratingValue, Literal(rating.label)))
+
+        if rating.best_rating is not None:
+            self.graph.add(
+                (
+                    rating_uri,
+                    self.SCHEMA.bestRating,
+                    Literal(rating.best_rating, datatype=XSD.float),
+                )
+            )
+
+        if rating.worst_rating is not None:
+            self.graph.add(
+                (
+                    rating_uri,
+                    self.SCHEMA.worstRating,
+                    Literal(rating.worst_rating, datatype=XSD.float),
+                )
+            )
+
+        if rating.explanation:
+            self.graph.add(
+                (rating_uri, self.SCHEMA.ratingExplanation, Literal(rating.explanation))
+            )
 
         # Link to organization if provided
         if organization_uri:
