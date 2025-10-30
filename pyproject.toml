@@ -11,20 +11,20 @@ requires-python = ">=3.11.0, <3.14"
 readme = "README.md"
 license = "MIT"
 dependencies = [
-    "psycopg[binary, pool]>=3.2.10,<4",
+    "psycopg[binary, pool]>=3.2.12,<4",
     "trafilatura>=2.0.0,<3",
     "requests>=2.32.5,<3",
-    "pyyaml>=6.0.2,<7",
-    "rdflib>=7.1.4,<8",
+    "pyyaml>=6.0.3,<7",
+    "rdflib>=7.3.0,<8",
     "defusedxml>=0.7.1,<0.8",
     "dacite>=1.9.2,<2",
     "tqdm>=4.67.1,<5",
-    "python-dotenv>=1.1.1,<2",
-    "fastapi>=0.115.4,<0.116",
-    "uvicorn[standard]>=0.36.0,<0.37",
-    "sqlalchemy>=2.0.43,<3",
+    "python-dotenv>=1.2.1,<2",
+    "fastapi>=0.120.2,<0.121",
+    "uvicorn[standard]>=0.38.0,<0.39",
+    "sqlalchemy>=2.0.44,<3",
     "asyncpg>=0.30.0,<0.31",
-    "pydantic>=2.11.9,<3",
+    "pydantic>=2.12.3,<3",
 ]
 
 [project.scripts]
@@ -32,10 +32,10 @@ climatesense-kg = "climatesense_kg.cli:main"
 
 [dependency-groups]
 dev = [
-    "ruff>=0.13.0,<0.14",
+    "ruff>=0.14.2,<0.15",
     "pytest>=8.4.2,<9",
-    "ty>=0.0.1a20",
-    "pre-commit>=4.3.0",
+    "ty==0.0.1a25",
+    "pre-commit>=4.3.0,<5",
 ]
 
 [tool.hatch.build.targets.sdist]
