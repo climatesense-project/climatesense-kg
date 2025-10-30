@@ -10,12 +10,6 @@ from urllib.parse import urlparse
 from ..utils.text_processing import normalize_text
 
 
-def _empty_language_map() -> dict[str | None, str]:
-    """Return an empty language-keyed dictionary."""
-
-    return {}
-
-
 def _empty_str_list() -> list[str]:
     """Provide an empty list of strings."""
 
