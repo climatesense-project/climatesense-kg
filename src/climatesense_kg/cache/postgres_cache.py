@@ -1,5 +1,7 @@
 """PostgreSQL implementation of the cache interface."""
 
+from __future__ import annotations
+
 import json
 import logging
 from typing import Any
@@ -213,6 +215,43 @@ class PostgresCache(CacheInterface):
             self.logger.error(f"Error reading batch from cache for {step}: {e}")
             return {}
 
+    def set_many(
+        self,
+        uri_step_payloads: list[tuple[str, str, dict[str, Any]]],
+    ) -> bool:
+        """Store data in cache for multiple URI-step combinations in a single batch operation."""
+        if not uri_step_payloads:
+            return True
+
+        try:
+            batch_data: list[tuple[str, str, str, bool, str]] = []
+            for uri, step, payload in uri_step_payloads:
+                cache_key = self.generate_cache_key(uri, step)
+                success = bool(payload.get("success", True))
+                batch_data.append((cache_key, step, uri, success, json.dumps(payload)))
+
+            with self.connection_pool.connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.executemany(
+                        """
+                        INSERT INTO cache_entries (cache_key, step, uri, success, payload)
+                        VALUES (%s, %s, %s, %s, %s)
+                        ON CONFLICT (cache_key)
+                        DO UPDATE SET
+                            success = EXCLUDED.success,
+                            payload = EXCLUDED.payload
+                        """,
+                        batch_data,
+                    )
+                    connection.commit()
+
+            self.logger.debug(f"Batch cached {len(uri_step_payloads)} entries")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Error batch writing to cache: {e}")
+            return False
+
     def ping(self) -> bool:
         """Test PostgreSQL connection."""
         try:
@@ -231,7 +270,7 @@ class PostgresCache(CacheInterface):
         except Exception as e:
             self.logger.warning(f"Error closing PostgreSQL connection pool: {e}")
 
-    def __enter__(self) -> "PostgresCache":
+    def __enter__(self) -> PostgresCache:
         """Context manager entry."""
         return self
 
