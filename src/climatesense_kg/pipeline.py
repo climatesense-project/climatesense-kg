@@ -245,7 +245,9 @@ class Pipeline:
 
         self.cache.set_many(batch_data)
 
-    def run(self, skip_download: bool = False) -> PipelineResults:
+    def run(
+        self, skip_download: bool = False, force_regenerate: bool = False
+    ) -> PipelineResults:
         """Execute the complete pipeline.
 
         Args:
@@ -274,7 +276,9 @@ class Pipeline:
         try:
             # Step 1: Data Ingestion
             self.logger.info("Step 1: Data Ingestion")
-            canonical_reviews = self._run_ingestion(skip_download=skip_download)
+            canonical_reviews = self._run_ingestion(
+                skip_download=skip_download, force_regenerate=force_regenerate
+            )
             results["data_sources"] = {
                 "total_items": len(canonical_reviews),
                 "sources_processed": len(
@@ -348,7 +352,9 @@ class Pipeline:
         self._run_datetime = None
         return results
 
-    def _run_ingestion(self, skip_download: bool = False) -> list[CanonicalClaimReview]:
+    def _run_ingestion(
+        self, skip_download: bool = False, force_regenerate: bool = False
+    ) -> list[CanonicalClaimReview]:
         """Run data ingestion using DataManager.
 
         Args:
@@ -370,7 +376,7 @@ class Pipeline:
                 total_items_before_filtering += len(items)
 
                 # Filter out already-processed items
-                if self.cache:
+                if self.cache and not force_regenerate:
                     self.logger.info(
                         f"Filtering already processed items using cache for {source_config.name}..."
                     )
@@ -390,6 +396,10 @@ class Pipeline:
                     )
                     all_items.extend(new_items)
                 else:
+                    if force_regenerate:
+                        self.logger.info(
+                            f"Force regenerating all items from {source_config.name} (cache filtering disabled)"
+                        )
                     self.logger.info(
                         f"Ingested {len(items)} items from {source_config.name} (no cache filtering)"
                     )

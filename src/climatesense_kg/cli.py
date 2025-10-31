@@ -43,6 +43,11 @@ Examples:
         action="store_true",
         help="Skip data downloads and use only cached/already downloaded data",
     )
+    run_parser.add_argument(
+        "--force-regenerate",
+        action="store_true",
+        help="Force regeneration of RDF for all items, ignoring cache",
+    )
 
     return parser
 
@@ -126,6 +131,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
         pipeline = Pipeline(config)
         results = pipeline.run(
             skip_download=getattr(args, "skip_download", False),
+            force_regenerate=getattr(args, "force_regenerate", False),
         )
     except Exception as e:
         print(f"Pipeline execution failed: {e}", file=sys.stderr)
