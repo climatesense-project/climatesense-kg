@@ -172,7 +172,6 @@ class CanonicalClaimReview:
             + (self.rating.label if self.rating else "")
             + review_url_normalized_for_id
             + (self.date_published or "")
-            + (self.language or "")
         )
         hash_value = hashlib.sha224(identifier.encode()).hexdigest()
         return f"claim-review/{hash_value}"
