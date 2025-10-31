@@ -1,5 +1,7 @@
 """Cache interface definition."""
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 import hashlib
 from typing import Any
@@ -39,6 +41,23 @@ class CacheInterface(ABC):
 
         Returns:
             True if successfully cached, False otherwise
+        """
+        pass
+
+    @abstractmethod
+    def set_many(
+        self,
+        uri_step_payloads: list[tuple[str, str, dict[str, Any]]],
+    ) -> bool:
+        """
+        Store data in cache for multiple URI-step combinations in a single batch operation.
+        Use this for bulk operations to avoid performance issues.
+
+        Args:
+            uri_step_payloads: List of (uri, step, payload) tuples to cache
+
+        Returns:
+            True if all items were successfully cached, False otherwise
         """
         pass
 
