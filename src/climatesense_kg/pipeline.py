@@ -74,6 +74,29 @@ class PipelineResults(TypedDict):
 class Pipeline:
     """Main pipeline orchestrator."""
 
+    def _get_fully_processed_uris(self, uris: list[str]) -> set[str]:
+        """Return URIs that completed pipeline output and all enricher steps."""
+        if not self.cache or not uris:
+            return set()
+
+        pipeline_cached = self.cache.get_many(uris, "pipeline.processed_items")
+        processed_uris = set(pipeline_cached.keys())
+
+        if not processed_uris:
+            return set()
+
+        for enricher in self.enrichers:
+            if not enricher.is_available():
+                continue
+            enricher_cached = self.cache.get_many(
+                list(processed_uris), enricher.step_name
+            )
+            processed_uris &= set(enricher_cached.keys())
+            if not processed_uris:
+                break
+
+        return processed_uris
+
     def __init__(self, config: PipelineConfig):
         load_dotenv()
 
@@ -197,69 +220,30 @@ class Pipeline:
             self.logger.error(f"Failed to initialize deployment handler: {e}")
             self.deployment_handler = None
 
-    def _is_uri_processed(self, uri: str) -> bool:
-        """Check if a URI has been successfully processed."""
-        if not self.cache:
-            return False
-
-        # Check pipeline completion cache
-        pipeline_data = self.cache.get(uri, "pipeline.processed_items")
-        if pipeline_data is None:
-            return False
-
-        # Check all enricher steps
-        for enricher in self.enrichers:
-            if enricher.is_available():
-                enricher_data = self.cache.get(uri, enricher.step_name)
-                if enricher_data is None:
-                    return False
-
-        return True
-
-    def _mark_uri_processed(
-        self, uri: str, source_name: str, rdf_file_path: str
+    def _mark_uris_processed(
+        self, uri_source_rdf_tuples: list[tuple[str, str, str]]
     ) -> None:
-        """Mark a URI as successfully processed."""
-        if not self.cache:
+        """Mark multiple URIs as successfully processed."""
+        if not self.cache or not uri_source_rdf_tuples:
             return
 
         step_name = "pipeline.processed_items"
-        payload = {
-            "source": source_name,
-            "processed_at": datetime.now().isoformat(),
-            "rdf_file_path": rdf_file_path,
-        }
+        processed_at = datetime.now().isoformat()
 
-        self.cache.set(uri, step_name, payload)
+        batch_data = [
+            (
+                uri,
+                step_name,
+                {
+                    "source": source_name,
+                    "processed_at": processed_at,
+                    "rdf_file_path": rdf_file_path,
+                },
+            )
+            for uri, source_name, rdf_file_path in uri_source_rdf_tuples
+        ]
 
-    def _get_fully_processed_uris(self, uris: list[str]) -> set[str]:
-        """
-        Find which URIs are fully processed using bulk cache queries.
-
-        Returns:
-            Set of URIs that have completed all processing steps
-        """
-        if not self.cache or not uris:
-            return set()
-
-        # Check pipeline completion step
-        pipeline_cached = self.cache.get_many(uris, "pipeline.processed_items")
-        pipeline_processed_uris = set(pipeline_cached.keys())
-
-        if not pipeline_processed_uris:
-            return set()
-
-        # Check all enricher steps for pipeline-processed items
-        fully_processed_uris = pipeline_processed_uris
-        for enricher in self.enrichers:
-            if enricher.is_available():
-                enricher_cached = self.cache.get_many(
-                    list(fully_processed_uris), enricher.step_name
-                )
-                # Only keep URIs that have this enricher step cached
-                fully_processed_uris &= set(enricher_cached.keys())
-
-        return fully_processed_uris
+        self.cache.set_many(batch_data)
 
     def run(self, skip_download: bool = False) -> PipelineResults:
         """Execute the complete pipeline.
@@ -494,8 +478,12 @@ class Pipeline:
                 self.rdf_generator.save(source_reviews, output_path, output_format)
 
                 # Mark URIs as processed after successful RDF generation
-                for review in source_reviews:
-                    self._mark_uri_processed(review.uri, source_name, str(output_path))
+                uri_tuples = [
+                    (review.uri, source_name, str(output_path))
+                    for review in source_reviews
+                    if review.uri
+                ]
+                self._mark_uris_processed(uri_tuples)
 
                 file_size = output_path.stat().st_size if output_path.exists() else 0
                 total_file_size += file_size
