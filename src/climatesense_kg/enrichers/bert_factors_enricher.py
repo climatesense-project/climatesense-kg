@@ -286,10 +286,6 @@ class BertFactorsEnricher(Enricher):
             "max_length": self.max_length,
         }
         endpoint = self.MODEL_CONFIG[model_key]["endpoint"]
-        print(
-            f"Calling CIMPLE Factors API for model {model_key} at endpoint {endpoint}..."
-        )
-        print("URL:", f"{self.api_url}/predict/{endpoint}")
         response = requests.post(
             f"{self.api_url}/predict/{endpoint}",
             headers=self.headers,
