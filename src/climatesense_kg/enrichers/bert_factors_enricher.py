@@ -52,6 +52,10 @@ class BertFactorsEnricher(Enricher):
             "User-Agent": "ClimateSense-Pipeline/1.0 (+https://github.com/climatesense-project)",
         }
 
+    def required_cache_steps(self) -> list[str]:
+        """Require each per-model cache entry before marking an item processed."""
+        return [self._cache_step(model) for model in self.MODEL_KEYS]
+
     def enrich(self, items: list[CanonicalClaimReview]) -> list[CanonicalClaimReview]:
         """Enrich claim reviews while persisting results per model."""
 

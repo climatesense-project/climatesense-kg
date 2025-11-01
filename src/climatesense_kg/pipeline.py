@@ -88,10 +88,15 @@ class Pipeline:
         for enricher in self.enrichers:
             if not enricher.is_available():
                 continue
-            enricher_cached = self.cache.get_many(
-                list(processed_uris), enricher.step_name
-            )
-            processed_uris &= set(enricher_cached.keys())
+            step_names = enricher.required_cache_steps()
+            if not step_names:
+                continue
+
+            for step_name in step_names:
+                enricher_cached = self.cache.get_many(list(processed_uris), step_name)
+                processed_uris &= set(enricher_cached.keys())
+                if not processed_uris:
+                    break
             if not processed_uris:
                 break
 

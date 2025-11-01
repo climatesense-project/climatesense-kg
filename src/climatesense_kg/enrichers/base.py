@@ -25,6 +25,10 @@ class Enricher(ABC):
         self.step_name = f"enricher.{name}"
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
+    def required_cache_steps(self) -> list[str]:
+        """Return cache step names that must exist to consider an item processed."""
+        return [self.step_name]
+
     def enrich(self, items: list[CanonicalClaimReview]) -> list[CanonicalClaimReview]:
         """
         Enrich a list of claim reviews.
