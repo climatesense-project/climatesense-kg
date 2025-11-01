@@ -60,4 +60,7 @@ def mock_cache():
     cache = Mock()
     cache.get = Mock(return_value=None)
     cache.set = Mock(return_value=True)
+    cache.get_many = Mock(return_value={})
+    cache.set_many = Mock(return_value=True)
+    cache.delete = Mock(return_value=True)
     return cache

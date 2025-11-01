@@ -86,7 +86,7 @@ def sanitize_url(url: str) -> str | None:
 
     try:
         parsed = urlparse(to_parse)
-    except Exception as exc:  # pragma: no cover - defensive logging
+    except Exception as exc:  # pragma: no cover
         logger.warning(f"Failed to parse URL '{candidate}': {exc}")
         return None
 

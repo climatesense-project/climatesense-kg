@@ -1,5 +1,6 @@
 """Tests for BertFactorsEnricher."""
 
+import json
 import os
 from typing import Any
 from unittest.mock import Mock, patch
@@ -8,6 +9,20 @@ import pytest
 import requests
 from src.climatesense_kg.config.models import CanonicalClaimReview
 from src.climatesense_kg.enrichers.bert_factors_enricher import BertFactorsEnricher
+
+
+class MockHTTPResponse:
+    """Helper response object for mocking requests."""
+
+    def __init__(
+        self, status_code: int = 200, json_data: Any | None = None, text: str = ""
+    ) -> None:
+        self.status_code = status_code
+        self._json_data: Any = json_data if json_data is not None else {}
+        self.text = text
+
+    def json(self) -> Any:
+        return self._json_data
 
 
 @pytest.fixture
@@ -115,7 +130,11 @@ class TestBertFactorsEnricherEnrichment:
     ) -> None:
         """Test enrichment when enricher is not available."""
         bert_enricher.cache = mock_cache
-        mock_cache.get_many.return_value = {}
+
+        def empty_get_many(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+            return {}
+
+        mock_cache.get_many.side_effect = empty_get_many
 
         result = bert_enricher.enrich([sample_claim_review])[0]
         assert result == sample_claim_review
@@ -124,11 +143,16 @@ class TestBertFactorsEnricherEnrichment:
         assert sample_claim_review.claim.tropes == []
         assert sample_claim_review.claim.persuasion_techniques == []
 
-        mock_cache.set.assert_called_once()
-        _, step_name, payload = mock_cache.set.call_args[0]
-        assert step_name == "enricher.bert_factors"
-        assert payload["success"] is False
-        assert payload["error"]["type"] == "service_unavailable"
+        assert mock_cache.set.call_count == len(BertFactorsEnricher.MODEL_KEYS)
+        expected_steps = {
+            f"enricher.bert_factors.{model}" for model in BertFactorsEnricher.MODEL_KEYS
+        }
+        actual_steps = {call.args[1] for call in mock_cache.set.call_args_list}
+        assert actual_steps == expected_steps
+        for call in mock_cache.set.call_args_list:
+            payload = call.args[2]
+            assert payload["success"] is False
+            assert payload["error"]["type"] == "service_unavailable"
 
     @patch("requests.post")
     @patch.object(BertFactorsEnricher, "is_available", return_value=True)
@@ -142,27 +166,31 @@ class TestBertFactorsEnricherEnrichment:
         """Test successful enrichment with mocked API."""
         enricher = BertFactorsEnricher()
         enricher.cache = mock_cache
-        mock_cache.get_many.return_value = {}
 
-        # Mock API response
-        mock_response = Mock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "results": [
-                {
-                    "emotion": "Anger",
-                    "sentiment": "Negative",
-                    "political_leaning": "Left",
-                    "tropes": ["Time Will Tell"],
-                    "persuasion_techniques": ["Appeal to authority"],
-                    "conspiracies": {"mentioned": [], "promoted": []},
-                    "climate_related": True,
-                }
-            ],
-            "processed_count": 1,
-            "total_count": 1,
+        def empty_get_many(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+            return {}
+
+        mock_cache.get_many.side_effect = empty_get_many
+
+        model_payloads: dict[str, dict[str, Any]] = {
+            "emotion": {"value": "Anger"},
+            "sentiment": {"value": "Negative"},
+            "political-leaning": {"value": "Left"},
+            "tropes": {"value": ["Time Will Tell"]},
+            "persuasion-techniques": {"value": ["Appeal to authority"]},
+            "conspiracy": {"value": {"mentioned": [], "promoted": []}},
+            "climate-related": {"value": True},
         }
-        mock_post.return_value = mock_response
+
+        def post_side_effect(
+            url: str, headers: dict[str, str], data: str, timeout: int
+        ) -> MockHTTPResponse:
+            endpoint = url.split("/predict/")[-1]
+            assert endpoint in model_payloads
+            _ = json.loads(data)
+            return MockHTTPResponse(200, {"results": [model_payloads[endpoint]]})
+
+        mock_post.side_effect = post_side_effect
 
         result = enricher.enrich([sample_claim_review])[0]
 
@@ -173,6 +201,8 @@ class TestBertFactorsEnricherEnrichment:
         assert result.claim.persuasion_techniques == ["Appeal to authority"]
         assert result.claim.conspiracies == {"mentioned": [], "promoted": []}
         assert result.claim.climate_related is True
+        assert mock_post.call_count == len(BertFactorsEnricher.MODEL_KEYS)
+        assert mock_cache.set.call_count == len(BertFactorsEnricher.MODEL_KEYS)
 
     def test_enrich_with_cached_data(
         self,
@@ -182,18 +212,37 @@ class TestBertFactorsEnricherEnrichment:
         """Test enrichment with cached data."""
         enricher = BertFactorsEnricher()
         enricher.cache = mock_cache
-        cached_factors: dict[str, Any] = {
-            "data": {
-                "emotion": "Happiness",
-                "sentiment": "Positive",
-                "political_leaning": "Right",
-                "tropes": ["Test trope"],
-                "persuasion_techniques": ["Loaded language"],
-                "conspiracies": {"mentioned": [], "promoted": ["New World Order"]},
-                "climate_related": False,
-            }
-        }
-        mock_cache.get_many.return_value = {sample_claim_review.uri: cached_factors}
+        uri = sample_claim_review.uri
+
+        def get_many_side_effect(uris: list[str], step: str) -> dict[str, Any]:
+            assert uris == [uri]
+            if step == "enricher.bert_factors.emotion":
+                return {uri: {"success": True, "data": "Happiness"}}
+            if step == "enricher.bert_factors.sentiment":
+                return {uri: {"success": True, "data": "Positive"}}
+            if step == "enricher.bert_factors.political_leaning":
+                return {uri: {"success": True, "data": "Right"}}
+            if step == "enricher.bert_factors.tropes":
+                return {uri: {"success": True, "data": ["Test trope"]}}
+            if step == "enricher.bert_factors.persuasion_techniques":
+                return {uri: {"success": True, "data": ["Loaded language"]}}
+            if step == "enricher.bert_factors.conspiracies":
+                return {
+                    uri: {
+                        "success": True,
+                        "data": {
+                            "mentioned": [],
+                            "promoted": ["New World Order"],
+                        },
+                    }
+                }
+            if step == "enricher.bert_factors.climate_related":
+                return {uri: {"success": True, "data": False}}
+            if step == "enricher.bert_factors":
+                return {}
+            return {}
+
+        mock_cache.get_many.side_effect = get_many_side_effect
 
         with patch.object(enricher, "is_available", return_value=True):
             result = enricher.enrich([sample_claim_review])[0]
@@ -209,9 +258,7 @@ class TestBertFactorsEnricherEnrichment:
         }
         assert result.claim.climate_related is False
 
-        mock_cache.get_many.assert_called_once_with(
-            [sample_claim_review.uri], "enricher.bert_factors"
-        )
+        assert mock_cache.get_many.call_count == len(BertFactorsEnricher.MODEL_KEYS)
         mock_cache.set.assert_not_called()
 
     @patch.object(BertFactorsEnricher, "is_available", return_value=True)
@@ -225,17 +272,22 @@ class TestBertFactorsEnricherEnrichment:
         sample_claim_review.claim.text = ""
         enricher = BertFactorsEnricher()
         enricher.cache = mock_cache
-        mock_cache.get_many.return_value = {}
+
+        def empty_get_many(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+            return {}
+
+        mock_cache.get_many.side_effect = empty_get_many
 
         result = enricher.enrich([sample_claim_review])[0]
 
         assert result.claim.emotion is None
         assert result.claim.climate_related is None
-        mock_cache.set.assert_called_once()
-        _, step_name, payload = mock_cache.set.call_args[0]
-        assert step_name == "enricher.bert_factors"
-        assert payload["success"] is False
-        assert payload["error"]["type"] == "missing_text"
+        assert mock_cache.set.call_count == len(BertFactorsEnricher.MODEL_KEYS)
+        for call in mock_cache.set.call_args_list:
+            assert call.args[1].startswith("enricher.bert_factors.")
+            payload = call.args[2]
+            assert payload["success"] is False
+            assert payload["error"]["type"] == "missing_text"
 
 
 class TestBertFactorsEnricherBatch:
@@ -268,22 +320,64 @@ class TestBertFactorsEnricherBatch:
         enricher = BertFactorsEnricher()
         enricher.cache = mock_cache
 
-        def cache_side_effect(
-            uris: list[str], namespace: str = ""
-        ) -> dict[str, dict[str, Any]]:
+        first_uri = sample_claim_reviews[0].uri
+
+        def cache_side_effect(uris: list[str], step: str) -> dict[str, dict[str, Any]]:
             result: dict[str, dict[str, Any]] = {}
-            for uri in uris:
-                if sample_claim_reviews[0].uri == uri:
-                    result[uri] = {"emotion": "Fear", "sentiment": "Negative"}
+            if first_uri not in uris:
+                return result
+            if step == "enricher.bert_factors.emotion":
+                result[first_uri] = {"success": True, "data": "Fear"}
+            elif step == "enricher.bert_factors.sentiment":
+                result[first_uri] = {"success": True, "data": "Negative"}
+            elif step == "enricher.bert_factors":
+                return {}
             return result
 
         mock_cache.get_many.side_effect = cache_side_effect
+
+        def post_side_effect(
+            url: str, headers: dict[str, str], data: str, timeout: int
+        ) -> MockHTTPResponse:
+            endpoint = url.split("/predict/")[-1]
+            payload = json.loads(data)
+            assert "texts" in payload
+            if endpoint == "emotion":
+                return MockHTTPResponse(200, {"results": [{"value": "Joy"}]})
+            if endpoint == "sentiment":
+                return MockHTTPResponse(200, {"results": [{"value": "Neutral"}]})
+            if endpoint == "political-leaning":
+                return MockHTTPResponse(200, {"results": [{"value": "Center"}]})
+            if endpoint == "tropes":
+                return MockHTTPResponse(200, {"results": [{"value": []}]})  # type: ignore
+            if endpoint == "persuasion-techniques":
+                return MockHTTPResponse(200, {"results": [{"value": []}]})  # type: ignore
+            if endpoint == "conspiracy":
+                return MockHTTPResponse(
+                    200,
+                    {  # type: ignore
+                        "results": [
+                            {
+                                "value": {
+                                    "mentioned": [],
+                                    "promoted": [],
+                                }
+                            }
+                        ]
+                    },
+                )
+            if endpoint == "climate-related":
+                return MockHTTPResponse(200, {"results": [{"value": False}]})
+            raise AssertionError(f"Unexpected endpoint {endpoint}")
+
+        mock_post.side_effect = post_side_effect
 
         with patch.object(enricher, "is_available", return_value=True):
             results = enricher.enrich(sample_claim_reviews)
 
         assert len(results) == 3
         assert all(isinstance(r, CanonicalClaimReview) for r in results)
+        assert mock_post.call_count >= len(BertFactorsEnricher.MODEL_KEYS)
 
 
 class TestBertFactorsEnricherAPIIntegration:
@@ -302,13 +396,16 @@ class TestBertFactorsEnricherAPIIntegration:
         """Test enrichment with API error handling."""
         enricher = BertFactorsEnricher()
         enricher.cache = mock_cache
-        mock_cache.get_many.return_value = {}
+
+        def empty_get_many(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+            return {}
+
+        mock_cache.get_many.side_effect = empty_get_many
 
         # Test API error response
-        mock_response = Mock()
-        mock_response.status_code = 500
-        mock_response.text = "Internal Server Error"
-        mock_post.return_value = mock_response
+        mock_post.return_value = MockHTTPResponse(
+            status_code=500, text="Internal Server Error"
+        )
 
         result = enricher.enrich([sample_claim_review])[0]
 
@@ -316,6 +413,7 @@ class TestBertFactorsEnricherAPIIntegration:
         assert result == sample_claim_review
         assert result.claim.emotion is None
         assert result.claim.sentiment is None
+        assert mock_post.call_count == len(BertFactorsEnricher.MODEL_KEYS)
 
     @patch("requests.post")
     @patch.object(BertFactorsEnricher, "is_available", return_value=True)
@@ -330,7 +428,11 @@ class TestBertFactorsEnricherAPIIntegration:
         """Test enrichment with API connection error."""
         enricher = BertFactorsEnricher()
         enricher.cache = mock_cache
-        mock_cache.get_many.return_value = {}
+
+        def empty_get_many(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+            return {}
+
+        mock_cache.get_many.side_effect = empty_get_many
 
         # Test connection error
         mock_post.side_effect = requests.ConnectionError("Connection failed")
@@ -341,6 +443,7 @@ class TestBertFactorsEnricherAPIIntegration:
         assert result == sample_claim_review
         assert result.claim.emotion is None
         assert result.claim.sentiment is None
+        assert mock_post.call_count == len(BertFactorsEnricher.MODEL_KEYS)
 
     @patch("requests.post")
     @patch.object(BertFactorsEnricher, "is_available", return_value=True)
@@ -355,7 +458,11 @@ class TestBertFactorsEnricherAPIIntegration:
         """Test enrichment with empty claim text."""
         enricher = BertFactorsEnricher()
         enricher.cache = mock_cache
-        mock_cache.get_many.return_value = {}
+
+        def empty_get_many(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+            return {}
+
+        mock_cache.get_many.side_effect = empty_get_many
 
         # Set empty normalized text
         sample_claim_review.claim.text = ""
