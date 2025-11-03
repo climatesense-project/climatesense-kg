@@ -2,8 +2,9 @@ PREFIX schema: <http://schema.org/>
 
 SELECT ?entity (COUNT(?entity) AS ?count)
 WHERE {
-  ?claim a schema:Claim ;
+  ?claim a ?rdfType ;
          schema:mentions ?entity .
+  VALUES ?rdfType { schema:Claim schema:ClaimReview }
 }
 GROUP BY ?entity
 ORDER BY DESC(?count)
