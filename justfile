@@ -121,7 +121,28 @@ cache-list:
     @cd docker && docker compose exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT step, COUNT(*) as count FROM cache_entries GROUP BY step ORDER BY count DESC;"' || true
 
 # ============================================================================
-# Database and Virtuoso Commands
+# Database Commands
+# ============================================================================
+
+db-shell:
+    cd docker && docker compose exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+
+db-backup FILE="${POSTGRES_DB:-db}_`date +%Y%m%d_%H%M%S`.dump.gz":
+    @docker compose -f docker/docker-compose.yml exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -Fc "$POSTGRES_DB"' | gzip > "{{FILE}}" && \
+    echo "✅ Database backup saved to {{FILE}}"
+
+db-restore FILE:
+    @echo "Restoring database from {{FILE}}"
+    @read -p "This will overwrite the current database. Are you sure? (y/N) " confirm; \
+    if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then \
+        gunzip -c "{{FILE}}" | docker compose -f docker/docker-compose.yml exec -T postgres sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists' && \
+        echo "✅ Database restored from {{FILE}}"; \
+    else \
+        echo "❌ Database restore cancelled"; \
+    fi
+
+# ============================================================================
+# Virtuoso Commands
 # ============================================================================
 
 # Connect to Virtuoso SQL interface
