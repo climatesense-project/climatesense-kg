@@ -1,5 +1,7 @@
 # Justfile for ClimateSense KG Pipeline
 # Install just: https://github.com/casey/just
+set dotenv-filename := ".env"
+set dotenv-load := true
 
 # ============================================================================
 # Default and Help Commands
