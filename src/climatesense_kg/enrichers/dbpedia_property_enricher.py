@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 import time
-from typing import Any
+from typing import Any, cast
 
 import requests
 
@@ -38,6 +38,7 @@ class PropertyQueryResult:
 class DBpediaPropertyEnricher(Enricher):
     """Enrich entities by fetching additional data from DBpedia."""
 
+    ENTITY_CACHE_STEP = "dbpedia.entity"
     DEFAULT_PROPERTIES: list[str] = []
 
     def __init__(self, **kwargs: Any) -> None:
@@ -190,6 +191,11 @@ class DBpediaPropertyEnricher(Enricher):
         if entity_uri in self._entity_cache:
             return self._entity_cache[entity_uri]
 
+        cached_properties = self._get_cached_entity_properties(entity_uri)
+        if cached_properties is not None:
+            self._entity_cache[entity_uri] = cached_properties
+            return cached_properties
+
         if not self.properties:
             return {}
 
@@ -216,6 +222,7 @@ class DBpediaPropertyEnricher(Enricher):
                 bindings = data.get("results", {}).get("bindings", [])
                 parsed = self._parse_bindings(bindings)
                 self._entity_cache[entity_uri] = parsed
+                self._set_cached_entity_properties(entity_uri, parsed)
                 return parsed
             except requests.RequestException as exc:
                 last_exception = exc
@@ -277,6 +284,38 @@ class DBpediaPropertyEnricher(Enricher):
                 property_values.append(property_value)
 
         return results
+
+    def _get_cached_entity_properties(
+        self, entity_uri: str
+    ) -> dict[str, list[dict[str, Any]]] | None:
+        """Retrieve cached entity properties from the persistent cache."""
+        if not self.cache:
+            return None
+
+        payload = self.cache.get(entity_uri, self.ENTITY_CACHE_STEP)
+        if not payload or not payload.get("success"):
+            return None
+
+        data = payload.get("data", {})
+        properties = data.get("properties")
+        if isinstance(properties, dict):
+            return cast(dict[str, list[dict[str, Any]]], properties)
+        return None
+
+    def _set_cached_entity_properties(
+        self, entity_uri: str, properties: dict[str, list[dict[str, Any]]]
+    ) -> None:
+        """Store entity properties in the persistent cache."""
+        if not self.cache:
+            return
+
+        payload: dict[str, Any] = {
+            "success": True,
+            "data": {
+                "properties": properties,
+            },
+        }
+        self.cache.set(entity_uri, self.ENTITY_CACHE_STEP, payload)
 
     def _normalize_property_uris(self, properties: list[str]) -> list[str]:
         """Normalize property identifiers into full URIs."""

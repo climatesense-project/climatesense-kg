@@ -122,8 +122,22 @@ class TestDBpediaPropertyEnricherProcessing:
             == "2.3522"
         )
 
-        mock_cache.set.assert_called_once()
-        payload: dict[str, Any] = mock_cache.set.call_args[0][2]
+        assert mock_cache.set.call_count == 2
+
+        entity_cache_call = mock_cache.set.call_args_list[0]
+        entity_payload: dict[str, Any] = entity_cache_call[0][2]
+        assert entity_cache_call[0][0] == entity_uri
+        assert entity_cache_call[0][1] == DBpediaPropertyEnricher.ENTITY_CACHE_STEP
+        assert (
+            entity_payload["data"]["properties"][
+                "http://www.w3.org/2003/01/geo/wgs84_pos#lat"
+            ][0]["value"]
+            == "48.8566"
+        )
+
+        claim_cache_call = mock_cache.set.call_args_list[1]
+        payload: dict[str, Any] = claim_cache_call[0][2]
+        assert claim_cache_call[0][1] == dbpedia_property_enricher.step_name
         assert payload["success"] is True
         assert entity_uri in payload["data"]["entities"]
 
@@ -185,3 +199,49 @@ class TestDBpediaPropertyEnricherProcessing:
         payload: dict[str, Any] = mock_cache.set.call_args[0][2]
         assert payload["success"] is False
         assert payload["data"]["failed_entities"][0]["uri"] == entity_uri
+
+    @patch("src.climatesense_kg.enrichers.dbpedia_property_enricher.time.sleep")
+    @patch("src.climatesense_kg.enrichers.dbpedia_property_enricher.requests.get")
+    def test_entity_cache_hit_skips_http(
+        self,
+        mock_get: Mock,
+        mock_sleep: Mock,
+        dbpedia_property_enricher: DBpediaPropertyEnricher,
+        sample_claim_review: CanonicalClaimReview,
+        mock_cache: Mock,
+    ) -> None:
+        entity_uri = "http://dbpedia.org/resource/Paris"
+        sample_claim_review.claim.entities.append({"uri": entity_uri})
+
+        mock_cache.get_many.return_value = {}
+        mock_cache.get.return_value = {
+            "success": True,
+            "data": {
+                "properties": {
+                    "http://www.w3.org/2003/01/geo/wgs84_pos#lat": [
+                        {
+                            "value": "48.8566",
+                            "type": "typed-literal",
+                            "datatype": "http://www.w3.org/2001/XMLSchema#float",
+                        }
+                    ]
+                }
+            },
+        }
+
+        result = dbpedia_property_enricher.enrich([sample_claim_review])[0]
+
+        mock_get.assert_not_called()
+        mock_cache.get.assert_called_once_with(
+            entity_uri, DBpediaPropertyEnricher.ENTITY_CACHE_STEP
+        )
+
+        entity_properties = result.claim.entities[0]["dbpedia_properties"]
+        assert (
+            entity_properties["http://www.w3.org/2003/01/geo/wgs84_pos#lat"][0]["value"]
+            == "48.8566"
+        )
+
+        mock_cache.set.assert_called_once()
+        claim_payload: dict[str, Any] = mock_cache.set.call_args[0][2]
+        assert claim_payload["success"] is True
