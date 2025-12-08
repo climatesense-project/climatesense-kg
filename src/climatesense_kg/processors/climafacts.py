@@ -100,13 +100,7 @@ class ClimafactsProcessor(BaseProcessor):
         authors = self._extract_people(graph, review_uri)
         rating = self._extract_rating(graph, review_uri)
 
-        date_published = self._literal_to_str(
-            self._first_literal(graph, review_uri, "datePublished")
-        )
-        if not date_published:
-            date_published = self._literal_to_str(
-                self._first_literal(graph, review_uri, "dateCreated")
-            )
+        date_published = self._find_creation_date(graph, metadata_nodes)
 
         review_body_literals = self._collect_literals(graph, review_uri, "reviewBody")
         review_text_literals = self._collect_literals(graph, review_uri, "text")
@@ -482,4 +476,15 @@ class ClimafactsProcessor(BaseProcessor):
         if isinstance(value, Literal):
             text = str(value).strip()
             return text if text else None
+        return None
+
+    def _find_creation_date(self, graph: Graph, nodes: list[Any]) -> str | None:
+        for node in nodes:
+            if not isinstance(node, (URIRef | BNode)):
+                continue
+            date_lit = self._first_literal(graph, node, "dateCreated")
+            if date_lit:
+                date_str = self._literal_to_str(date_lit)
+                if date_str:
+                    return date_str
         return None
