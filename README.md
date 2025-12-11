@@ -23,7 +23,7 @@
 - Data enrichment with:
   - Text extraction from URLs using [trafilatura](https://trafilatura.readthedocs.io/)
   - Entity linking using [DBpedia Spotlight](https://www.dbpedia-spotlight.org/)
-  - Factors classification using fine-tuned BERT models
+  - [Factors classification](https://github.com/climatesense-project/cimple-factors-server) using fine-tuned BERT models
 - RDF output using [Schema.org](https://schema.org/) and [CIMPLE ontology](https://github.com/CIMPLE-project/knowledge-base)
 - Triple store deployment supporting Virtuoso
 - [YAML-based configuration](#configuration)
