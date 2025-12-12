@@ -12,10 +12,22 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Verify that the required ODBC driver exists
-RUN if [ ! -f /usr/lib/x86_64-linux-gnu/odbc/virtodbc.so ]; then \
-    echo "Error: Required ODBC driver not found at /usr/lib/x86_64-linux-gnu/odbc/virtodbc.so" && \
-    exit 1; \
+# Normalize Virtuoso ODBC driver path
+RUN set -e; \
+    DRIVER_X86="/usr/lib/x86_64-linux-gnu/odbc/virtodbc.so"; \
+    DRIVER_ARM="/usr/lib/aarch64-linux-gnu/odbc/virtodbc.so"; \
+    TARGET="/usr/lib/odbc/virtodbc.so"; \
+    mkdir -p /usr/lib/odbc; \
+    if [ -f "$DRIVER_X86" ]; then \
+        ln -s "$DRIVER_X86" "$TARGET"; \
+        echo "Linked x86_64 Virtuoso driver -> $TARGET"; \
+    elif [ -f "$DRIVER_ARM" ]; then \
+        ln -s "$DRIVER_ARM" "$TARGET"; \
+        echo "Linked ARM64 Virtuoso driver -> $TARGET"; \
+    else \
+        echo "Error: Virtuoso ODBC driver not found on either architecture"; \
+        find / -name "virtodbc*.so"; \
+        exit 1; \
     fi
 
 # Copy requirements file
