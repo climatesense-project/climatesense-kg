@@ -69,13 +69,19 @@ class DesmogProcessor(BaseProcessor):
 
         organization = self._build_organization(graph, claim_uri)
 
+        # Get date_published from the archivedAt source
+        date_published = None
+        archived_ref = graph.value(claim_uri, SCHEMA.archivedAt)
+        if archived_ref:
+            date_published = self._literal_to_str(
+                graph.value(archived_ref, SCHEMA.datePublished)
+            )
+
         review = CanonicalClaimReview(
             claim=claim,
             review_url=review_url,
             organization=organization,
-            date_published=self._literal_to_str(
-                graph.value(claim_uri, SCHEMA.datePublished)
-            ),
+            date_published=date_published,
             language=self._literal_to_str(graph.value(claim_uri, SCHEMA.inLanguage)),
             rating=None,
             source_type="desmog",
