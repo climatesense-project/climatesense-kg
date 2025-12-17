@@ -51,6 +51,11 @@ Examples:
         ),
     )
     run_parser.add_argument(
+        "--skip-deployment",
+        action="store_true",
+        help="Skip deployment step (e.g., Virtuoso upload)",
+    )
+    run_parser.add_argument(
         "--force-regenerate",
         action="store_true",
         help="Force regeneration of RDF for all items, ignoring cache",
@@ -139,6 +144,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
         results = pipeline.run(
             skip_download=getattr(args, "skip_download", False),
             skip_enrichment=getattr(args, "skip_enrichment", False),
+            skip_deployment=getattr(args, "skip_deployment", False),
             force_regenerate=getattr(args, "force_regenerate", False),
         )
     except Exception as e:

@@ -255,12 +255,14 @@ class Pipeline:
         skip_download: bool = False,
         force_regenerate: bool = False,
         skip_enrichment: bool = False,
+        skip_deployment: bool = False,
     ) -> PipelineResults:
         """Execute the complete pipeline.
 
         Args:
             skip_download: Skip data downloads and use only cached/already downloaded data
             skip_enrichment: Apply cached enrichment data if present without running enrichers
+            skip_deployment: Skip deployment step even if a handler is configured
 
         Returns:
             Pipeline execution results and statistics
@@ -321,18 +323,26 @@ class Pipeline:
             results["rdf_generation"] = rdf_stats
 
             # Step 4: Deployment
-            if self.deployment_handler:
+            deployment_success = True
+            generated_files = rdf_stats.get("generated_files", [])
+            total_files = len(generated_files)
+
+            if skip_deployment:
+                self.logger.info("Step 4: Deployment skipped (--skip-deployment)")
+                files_deployed = 0
+            elif self.deployment_handler:
                 self.logger.info("Step 4: Deploying RDF data")
                 deployment_success = self._run_deployment(rdf_stats)
+                files_deployed = total_files if deployment_success else 0
             else:
-                deployment_success = True
-                results["deployment"] = {
-                    "success": deployment_success,
-                    "files_deployed": (
-                        len(rdf_stats["generated_files"]) if deployment_success else 0
-                    ),
-                    "total_files": len(rdf_stats["generated_files"]),
-                }
+                self.logger.info("Step 4: No deployment handler configured, skipping")
+                files_deployed = total_files
+
+            results["deployment"] = {
+                "success": deployment_success,
+                "files_deployed": files_deployed,
+                "total_files": total_files,
+            }
 
             # Final statistics
             results["total_processed"] = len(enriched_reviews)
