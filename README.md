@@ -42,20 +42,24 @@
 
 ## Table of Contents
 
-- [Overview](#-overview)
-  - [Key Features](#key-features)
-  - [Documentation & Resources](#documentation--resources)
-- [Prerequisites](#-prerequisites)
-- [Quick Start](#quick-start)
-- [Docker Setup](#docker-setup)
-- [Configuration](#configuration)
-- [Querying the Knowledge Graph](#querying-the-knowledge-graph)
-  - [Example SPARQL Queries](#example-sparql-queries)
-- [Development](#development)
-  - [Setup](#setup)
-  - [Common Tasks](#common-tasks)
-  - [CLI Usage](#cli-usage)
-- [Acknowledgments](#acknowledgments)
+- [ClimateSense KG Pipeline](#climatesense-kg-pipeline)
+  - [🔍 Overview](#-overview)
+    - [Key Features](#key-features)
+    - [Documentation \& Resources](#documentation--resources)
+  - [📋 Prerequisites](#-prerequisites)
+  - [Table of Contents](#table-of-contents)
+  - [Quick Start](#quick-start)
+  - [Docker Setup](#docker-setup)
+  - [Configuration](#configuration)
+  - [Querying the cache](#querying-the-cache)
+    - [Example SQL Queries](#example-sql-queries)
+  - [Querying the Knowledge Graph](#querying-the-knowledge-graph)
+    - [Example SPARQL Queries](#example-sparql-queries)
+  - [Development](#development)
+    - [Setup](#setup)
+    - [Common Tasks](#common-tasks)
+    - [CLI Usage](#cli-usage)
+  - [Acknowledgments](#acknowledgments)
 
 ## Quick Start
 
