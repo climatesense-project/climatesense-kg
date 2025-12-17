@@ -243,11 +243,14 @@ just pre-commit-all  # Run pre-commit on all files
 ### CLI Usage
 
 ```bash
+# Display help
 uv run climatesense-kg --help
-uv run climatesense-kg run --config config/minimal.yaml
 
-# Force redeployment even when no RDF changes are detected
-uv run climatesense-kg run --config config/minimal.yaml --force-deployment
+# Run minimal pipeline with debug logging
+uv run climatesense-kg run --config config/minimal.yaml --debug
+
+# Run daily pipeline skipping data download and forcing full RDF regeneration
+uv run climatesense-kg run --config config/daily.yaml --skip-download --force-regenerate
 ```
 
 ## Acknowledgments
