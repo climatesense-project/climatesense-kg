@@ -67,6 +67,25 @@ class Enricher(ABC):
 
         return results
 
+    def apply_cached_only(
+        self, items: list[CanonicalClaimReview]
+    ) -> list[CanonicalClaimReview]:
+        """Apply cached enrichment data without running the enricher."""
+        if not self.cache:
+            return items
+
+        uris = [item.uri for item in items if item.uri]
+        cached_data = self.cache.get_many(uris, self.step_name) if uris else {}
+
+        results: list[CanonicalClaimReview] = []
+        for item in items:
+            if item.uri and item.uri in cached_data:
+                results.append(self.apply_cached_data(item, cached_data[item.uri]))
+            else:
+                results.append(item)
+
+        return results
+
     @abstractmethod
     def _process_item(self, claim_review: CanonicalClaimReview) -> CanonicalClaimReview:
         """

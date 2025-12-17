@@ -251,12 +251,16 @@ class Pipeline:
         self.cache.set_many(batch_data)
 
     def run(
-        self, skip_download: bool = False, force_regenerate: bool = False
+        self,
+        skip_download: bool = False,
+        force_regenerate: bool = False,
+        skip_enrichment: bool = False,
     ) -> PipelineResults:
         """Execute the complete pipeline.
 
         Args:
             skip_download: Skip data downloads and use only cached/already downloaded data
+            skip_enrichment: Apply cached enrichment data if present without running enrichers
 
         Returns:
             Pipeline execution results and statistics
@@ -303,7 +307,9 @@ class Pipeline:
 
             # Step 2: Enrichment
             self.logger.info("Step 2: Data Enrichment")
-            enriched_reviews = self._run_enrichment(canonical_reviews)
+            enriched_reviews = self._run_enrichment(
+                canonical_reviews, skip_enrichment=skip_enrichment
+            )
             results["enrichment"] = {
                 "input_items": len(canonical_reviews),
                 "output_items": len(enriched_reviews),
@@ -424,9 +430,11 @@ class Pipeline:
         return all_items
 
     def _run_enrichment(
-        self, canonical_reviews: list[CanonicalClaimReview]
+        self,
+        canonical_reviews: list[CanonicalClaimReview],
+        skip_enrichment: bool = False,
     ) -> list[CanonicalClaimReview]:
-        """Run enrichment step."""
+        """Run enrichment step, optionally using cache only."""
         if not self.enrichers:
             self.logger.warning("No enrichers available, skipping enrichment")
             return canonical_reviews
@@ -434,6 +442,18 @@ class Pipeline:
         enriched_reviews = canonical_reviews
 
         for enricher in self.enrichers:
+            if skip_enrichment:
+                if enricher.cache:
+                    self.logger.info(
+                        f"Applying cached enrichment for {enricher.name} (skip enabled)"
+                    )
+                    enriched_reviews = enricher.apply_cached_only(enriched_reviews)
+                else:
+                    self.logger.info(
+                        f"Skipping {enricher.name}: no cache configured for cached-only enrichment"
+                    )
+                continue
+
             if enricher.is_available():
                 try:
                     self.logger.info(f"Applying enricher: {enricher.name}")

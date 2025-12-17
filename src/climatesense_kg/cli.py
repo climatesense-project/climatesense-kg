@@ -44,6 +44,13 @@ Examples:
         help="Skip data downloads and use only cached/already downloaded data",
     )
     run_parser.add_argument(
+        "--skip-enrichment",
+        action="store_true",
+        help=(
+            "Skip running enrichers; apply cached enrichment data if available"
+        ),
+    )
+    run_parser.add_argument(
         "--force-regenerate",
         action="store_true",
         help="Force regeneration of RDF for all items, ignoring cache",
@@ -131,6 +138,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
         pipeline = Pipeline(config)
         results = pipeline.run(
             skip_download=getattr(args, "skip_download", False),
+            skip_enrichment=getattr(args, "skip_enrichment", False),
             force_regenerate=getattr(args, "force_regenerate", False),
         )
     except Exception as e:
