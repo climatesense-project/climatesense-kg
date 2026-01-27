@@ -27,7 +27,7 @@ services:
       start_period: 10s
 
   virtuoso:
-    image: openlink/virtuoso-opensource-7:latest
+    image: openlink/virtuoso-opensource-7:7.2.16
     container_name: climatesense-virtuoso
     env_file: .env
     environment:
