@@ -230,8 +230,8 @@ async def execute_sparql_query(request: QueryRequest):
 
     try:
         conn = connection_manager.get_connection()
+        conn.timeout = 7200
         cursor = conn.cursor()
-        cursor.timeout = 7200
 
         prefixed_query = f"SPARQL {request.query}"
 
@@ -275,8 +275,8 @@ async def execute_sql_query(request: QueryRequest):
 
     try:
         conn = connection_manager.get_connection()
+        conn.timeout = 7200
         cursor = conn.cursor()
-        cursor.timeout = 7200
 
         logger.info(f"Executing SQL query: {request.query}")
         cursor.execute(request.query)
