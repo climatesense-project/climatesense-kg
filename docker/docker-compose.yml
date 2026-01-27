@@ -6,6 +6,7 @@ services:
   postgres:
     image: postgres:17-alpine
     container_name: climatesense-postgres
+    shm_size: 1gb
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-climatesense_cache}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
