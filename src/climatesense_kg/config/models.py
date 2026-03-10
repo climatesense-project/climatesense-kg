@@ -7,7 +7,7 @@ import hashlib
 from typing import Any
 from urllib.parse import urlparse
 
-from ..utils.text_processing import normalize_text
+from ..utils.text_processing import normalize_organization_url, normalize_text
 
 
 def _empty_str_list() -> list[str]:
@@ -63,6 +63,11 @@ class CanonicalOrganization:
     name: str
     website: str | None = None
     language: str | None = None
+
+    def __post_init__(self) -> None:
+        """Normalize website URL to canonical root form for deduplication."""
+
+        self.website = normalize_organization_url(self.website)
 
     @property
     def uri(self) -> str:

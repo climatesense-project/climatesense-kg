@@ -71,6 +71,62 @@ def normalize_text(text: str) -> str:
     return text
 
 
+def normalize_organization_url(url: str | None) -> str | None:
+    """Normalize a URL to its canonical root form for organization deduplication.
+
+    Reduces any URL variant to a single canonical form so that different
+    representations of the same website map to one organization:
+      - Strips path, query, and fragment (keeps only scheme + authority)
+      - Normalizes scheme to https
+      - Lowercases the hostname
+      - Removes default ports (80, 443)
+      - Strips trailing slashes
+
+    Examples:
+        http://www.stopfake.org           → https://www.stopfake.org
+        https://www.stopfake.org/         → https://www.stopfake.org
+        https://www.stopfake.org/en/about → https://www.stopfake.org
+    """
+    if not url:
+        return None
+
+    candidate = url.strip()
+    if not candidate:
+        return None
+
+    has_scheme = bool(re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", candidate))
+    to_parse = candidate if has_scheme else f"https://{candidate}"
+
+    try:
+        parsed = urlparse(to_parse)
+    except Exception:
+        return None
+
+    if parsed.scheme not in ("http", "https"):
+        return None
+
+    hostname = parsed.hostname
+    if not hostname:
+        return None
+
+    try:
+        hostname = hostname.encode("idna").decode("ascii")
+    except UnicodeError:
+        return None
+
+    port = None
+    try:
+        port = parsed.port
+    except ValueError:
+        return None
+
+    netloc = hostname
+    if port and port not in (80, 443):
+        netloc = f"{hostname}:{port}"
+
+    return f"https://{netloc}"
+
+
 def sanitize_url(url: str) -> str | None:
     """Sanitize a URL and ensure it is safe for RDF serialization."""
 

@@ -7,6 +7,7 @@ from src.climatesense_kg.utils.text_processing import (
     ExtractionErrorType,
     TextExtractionResult,
     fetch_and_extract_text,
+    normalize_organization_url,
     normalize_text,
     sanitize_url,
 )
@@ -82,6 +83,72 @@ class TestNormalizeText:
         text = "  &amp; Check\xa0this https://example.com &lt;tag&gt;  \n\t  "
         result = normalize_text(text)
         assert result == "& Checkthis <tag>"
+
+
+class TestNormalizeOrganizationUrl:
+    """Test normalize_organization_url function."""
+
+    def test_all_variants_produce_same_result(self) -> None:
+        """Different URL forms for the same site should produce identical output."""
+        expected = "https://www.stopfake.org"
+        variants = [
+            "http://www.stopfake.org",
+            "https://www.stopfake.org",
+            "https://www.stopfake.org/",
+            "https://www.stopfake.org/en/about-us/",
+            "http://www.stopfake.org/en/about-us/",
+        ]
+        for variant in variants:
+            assert normalize_organization_url(variant) == expected, f"Failed for {variant}"
+
+    def test_preserves_non_standard_port(self) -> None:
+        """Non-standard ports should be preserved."""
+        assert (
+            normalize_organization_url("https://example.com:8080/path")
+            == "https://example.com:8080"
+        )
+
+    def test_strips_default_ports(self) -> None:
+        """Default ports (80, 443) should be stripped."""
+        assert (
+            normalize_organization_url("https://example.com:443/path")
+            == "https://example.com"
+        )
+        assert (
+            normalize_organization_url("http://example.com:80/path")
+            == "https://example.com"
+        )
+
+    def test_strips_query_and_fragment(self) -> None:
+        """Query strings and fragments should be stripped."""
+        assert (
+            normalize_organization_url("https://example.com/page?lang=en#section")
+            == "https://example.com"
+        )
+
+    def test_adds_scheme_if_missing(self) -> None:
+        """URLs without scheme should get https:// prepended."""
+        assert normalize_organization_url("example.com") == "https://example.com"
+
+    def test_none_input(self) -> None:
+        """None input should return None."""
+        assert normalize_organization_url(None) is None
+
+    def test_empty_string(self) -> None:
+        """Empty string should return None."""
+        assert normalize_organization_url("") is None
+
+    def test_whitespace_only(self) -> None:
+        """Whitespace-only string should return None."""
+        assert normalize_organization_url("  ") is None
+
+    def test_invalid_scheme(self) -> None:
+        """Non-HTTP(S) schemes should return None."""
+        assert normalize_organization_url("ftp://example.com") is None
+
+    def test_unicode_hostname(self) -> None:
+        """Unicode hostnames should be converted to punycode."""
+        assert normalize_organization_url("https://mañana.com/path") == "https://xn--maana-pta.com"
 
 
 class TestSanitizeUrl:
