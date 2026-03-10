@@ -63,6 +63,7 @@ class CanonicalOrganization:
     name: str
     website: str | None = None
     language: str | None = None
+    parent: CanonicalOrganization | None = None
 
     def __post_init__(self) -> None:
         """Normalize website URL to canonical root form for deduplication."""

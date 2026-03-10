@@ -13,6 +13,7 @@ from .cache.interface import CacheInterface
 from .cache.postgres_cache import PostgresCache
 from .config import PipelineConfig
 from .config.models import CanonicalClaimReview
+from .config.organization_hierarchy import OrganizationHierarchy
 from .data_manager import DataManager
 from .deployment.virtuoso import VirtuosoDeploymentHandler
 from .enrichers.base import Enricher as BaseEnricher
@@ -123,6 +124,10 @@ class Pipeline:
         self.cache: CacheInterface | None = None
         self._initialize_components()
         self._run_datetime: datetime | None = None
+
+        # Load organization hierarchy
+        hierarchy_path = Path(__file__).resolve().parent.parent.parent / "data" / "organization_hierarchy.yaml"
+        self.org_hierarchy = OrganizationHierarchy(hierarchy_path)
 
     def _initialize_components(self) -> None:
         """Initialize pipeline components from configuration."""
@@ -306,6 +311,11 @@ class Pipeline:
                 results["end_time"] = end_time
                 results["duration"] = end_time - start_time
                 return results
+
+            # Resolve organization hierarchy (parent links)
+            for review in canonical_reviews:
+                if review.organization:
+                    self.org_hierarchy.resolve_parent(review.organization)
 
             # Step 2: Enrichment
             self.logger.info("Step 2: Data Enrichment")

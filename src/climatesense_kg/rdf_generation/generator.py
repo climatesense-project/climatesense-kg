@@ -387,6 +387,13 @@ class RDFGenerator:
             if sanitized_website:
                 self.graph.add((org_uri, self.SCHEMA.url, URIRef(sanitized_website)))
 
+        # Parent organization
+        if organization.parent:
+            parent_uri = self._generate_organization_rdf(
+                organization.parent, generated_uris
+            )
+            self.graph.add((org_uri, self.SCHEMA.parentOrganization, parent_uri))
+
         return org_uri
 
     def _generate_claim_rdf(

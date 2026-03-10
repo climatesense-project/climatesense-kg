@@ -1,7 +1,7 @@
 """Tests for RDF generator."""
 
 from rdflib import Graph, Literal, Namespace, URIRef
-from rdflib.namespace import XSD
+from rdflib.namespace import RDF, XSD
 from src.climatesense_kg.config.models import (
     CanonicalClaim,
     CanonicalClaimReview,
@@ -11,6 +11,7 @@ from src.climatesense_kg.config.models import (
 from src.climatesense_kg.rdf_generation.generator import RDFGenerator
 
 CIMPLE = Namespace("http://data.cimple.eu/ontology#")
+SCHEMA = Namespace("http://schema.org/")
 
 
 def _build_review(label: str | None) -> CanonicalClaimReview:
@@ -116,3 +117,28 @@ def test_generator_emits_climate_relatedness_boolean() -> None:
 
     expected_object = Literal(True, datatype=XSD.boolean)
     assert (claim_uri, CIMPLE.isClimateRelated, expected_object) in graph
+
+
+def test_generator_emits_parent_organization() -> None:
+    parent = CanonicalOrganization(name="AFP", website="https://www.afp.com")
+    child = CanonicalOrganization(
+        name="AFP Factuel", website="https://factuel.afp.com", parent=parent
+    )
+    review = _build_review(None)
+    review.organization = child
+
+    graph, generator = _generate_graph(review)
+
+    child_uri = URIRef(generator.get_full_uri(child.uri))
+    parent_uri = URIRef(generator.get_full_uri(parent.uri))
+
+    # Child links to parent
+    assert (child_uri, SCHEMA.parentOrganization, parent_uri) in graph
+
+    # Both are typed as Organization
+    assert (child_uri, RDF.type, SCHEMA.Organization) in graph
+    assert (parent_uri, RDF.type, SCHEMA.Organization) in graph
+
+    # Parent has its own name and url
+    assert (parent_uri, SCHEMA.name, Literal("AFP")) in graph
+    assert (parent_uri, SCHEMA.url, URIRef("https://www.afp.com")) in graph
