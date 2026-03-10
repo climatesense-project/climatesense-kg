@@ -1,13 +1,14 @@
 # Project specific
 /logs/
 /output/
-/data/
+/data/rdf/
 /cache/
 /config/dev.yaml
 *.ttl
 *.nt
 *.rdf
 *.jsonld
+!/data/vocabularies/*.ttl
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

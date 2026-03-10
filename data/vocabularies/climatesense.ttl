@@ -1,0 +1,34 @@
+@prefix base:         <http://data.climatesense-project.eu/> .
+@prefix cimple:       <http://data.cimple.eu/ontology#> .
+@prefix climatesense: <http://data.climatesense-project.eu/ontology#> .
+@prefix dc:           <http://purl.org/dc/elements/1.1/> .
+@prefix owl:          <http://www.w3.org/2002/07/owl#> .
+@prefix rdf:          <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:         <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix schema:       <http://schema.org/> .
+@prefix skos:         <http://www.w3.org/2004/02/skos/core#> .
+@prefix vann:         <http://purl.org/vocab/vann/> .
+@prefix xsd:          <http://www.w3.org/2001/XMLSchema#> .
+
+# =============================================================================
+# Ontology Declaration
+# =============================================================================
+
+<http://data.climatesense-project.eu/ontology>
+    a owl:Ontology ;
+    vann:preferredNamespaceUri "http://data.climatesense-project.eu/ontology#" ;
+    dc:title "ClimateSense Knowledge Graph Ontology"@en ;
+    dc:description "Ontology for the ClimateSense Knowledge Graph."@en ;
+    dc:creator <http://data.climatesense-project.eu> ;
+    owl:versionInfo "0.1.0" .
+
+# =============================================================================
+# Datatype Properties
+# =============================================================================
+
+climatesense:isClimateRelated
+    a owl:DatatypeProperty ;
+    rdfs:label "is climate related"@en ;
+    rdfs:comment "Indicates whether a claim is related to climate change."@en ;
+    rdfs:domain schema:Claim ;
+    rdfs:range xsd:boolean .
