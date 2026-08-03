@@ -1,6 +1,8 @@
 """Command-line interface."""
 
 import argparse
+import logging
+from pathlib import Path
 import sys
 from typing import TYPE_CHECKING
 
@@ -46,9 +48,7 @@ Examples:
     run_parser.add_argument(
         "--skip-enrichment",
         action="store_true",
-        help=(
-            "Skip running enrichers; apply cached enrichment data if available"
-        ),
+        help=("Skip running enrichers; apply cached enrichment data if available"),
     )
     run_parser.add_argument(
         "--skip-deployment",
@@ -59,6 +59,25 @@ Examples:
         "--force-regenerate",
         action="store_true",
         help="Force regeneration of RDF for all items, ignoring cache",
+    )
+
+    redeploy_parser = subparsers.add_parser(
+        "redeploy",
+        help="Redeploy existing RDF files without re-running the pipeline",
+    )
+    redeploy_parser.add_argument(
+        "--config", "-c", type=str, required=True, help="Configuration file path"
+    )
+    redeploy_parser.add_argument(
+        "--rdf-dir",
+        type=str,
+        default="data/rdf",
+        help="Directory to scan for RDF files (default: data/rdf)",
+    )
+    redeploy_parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable DEBUG level logging",
     )
 
     return parser
@@ -125,6 +144,82 @@ def _print_failure_summary(results: "PipelineResults") -> None:
         print(f"Error: {error}", file=sys.stderr)
 
 
+def run_redeploy(args: argparse.Namespace) -> int:
+    """Redeploy existing RDF files to the configured backend."""
+    from .config import load_config
+    from .deployment.factory import create_deployment_handler
+    from .utils.logging import setup_logging
+
+    try:
+        config = load_config(args.config)
+    except Exception as e:
+        print(f"Failed to load configuration: {e}", file=sys.stderr)
+        return 1
+
+    if getattr(args, "debug", False):
+        config.logging.level = "DEBUG"
+
+    setup_logging(config.logging)
+    logger = logging.getLogger(__name__)
+
+    try:
+        handler = create_deployment_handler(config.deployment)
+    except Exception as e:
+        print(f"Failed to initialize deployment handler: {e}", file=sys.stderr)
+        return 1
+
+    if handler is None:
+        print("No deployment backend is configured.", file=sys.stderr)
+        return 1
+
+    rdf_dir = Path(args.rdf_dir)
+    if not rdf_dir.exists():
+        print(f"RDF directory not found: {rdf_dir}", file=sys.stderr)
+        return 1
+
+    rdf_files = sorted(
+        path for pattern in ("*.nt", "*.ttl") for path in rdf_dir.rglob(pattern)
+    )
+    if not rdf_files:
+        print(f"No supported RDF files found in {rdf_dir}", file=sys.stderr)
+        return 1
+
+    # Group files by source name (prefix before the first '_' in the filename)
+    files_by_source: dict[str, list[Path]] = {}
+    for f in rdf_files:
+        source_name = f.stem.split("_")[0]
+        files_by_source.setdefault(source_name, []).append(f)
+
+    # Build the list of files to deploy
+    files_to_deploy = [
+        (source, f) for source, files in files_by_source.items() for f in files
+    ]
+
+    print(
+        f"Found {len(files_to_deploy)} file(s) to deploy "
+        f"across {len(files_by_source)} source(s)"
+    )
+
+    success_count = 0
+    failure_count = 0
+    for source_name, rdf_file in files_to_deploy:
+        logger.info(f"Deploying {rdf_file} (source: {source_name})")
+        graph_uri = config.deployment.graph_template.replace("{SOURCE}", source_name)
+        print(f"  Deploying {rdf_file} -> {graph_uri} ...", end=" ", flush=True)
+        ok = handler.deploy(rdf_file, source_name)
+        if ok:
+            print("OK")
+            success_count += 1
+        else:
+            print("FAILED")
+            failure_count += 1
+
+    print(
+        f"\nRedeployment complete: {success_count} succeeded, {failure_count} failed."
+    )
+    return 0 if failure_count == 0 else 1
+
+
 def run_pipeline(args: argparse.Namespace) -> int:
     """Run the pipeline."""
     from .config import load_config
@@ -172,6 +267,7 @@ def main() -> int:
 
     handlers = {
         "run": run_pipeline,
+        "redeploy": run_redeploy,
     }
 
     handler = handlers.get(args.command)

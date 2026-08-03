@@ -64,13 +64,16 @@ def sparql_select(
     # Execute the query
     query = _load_query(namespace, filename)
     auth = None
-    if settings.virtuoso_user and settings.virtuoso_password:
-        auth = (settings.virtuoso_user, settings.virtuoso_password)
+    if settings.sparql_user and settings.sparql_password:
+        auth = (settings.sparql_user, settings.sparql_password)
 
     response = requests.post(
-        settings.virtuoso_endpoint,
-        data={"query": query},
-        headers={"Accept": "application/sparql-results+json"},
+        settings.sparql_endpoint,
+        data=query,
+        headers={
+            "Accept": "application/sparql-results+json",
+            "Content-Type": "application/sparql-query",
+        },
         auth=auth,
         timeout=settings.sparql_timeout_seconds,
     )

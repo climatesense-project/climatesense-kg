@@ -169,9 +169,8 @@ cache:
 
 # Deployment configuration
 deployment:
-  virtuoso:
-    enabled: true
-    graph_template: "http://data.climatesense-project.eu/graph/{SOURCE}"
+  backend: "qlever"
+  graph_template: "http://data.climatesense-project.eu/graph/{SOURCE}"
 
 # Logging configuration
 logging:

@@ -20,10 +20,10 @@ The Analytics API provides metrics and statistics about the knowledge graph and 
 │    (FastAPI)    │      │   (cache)    │
 └────────┬────────┘      └──────────────┘
          │
-         │                ┌──────────────┐
-         └───────────────▶│   Virtuoso   │
-                          │    (RDF)     │
-                          └──────────────┘
+         │                ┌───────────────┐
+         └───────────────▶│  Triplestore  │
+                          │     (RDF)     │
+                          └───────────────┘
 ```
 
 ## Metrics Endpoints
@@ -58,12 +58,14 @@ The Analytics API provides metrics and statistics about the knowledge graph and 
 
 Environment variables:
 
-- `ANALYTICS_SPARQL_ENDPOINT` - Virtuoso SPARQL endpoint URL
+- `ANALYTICS_SPARQL_ENDPOINT` - Selected triplestore SPARQL endpoint URL
 - `ANALYTICS_SPARQL_USER` - Optional SPARQL authentication user
 - `ANALYTICS_SPARQL_PASSWORD` - Optional SPARQL authentication password
 - `ANALYTICS_ALLOWED_ORIGINS` - CORS allowed origins (comma-separated)
 - `ANALYTICS_SPARQL_TIMEOUT` - SPARQL query timeout in seconds (default: 20)
 - `POSTGRES_*` - PostgreSQL connection settings
+
+Use `http://virtuoso:8890/sparql` for Virtuoso or `http://qlever:7019` for QLever.
 
 ## Development
 

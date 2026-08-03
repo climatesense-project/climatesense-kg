@@ -83,6 +83,40 @@ docker-daily-run:
 docker-minimal-run:
     docker compose -f docker/docker-compose.yml run --build -v ./samples:/app/samples pipeline run --config config/minimal.yaml
 
+# Start the stack with Virtuoso as the triplestore
+virtuoso-up:
+    COMPOSE_PROFILES=virtuoso docker compose -f docker/docker-compose.yml up -d
+
+# Build the initial QLever index from historical RDF and vocabularies
+qlever-init:
+    COMPOSE_PROFILES=qlever-init docker compose -f docker/docker-compose.yml run --rm qlever-index
+
+# Start the stack with QLever as the triplestore
+qlever-up:
+    COMPOSE_PROFILES=qlever docker compose -f docker/docker-compose.yml up -d
+
+# Create an administrator for the QLever UI
+qlever-ui-admin:
+    COMPOSE_PROFILES=qlever docker compose -f docker/docker-compose.yml exec qlever-ui-app python manage.py createsuperuser
+
+# Query the QLever SPARQL endpoint
+qlever-sparql QUERY:
+    @curl -fsS -G \
+        --header "Accept: application/sparql-results+json" \
+        --data-urlencode "query={{QUERY}}" \
+        "http://localhost:${QLEVER_PORT:-7019}"
+
+# Show QLever named-graph statistics
+qlever-stats:
+    @just qlever-sparql "SELECT ?g (COUNT(*) AS ?triples) WHERE { GRAPH ?g { ?s ?p ?o } } GROUP BY ?g ORDER BY DESC(?triples)" | \
+    jq -r '.results.bindings[] | [.g.value, .triples.value] | @tsv' | \
+    awk 'BEGIN {printf "%-80s %10s\n", "Graph", "Triples"; printf "%-80s %10s\n", "-----", "-------"} {printf "%-80s %10s\n", $1, $2}'
+
+# Fold persisted QLever updates into a fresh optimized index, then restart
+qlever-rebuild:
+    COMPOSE_PROFILES=qlever docker compose -f docker/docker-compose.yml exec -T qlever bash -lc 'qlever rebuild-index --access-token "$$QLEVER_ACCESS_TOKEN" --keep-old-index-dirs newest'
+    COMPOSE_PROFILES=qlever docker compose -f docker/docker-compose.yml restart qlever
+
 # ============================================================================
 # Cache Commands
 # ============================================================================

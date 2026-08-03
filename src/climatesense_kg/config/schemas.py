@@ -140,18 +140,11 @@ class LoggingConfig:
 
 
 @dataclass
-class VirtuosoConfig:
-    """Configuration for Virtuoso triplestore deployment."""
-
-    enabled: bool = False
-    graph_template: str = "http://data.climatesense-project.eu/graph/{SOURCE}"
-
-
-@dataclass
 class DeploymentConfig:
     """Configuration for deployment settings."""
 
-    virtuoso: VirtuosoConfig = field(default_factory=VirtuosoConfig)
+    backend: Literal["none", "virtuoso", "qlever"] = "none"
+    graph_template: str = "http://data.climatesense-project.eu/graph/{SOURCE}"
 
 
 @dataclass

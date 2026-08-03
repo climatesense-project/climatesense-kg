@@ -27,6 +27,9 @@ def load_config(config_path: str | Path) -> PipelineConfig:
         else:
             raise ValueError(f"Unsupported configuration format: {config_path.suffix}")
 
+    if not isinstance(config_data, dict):
+        raise ValueError("Configuration root must be a mapping")
+
     try:
         dataclass: PipelineConfig = from_dict(
             data_class=PipelineConfig, data=config_data, config=Config(strict=True)

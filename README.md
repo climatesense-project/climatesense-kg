@@ -25,7 +25,7 @@
   - Entity linking using [DBpedia Spotlight](https://www.dbpedia-spotlight.org/)
   - [Factors classification](https://github.com/climatesense-project/cimple-factors-server) using fine-tuned BERT models
 - RDF output using [Schema.org](https://schema.org/) and [CIMPLE ontology](https://github.com/CIMPLE-project/knowledge-base)
-- Triple store deployment supporting Virtuoso
+- Triple store deployment supporting Virtuoso and QLever
 - [YAML-based configuration](#configuration)
 
 ### Documentation & Resources
@@ -59,6 +59,7 @@
     - [Setup](#setup)
     - [Common Tasks](#common-tasks)
     - [CLI Usage](#cli-usage)
+    - [QLever UI](#qlever-ui)
   - [Acknowledgments](#acknowledgments)
 
 ## Quick Start
@@ -100,6 +101,7 @@ just run config/minimal.yaml
    ```
 
    Edit `.env` to configure:
+   - `COMPOSE_PROFILES`: Select exactly one triplestore profile (`virtuoso` or `qlever`)
    - `GITHUB_TOKEN`: GitHub token used for private repositories
    - `VIRTUOSO_HOST`: Virtuoso host name (default `virtuoso`)
    - `VIRTUOSO_PORT`: Virtuoso HTTP/SPARQL port (default `8890`)
@@ -108,13 +110,26 @@ just run config/minimal.yaml
    - `VIRTUOSO_PASSWORD`: Virtuoso database password (default `dba`)
    - `VIRTUOSO_ISQL_SERVICE_URL`: Virtuoso ISQL HTTP endpoint (default `http://isql-service:8080`)
    - `ISQL_SERVICE_PORT`: Published port for the ISQL helper service (default `8080`)
+   - `QLEVER_ENDPOINT`: QLever Graph Store/SPARQL endpoint (default `http://qlever:7019`)
+   - `QLEVER_PORT`: Published QLever port (default `7019`)
+   - `QLEVER_ACCESS_TOKEN`: Required token for QLever updates and maintenance
+   - `QLEVER_UPLOAD_TIMEOUT_SECONDS`: RDF upload timeout (default `7200`)
+   - `QLEVER_INDEX_MEMORY`: Memory available to initial index builds (default `1G`)
+   - `QLEVER_MEMORY_FOR_QUERIES`: Memory available to queries (default `5G`)
+   - `QLEVER_CACHE_MAX_SIZE`: Query-result cache size (default `2G`)
+   - `QLEVER_QUERY_TIMEOUT`: Default query timeout (default `30s`)
+   - `QLEVER_UI_PORT`: Published QLever UI port (default `7018`)
+   - `QLEVERUI_SECRET_KEY`: Required Django signing key for QLever UI
+   - `QLEVERUI_ALLOWED_HOSTS`: Hosts accepted by QLever UI
+   - `QLEVERUI_CSRF_TRUSTED_ORIGINS`: Trusted browser origins for QLever UI
+   - `QLEVER_UI_BACKEND_URL`: Browser-visible QLever endpoint used by the UI
    - `CIMPLE_FACTORS_API_URL`: CIMPLE Factors API base URL (default `http://localhost:8000`)
    - `POSTGRES_HOST`: Cache database host (default `postgres`)
    - `POSTGRES_PORT`: Cache database port (default `5432`)
    - `POSTGRES_DB`: Cache database name (default `climatesense_cache`)
    - `POSTGRES_USER`: Cache database user (default `postgres`)
    - `POSTGRES_PASSWORD`: Cache database password (required)
-   - `ANALYTICS_SPARQL_ENDPOINT`: Virtuoso SPARQL endpoint for analytics (default `http://virtuoso:8890/sparql`)
+   - `ANALYTICS_SPARQL_ENDPOINT`: Selected triplestore endpoint for analytics
    - `ANALYTICS_ALLOWED_ORIGINS`: Comma-separated origins permitted to call the analytics API (default `http://localhost:3000`)
    - `ANALYTICS_CACHE_TTL`: Analytics API cache TTL in seconds (default `60`)
    - `ANALYTICS_SPARQL_TIMEOUT`: SPARQL timeout in seconds for analytics queries (default `20`)
@@ -122,11 +137,24 @@ just run config/minimal.yaml
    - `ANALYTICS_API_PORT`: Published port for the analytics API container (default `8000`)
    - `ANALYTICS_UI_PORT`: Published port for the analytics UI container (default `3000`)
 
-3. Start the services:
+3. Start the services with either Virtuoso or QLever:
 
-   ```bash
-   docker compose up -d
-   ```
+   - **Option 1. Virtuoso**
+
+     Start the Virtuoso stack:
+
+     ```bash
+     COMPOSE_PROFILES=virtuoso docker compose up -d
+     ```
+
+   - **Option 2. QLever**
+
+     Build the initial QLever index and start the QLever stack:
+
+     ```bash
+     COMPOSE_PROFILES=qlever-init docker compose run --rm qlever-index
+     COMPOSE_PROFILES=qlever docker compose up -d
+     ```
 
 4. Run the pipeline:
    ```bash
@@ -176,6 +204,10 @@ output:
 cache:
   cache_dir: "cache"
   default_ttl_hours: 24.0
+
+deployment:
+  backend: "qlever" # none, virtuoso, or qlever
+  graph_template: "http://data.climatesense-project.eu/graph/{SOURCE}"
 ```
 
 ## Querying the cache
@@ -196,10 +228,12 @@ FROM cache_entries WHERE success = false GROUP BY domain;
 
 ## Querying the Knowledge Graph
 
-Once loaded into Virtuoso, query the knowledge graph using SPARQL:
+Once loaded into the selected triplestore, query the knowledge graph using SPARQL:
 
-- **SPARQL Endpoint**: http://localhost:8890/sparql
-- **Faceted Browser**: http://localhost:8890/fct
+- **Virtuoso SPARQL Endpoint**: http://localhost:8890/sparql
+- **Virtuoso Faceted Browser**: http://localhost:8890/fct
+- **QLever SPARQL Endpoint**: http://localhost:7019
+- **QLever UI**: http://localhost:7018
 
 ### Example SPARQL Queries
 
@@ -255,6 +289,20 @@ uv run climatesense-kg run --config config/minimal.yaml --debug
 
 # Run daily pipeline skipping data download and forcing full RDF regeneration
 uv run climatesense-kg run --config config/daily.yaml --skip-download --force-regenerate
+
+# Redeploy existing RDF to whichever backend the config selects
+uv run climatesense-kg redeploy --config config/daily.yaml --rdf-dir data/rdf
+```
+
+### QLever UI
+
+`just qlever-up` starts the QLever engine and QLever UI.
+The UI is available at http://localhost:7018 and persists its Django database in the `qlever_ui_data` Docker volume.
+
+Create an administrator only if you want to customize the UI through http://localhost:7018/admin:
+
+```bash
+just qlever-ui-admin
 ```
 
 ## Acknowledgments

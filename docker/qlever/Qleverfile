@@ -1,0 +1,30 @@
+# QLever configuration for the ClimateSense knowledge graph.
+# Run the one-shot qlever-index Compose service before starting QLever.
+
+[data]
+NAME = climatesense
+DESCRIPTION = ClimateSense climate misinformation knowledge graph
+
+[index]
+INPUT_FILES = source/rdf/*/*.nt source/vocabularies/*.ttl
+MULTI_INPUT_JSON = [{ "cmd": "cat {}", "format": "nt", "graph": "http://data.climatesense-project.eu/graph/claimreviewdata", "for-each": "source/rdf/*/claimreviewdata_*.nt", "parallel": "true" },
+                    { "cmd": "cat {}", "format": "nt", "graph": "http://data.climatesense-project.eu/graph/euroclimatecheck", "for-each": "source/rdf/*/euroclimatecheck_*.nt", "parallel": "true" },
+                    { "cmd": "cat {}", "format": "nt", "graph": "http://data.climatesense-project.eu/graph/defacto", "for-each": "source/rdf/*/defacto_*.nt", "parallel": "true" },
+                    { "cmd": "cat {}", "format": "nt", "graph": "http://data.climatesense-project.eu/graph/dbkf", "for-each": "source/rdf/*/dbkf_*.nt", "parallel": "true" },
+                    { "cmd": "cat {}", "format": "nt", "graph": "http://data.climatesense-project.eu/graph/desmog", "for-each": "source/rdf/*/desmog_*.nt", "parallel": "true" },
+                    { "cmd": "cat {}", "format": "nt", "graph": "http://data.climatesense-project.eu/graph/climafacts", "for-each": "source/rdf/*/climafacts_*.nt", "parallel": "true" },
+                    { "cmd": "cat {}", "format": "nt", "graph": "http://data.climatesense-project.eu/graph/climate-fever", "for-each": "source/rdf/*/climate-fever_*.nt", "parallel": "true" },
+                    { "cmd": "cat {}", "format": "ttl", "graph": "http://data.climatesense-project.eu/graph/vocabularies", "for-each": "source/vocabularies/*.ttl", "parallel": "false" }]
+STXXL_MEMORY = 1G
+VOCABULARY_TYPE = on-disk-compressed
+
+[server]
+HOST_NAME = 0.0.0.0
+PORT = 7019
+MEMORY_FOR_QUERIES = 5G
+CACHE_MAX_SIZE = 2G
+TIMEOUT = 30s
+PERSIST_UPDATES = true
+
+[runtime]
+SYSTEM = native

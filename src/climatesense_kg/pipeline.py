@@ -15,7 +15,8 @@ from .config import PipelineConfig
 from .config.models import CanonicalClaimReview
 from .config.organization_hierarchy import OrganizationHierarchy
 from .data_manager import DataManager
-from .deployment.virtuoso import VirtuosoDeploymentHandler
+from .deployment.base import DeploymentHandler
+from .deployment.factory import create_deployment_handler
 from .enrichers.base import Enricher as BaseEnricher
 from .enrichers.bert_factors_enricher import BertFactorsEnricher
 from .enrichers.dbpedia_enricher import DBpediaEnricher
@@ -120,13 +121,17 @@ class Pipeline:
         )
         self.enrichers: list[BaseEnricher] = []
         self.rdf_generator: RDFGenerator | None = None
-        self.deployment_handler: VirtuosoDeploymentHandler | None = None
+        self.deployment_handler: DeploymentHandler | None = None
         self.cache: CacheInterface | None = None
         self._initialize_components()
         self._run_datetime: datetime | None = None
 
         # Load organization hierarchy
-        hierarchy_path = Path(__file__).resolve().parent.parent.parent / "data" / "organization_hierarchy.yaml"
+        hierarchy_path = (
+            Path(__file__).resolve().parent.parent.parent
+            / "data"
+            / "organization_hierarchy.yaml"
+        )
         self.org_hierarchy = OrganizationHierarchy(hierarchy_path)
 
     def _initialize_components(self) -> None:
@@ -203,32 +208,15 @@ class Pipeline:
 
         # Initialize deployment handler
         try:
-            virtuoso_config = self.config.deployment.virtuoso
-            if virtuoso_config.enabled:
-                host = os.getenv("VIRTUOSO_HOST", "localhost")
-                port = int(os.getenv("VIRTUOSO_PORT", "8890"))
-                user = os.getenv("VIRTUOSO_USER", "dba")
-                password = os.getenv("VIRTUOSO_PASSWORD", "dba")
-                isql_service_url = os.getenv(
-                    "VIRTUOSO_ISQL_SERVICE_URL", "http://isql-service:8080"
-                )
-
-                self.deployment_handler = VirtuosoDeploymentHandler(
-                    host=host,
-                    port=port,
-                    user=user,
-                    password=password,
-                    graph_template=virtuoso_config.graph_template,
-                    isql_service_url=isql_service_url,
-                )
+            self.deployment_handler = create_deployment_handler(self.config.deployment)
+            if self.deployment_handler:
                 self.logger.info(
-                    f"Initialized Virtuoso deployment handler (host: {host}:{port})"
+                    "Initialized %s deployment handler",
+                    self.config.deployment.backend,
                 )
-            else:
-                self.deployment_handler = None
         except Exception as e:
             self.logger.error(f"Failed to initialize deployment handler: {e}")
-            self.deployment_handler = None
+            raise
 
     def _mark_uris_processed(
         self, uri_source_rdf_tuples: list[tuple[str, str, str]]
@@ -346,7 +334,7 @@ class Pipeline:
                 files_deployed = total_files if deployment_success else 0
             else:
                 self.logger.info("Step 4: No deployment handler configured, skipping")
-                files_deployed = total_files
+                files_deployed = 0
 
             results["deployment"] = {
                 "success": deployment_success,

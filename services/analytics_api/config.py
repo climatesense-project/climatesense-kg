@@ -39,16 +39,16 @@ class Settings(BaseModel):
     """Runtime configuration sourced from environment variables."""
 
     database_dsn: str = Field(default_factory=_build_default_dsn)
-    virtuoso_endpoint: str = Field(
+    sparql_endpoint: str = Field(
         default_factory=lambda: os.getenv(
             "ANALYTICS_SPARQL_ENDPOINT",
             "http://virtuoso:8890/sparql",
         )
     )
-    virtuoso_user: str | None = Field(
+    sparql_user: str | None = Field(
         default_factory=lambda: os.getenv("ANALYTICS_SPARQL_USER")
     )
-    virtuoso_password: str | None = Field(
+    sparql_password: str | None = Field(
         default_factory=lambda: os.getenv("ANALYTICS_SPARQL_PASSWORD")
     )
     allowed_origins: list[str] = Field(
