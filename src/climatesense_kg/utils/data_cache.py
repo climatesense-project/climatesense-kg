@@ -166,8 +166,21 @@ class DataCache:
                         If None, clear all cache entries.
         """
         with self._lock:
-            if source_name:
-                source_dir = self.cache_dir / source_name
+            if source_name is not None:
+                source_path = Path(source_name)
+                if (
+                    not source_name
+                    or source_path.is_absolute()
+                    or "/" in source_name
+                    or "\\" in source_name
+                ):
+                    raise ValueError(f"Invalid cache source name: {source_name!r}")
+
+                cache_root = self.cache_dir.resolve()
+                source_dir = cache_root / source_name
+                if source_dir.resolve().parent != cache_root:
+                    raise ValueError(f"Invalid cache source name: {source_name!r}")
+
                 if source_dir.exists():
                     shutil.rmtree(source_dir)
                     self.logger.info(f"Cleared cache for {source_name}")
