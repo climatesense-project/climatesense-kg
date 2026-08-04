@@ -110,6 +110,28 @@ def test_rdf_generation_only_marks_successful_reviews_processed(
     assert stats["generated_files"][0]["items"] == 2
 
 
+def test_rdf_generation_does_not_finalize_reviews_when_deployment_is_skipped(
+    tmp_path, sample_claim_reviews, mock_cache
+) -> None:
+    """Generated reviews must remain eligible for a later deployment run."""
+    for review in sample_claim_reviews:
+        review.source_name = "test-source"
+
+    pipeline = object.__new__(Pipeline)
+    pipeline.cache = mock_cache
+    pipeline.config = SimpleNamespace(
+        output=SimpleNamespace(format="turtle", output_path=tmp_path / "{SOURCE}.ttl")
+    )
+    pipeline.logger = getLogger("test.pipeline")
+    pipeline.rdf_generator = RDFGenerator(base_uri="https://example.org")
+    pipeline._run_datetime = None
+
+    stats = pipeline._run_rdf_generation(sample_claim_reviews, mark_processed=False)
+
+    assert stats["successful_items"] == len(sample_claim_reviews)
+    mock_cache.set_many.assert_not_called()
+
+
 def test_rdf_generation_preserves_files_when_a_later_source_fails(
     tmp_path, sample_claim_reviews, mock_cache, monkeypatch
 ) -> None:

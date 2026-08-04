@@ -339,7 +339,9 @@ class Pipeline:
 
             # Step 3: RDF Generation
             self.logger.info("Step 3: RDF Generation")
-            rdf_stats = self._run_rdf_generation(enriched_reviews)
+            rdf_stats = self._run_rdf_generation(
+                enriched_reviews, mark_processed=not skip_deployment
+            )
             results["rdf_generation"] = rdf_stats
 
             # Step 4: Deployment
@@ -511,7 +513,10 @@ class Pipeline:
         return enriched_reviews
 
     def _run_rdf_generation(
-        self, canonical_reviews: list[CanonicalClaimReview]
+        self,
+        canonical_reviews: list[CanonicalClaimReview],
+        *,
+        mark_processed: bool = True,
     ) -> RDFGenerationResults:
         """Run RDF generation step."""
         if not self.rdf_generator:
@@ -577,13 +582,13 @@ class Pipeline:
             total_successful_items += successful_items
             total_failed_items += failed_items
 
-            # Mark URIs as processed after successful RDF generation
-            uri_tuples = [
-                (review.uri, source_name, str(output_path))
-                for review in source_reviews
-                if review.uri and review.uri in successful_uri_set
-            ]
-            self._mark_uris_processed(uri_tuples)
+            if mark_processed:
+                uri_tuples = [
+                    (review.uri, source_name, str(output_path))
+                    for review in source_reviews
+                    if review.uri and review.uri in successful_uri_set
+                ]
+                self._mark_uris_processed(uri_tuples)
 
             if failed_items:
                 self.logger.warning(
