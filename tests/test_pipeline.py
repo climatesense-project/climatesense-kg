@@ -245,3 +245,40 @@ def test_failed_deployment_does_not_finalize_reviews(tmp_path, mock_cache) -> No
 
     assert pipeline._run_deployment(rdf_stats) is False
     mock_cache.set_many.assert_not_called()
+
+
+def test_pipeline_reports_rdf_generation_error_when_deployment_is_skipped() -> None:
+    """Skipping deployment must not mask a source-level RDF failure."""
+    review = SimpleNamespace(organization=None)
+    rdf_stats = {
+        "generated_files": [],
+        "total_files": 0,
+        "input_items": 1,
+        "successful_items": 0,
+        "failed_items": 1,
+        "output_format": "turtle",
+        "total_file_size": 0,
+        "error": "source-a: serialization failed",
+    }
+
+    pipeline = object.__new__(Pipeline)
+    pipeline.logger = getLogger("test.pipeline")
+    pipeline.cache = None
+    pipeline.enrichers = []
+    pipeline.deployment_handler = None
+    pipeline.org_hierarchy = Mock()
+    pipeline._run_datetime = None
+    pipeline._run_ingestion = Mock(
+        return_value={
+            "items": [review],
+            "successful_sources": ["source-a"],
+            "failed_sources": [],
+        }
+    )
+    pipeline._run_enrichment = Mock(return_value=[review])
+    pipeline._run_rdf_generation = Mock(return_value=rdf_stats)
+
+    results = pipeline.run(skip_deployment=True)
+
+    assert results["success"] is False
+    assert results["error"] == "source-a: serialization failed"

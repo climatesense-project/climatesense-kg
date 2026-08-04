@@ -369,8 +369,11 @@ class Pipeline:
             }
 
             # Final statistics
+            rdf_success = rdf_stats["error"] is None
             results["total_processed"] = len(enriched_reviews)
-            results["success"] = deployment_success
+            results["success"] = rdf_success and deployment_success
+            if not rdf_success:
+                results["error"] = rdf_stats["error"]
 
             end_time = time.time()
             results["end_time"] = end_time
