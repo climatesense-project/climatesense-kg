@@ -264,7 +264,7 @@ services:
       QLEVER_ENDPOINT: ${QLEVER_ENDPOINT:-http://qlever:7019}
       QLEVER_ACCESS_TOKEN: ${QLEVER_ACCESS_TOKEN:-}
       QLEVER_UPLOAD_TIMEOUT_SECONDS: ${QLEVER_UPLOAD_TIMEOUT_SECONDS:-7200}
-      CIMPLE_FACTORS_API_URL: ${CIMPLE_FACTORS_API_URL:-http://localhost:8000}
+      CIMPLE_FACTORS_API_URL: ${CIMPLE_FACTORS_API_URL:?CIMPLE_FACTORS_API_URL must point to a Factors API reachable from the pipeline container}
     volumes:
       - ../data:/app/data
       - ../logs:/app/logs
