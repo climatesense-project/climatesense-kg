@@ -71,12 +71,21 @@ class VirtuosoDeploymentHandler(DeploymentHandler):
 
     def _load_rdf_file(self, file_path: Path, graph_uri: str) -> bool:
         """Load RDF file into a specific graph."""
-        if not self._execute_sql("delete from DB.DBA.LOAD_LIST"):
-            self.logger.error("Failed to clear load_list")
+        file_name = self._escape_sql_literal(file_path.name)
+        file_directory = self._escape_sql_literal(file_path.parent.as_posix())
+        load_list_path = self._escape_sql_literal(file_path.as_posix())
+        escaped_graph_uri = self._escape_sql_literal(graph_uri)
+
+        delete_command = (
+            "delete from DB.DBA.LOAD_LIST "  # noqa: S608  # nosec B608
+            f"where LL_FILE = '{load_list_path}'"
+        )
+        if not self._execute_sql(delete_command):
+            self.logger.error("Failed to clear the file's load_list entry")
             return False
 
         if not self._execute_sql(
-            f"ld_dir('{file_path.parent.as_posix()}', '{file_path.name}', '{graph_uri}')"
+            f"ld_dir('{file_directory}', '{file_name}', '{escaped_graph_uri}')"
         ):
             self.logger.error(f"Failed to execute ld_dir for {file_path}")
             return False
@@ -90,6 +99,11 @@ class VirtuosoDeploymentHandler(DeploymentHandler):
             return False
 
         return True
+
+    @staticmethod
+    def _escape_sql_literal(value: str) -> str:
+        """Escape a string for use as a Virtuoso SQL literal."""
+        return value.replace("'", "''")
 
     def _execute_sql(self, sql_command: str, timeout: int = 300) -> bool:
         """Execute SQL commands via ISQL HTTP service.
