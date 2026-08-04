@@ -1,7 +1,11 @@
 """RDF generator which converts canonical data to RDF format."""
 
+import fcntl
 import logging
+import os
 from pathlib import Path
+import stat
+import tempfile
 from typing import Any
 from urllib.parse import quote
 
@@ -161,8 +165,36 @@ class RDFGenerator:
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        with open(output_path, "w", encoding="utf-8") as f:
-            f.write(rdf_content)
+        lock_path = output_path.with_suffix(f"{output_path.suffix}.lock")
+        with lock_path.open("a+b") as lock_file:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            temp_path: Path | None = None
+            try:
+                output_mode = (
+                    stat.S_IMODE(output_path.stat().st_mode)
+                    if output_path.exists()
+                    else 0o644
+                )
+                with tempfile.NamedTemporaryFile(
+                    mode="w",
+                    encoding="utf-8",
+                    dir=output_path.parent,
+                    prefix=f".{output_path.name}.",
+                    suffix=".tmp",
+                    delete=False,
+                ) as temp_file:
+                    temp_path = Path(temp_file.name)
+                    os.fchmod(temp_file.fileno(), output_mode)
+                    temp_file.write(rdf_content)
+                    temp_file.flush()
+                    os.fsync(temp_file.fileno())
+
+                os.replace(temp_path, output_path)
+                temp_path = None
+            finally:
+                if temp_path is not None:
+                    temp_path.unlink(missing_ok=True)
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
         self.logger.info(
             f"RDF saved to {output_path} in {output_format} format with {len(self.graph)} triples"

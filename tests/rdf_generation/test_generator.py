@@ -1,5 +1,9 @@
 """Tests for RDF generator."""
 
+import os
+from pathlib import Path
+
+import pytest
 from rdflib import Graph, Literal, Namespace, URIRef
 from rdflib.namespace import RDF, XSD
 from src.climatesense_kg.config.models import (
@@ -45,6 +49,55 @@ def test_rdf_xml_public_format_is_serialized_as_xml() -> None:
     graph = Graph()
     graph.parse(data=rdf_content, format="xml")
     assert len(graph) > 0
+
+
+def test_save_atomically_replaces_existing_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output_path = tmp_path / "graph.ttl"
+    output_path.write_text("previous RDF", encoding="utf-8")
+    real_replace = os.replace
+    replace_calls = 0
+
+    def inspect_replace(source: str | Path, destination: str | Path) -> None:
+        nonlocal replace_calls
+        replace_calls += 1
+        assert Path(source).parent == output_path.parent
+        assert Path(destination) == output_path
+        assert output_path.read_text(encoding="utf-8") == "previous RDF"
+        real_replace(source, destination)
+
+    monkeypatch.setattr(
+        "src.climatesense_kg.rdf_generation.generator.os.replace", inspect_replace
+    )
+    generator = RDFGenerator(base_uri="http://data.cimple.eu")
+
+    successful_uris = generator.save([_build_review(None)], output_path, "turtle")
+
+    assert replace_calls == 1
+    assert successful_uris
+    assert len(Graph().parse(output_path, format="turtle")) > 0
+
+
+def test_save_preserves_existing_output_when_replace_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output_path = tmp_path / "graph.ttl"
+    output_path.write_text("previous RDF", encoding="utf-8")
+
+    def fail_replace(source: str | Path, destination: str | Path) -> None:
+        raise OSError("simulated atomic replacement failure")
+
+    monkeypatch.setattr(
+        "src.climatesense_kg.rdf_generation.generator.os.replace", fail_replace
+    )
+    generator = RDFGenerator(base_uri="http://data.cimple.eu")
+
+    with pytest.raises(OSError, match="simulated atomic replacement failure"):
+        generator.save([_build_review(None)], output_path, "turtle")
+
+    assert output_path.read_text(encoding="utf-8") == "previous RDF"
+    assert list(tmp_path.glob(".graph.ttl.*.tmp")) == []
 
 
 def test_generator_adds_normalized_rating_for_allowed_labels() -> None:
