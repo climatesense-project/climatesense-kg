@@ -3,6 +3,7 @@ PREFIX prov: <http://www.w3.org/ns/prov#>
 
 SELECT ?graph (COUNT(*) AS ?tripleCount)
 WHERE {
+  FILTER(STRSTARTS(STR(?graph), "http://data.climatesense-project.eu/graph/"))
   GRAPH ?graph { ?s ?p ?o }
 }
 GROUP BY ?graph

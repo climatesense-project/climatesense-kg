@@ -39,7 +39,6 @@ async def triple_volume() -> list[GraphTripleCount]:
             graph=row.get("graph"), triple_count=int(row.get("tripleCount", 0))
         )
         for row in rows
-        if row.get("graph", "").startswith("http://data.climatesense-project.eu/graph/")
     ]
 
 
