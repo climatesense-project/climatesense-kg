@@ -244,6 +244,8 @@ def execute_sql_query(query_request: QueryRequest, http_request: Request):
             },
         )
 
+    conn = None
+    cursor = None
     try:
         conn = connection_manager.get_connection()
         conn.timeout = 7200
@@ -264,9 +266,6 @@ def execute_sql_query(query_request: QueryRequest, http_request: Request):
             # Just return empty results and log success
             logger.info(f"SQL statement executed successfully: {query_request.query}")
 
-        cursor.close()
-        conn.close()
-
         return QueryResponse(results=result_list)
     except ConnectionError as e:
         logger.error(f"Database connection failed: {e}")
@@ -280,6 +279,17 @@ def execute_sql_query(query_request: QueryRequest, http_request: Request):
             status_code=400,
             detail={"error": "Query execution failed", "message": str(e)},
         ) from e
+    finally:
+        if cursor is not None:
+            try:
+                cursor.close()
+            except Exception as e:
+                logger.warning(f"Failed to close database cursor: {e}")
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception as e:
+                logger.warning(f"Failed to close database connection: {e}")
 
 
 async def startup_event():

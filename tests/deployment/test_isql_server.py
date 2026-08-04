@@ -55,3 +55,39 @@ def test_connections_enable_autocommit(
         timeout=42,
         autocommit=True,
     )
+
+
+def test_query_failure_closes_cursor_and_connection(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Exceptional query paths must release both ODBC resources."""
+    fake_pyodbc = ModuleType("pyodbc")
+    fake_pyodbc.Connection = object  # type: ignore[attr-defined]
+    fake_pyodbc.connect = Mock()  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "pyodbc", fake_pyodbc)
+    monkeypatch.syspath_prepend(str(_ISQL_SOURCE_DIR))
+    monkeypatch.setenv("ISQL_SERVICE_TOKEN", "test-token")
+    monkeypatch.setenv("VIRTUOSO_PASSWORD", "test-password")
+    monkeypatch.chdir(tmp_path)
+
+    spec = spec_from_file_location(
+        "isql_service_server_cleanup_test", _ISQL_SOURCE_DIR / "server.py"
+    )
+    assert spec is not None and spec.loader is not None
+    server = module_from_spec(spec)
+    spec.loader.exec_module(server)
+
+    cursor = Mock()
+    cursor.execute.side_effect = RuntimeError("query failed")
+    connection = Mock()
+    connection.cursor.return_value = cursor
+    server.connection_manager.get_connection = Mock(return_value=connection)
+    request = Mock(headers={"Authorization": "Bearer test-token"})
+    query = server.QueryRequest(query="SELECT broken")
+
+    with pytest.raises(server.HTTPException) as exc_info:
+        server.execute_sql_query(query, request)
+
+    assert exc_info.value.status_code == 400
+    cursor.close.assert_called_once_with()
+    connection.close.assert_called_once_with()
