@@ -128,7 +128,7 @@ async def recent_activity(
     step: str | None = Query(default=None),
     from_ts: datetime | None = Query(
         default=None,
-        description="Lower bound on created_at; defaults to last 24 hours if omitted",
+        description="Lower bound on updated_at; defaults to last 24 hours if omitted",
     ),
     to_ts: datetime | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=200),

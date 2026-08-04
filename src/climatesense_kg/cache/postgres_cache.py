@@ -69,14 +69,25 @@ class PostgresCache(CacheInterface):
             uri TEXT NOT NULL,
             success BOOLEAN NOT NULL DEFAULT TRUE,
             payload JSONB COMPRESSION lz4 NOT NULL,
-            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         """
+
+        migrate_updated_at_sql: list[Query] = [
+            "ALTER TABLE cache_entries ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP;",
+            "UPDATE cache_entries SET updated_at = created_at WHERE updated_at IS NULL;",
+            """
+            ALTER TABLE cache_entries
+                ALTER COLUMN updated_at SET DEFAULT CURRENT_TIMESTAMP,
+                ALTER COLUMN updated_at SET NOT NULL;
+            """,
+        ]
 
         create_indexes_sql: list[Query] = [
             "CREATE INDEX IF NOT EXISTS idx_step ON cache_entries(step);",
             "CREATE INDEX IF NOT EXISTS idx_step_success ON cache_entries(step, success);",
-            "CREATE INDEX IF NOT EXISTS idx_created_at ON cache_entries(created_at);",
+            "CREATE INDEX IF NOT EXISTS idx_updated_at ON cache_entries(updated_at);",
             "CREATE INDEX IF NOT EXISTS idx_uri ON cache_entries(uri);",
         ]
 
@@ -84,6 +95,8 @@ class PostgresCache(CacheInterface):
             with self.connection_pool.connection() as connection:
                 with connection.cursor() as cursor:
                     cursor.execute(create_table_sql)
+                    for migration_sql in migrate_updated_at_sql:
+                        cursor.execute(migration_sql)
                     for index_sql in create_indexes_sql:
                         cursor.execute(index_sql)
                     connection.commit()
@@ -142,7 +155,8 @@ class PostgresCache(CacheInterface):
                         ON CONFLICT (cache_key)
                         DO UPDATE SET
                             success = EXCLUDED.success,
-                            payload = EXCLUDED.payload
+                            payload = EXCLUDED.payload,
+                            updated_at = CURRENT_TIMESTAMP
                         """,
                         (cache_key, step, uri, success, json.dumps(payload)),
                     )
@@ -239,7 +253,8 @@ class PostgresCache(CacheInterface):
                         ON CONFLICT (cache_key)
                         DO UPDATE SET
                             success = EXCLUDED.success,
-                            payload = EXCLUDED.payload
+                            payload = EXCLUDED.payload,
+                            updated_at = CURRENT_TIMESTAMP
                         """,
                         batch_data,
                     )

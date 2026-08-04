@@ -11,7 +11,7 @@ SELECT
 FROM cache_entries
 WHERE step LIKE 'enricher.%'
   AND (:step IS NULL OR step = :step)
-  AND (:from_ts IS NULL OR created_at >= :from_ts)
-  AND (:to_ts IS NULL OR created_at <= :to_ts)
+  AND (:from_ts IS NULL OR updated_at >= :from_ts)
+  AND (:to_ts IS NULL OR updated_at <= :to_ts)
 GROUP BY step
 ORDER BY success_rate_percent DESC, step ASC;
