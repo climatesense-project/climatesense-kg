@@ -142,3 +142,18 @@ def test_generator_emits_parent_organization() -> None:
     # Parent has its own name and url
     assert (parent_uri, SCHEMA.name, Literal("AFP")) in graph
     assert (parent_uri, SCHEMA.url, URIRef("https://www.afp.com")) in graph
+
+
+def test_generator_replaces_unpaired_surrogate_in_claim_text() -> None:
+    review = _build_review(None)
+    review.claim.text = (
+        "Valid mathematical character: \U0001d48d; truncated character: \ud835"
+    )
+
+    graph, generator = _generate_graph(review)
+
+    claim_uri = URIRef(generator.get_full_uri(review.claim.uri))
+    expected_text = Literal(
+        "Valid mathematical character: \U0001d48d; truncated character: \ufffd"
+    )
+    assert (claim_uri, SCHEMA.text, expected_text) in graph

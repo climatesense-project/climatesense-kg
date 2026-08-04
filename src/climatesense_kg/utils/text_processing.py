@@ -13,6 +13,7 @@ import trafilatura  # pyright: ignore[reportMissingTypeStubs]
 logger = logging.getLogger(__name__)
 
 _URL_PATTERN = re.compile(r"http\S+")
+_SURROGATE_PATTERN = re.compile(r"[\ud800-\udfff]")
 
 
 class ExtractionErrorType(Enum):
@@ -61,6 +62,13 @@ def normalize_text(text: str) -> str:
     Returns:
         str: Normalized text
     """
+    # JSON may contain escaped, unpaired UTF-16 surrogates. Convert any valid
+    # surrogate pair to its Unicode code point and replace lone surrogates.
+    if _SURROGATE_PATTERN.search(text):
+        text = text.encode("utf-16", errors="surrogatepass").decode(
+            "utf-16", errors="replace"
+        )
+
     # Normalize HTML entities and special characters
     text = text.replace("&amp;", "&")
     text = text.replace("\xa0", "")  # Remove non-breaking spaces
