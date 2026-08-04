@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +14,17 @@ from sqlalchemy.types import DateTime, Integer, String
 _QUERY_CACHE: dict[str, str] = {}
 _RESULT_CACHE: dict[str, list[dict[str, Any]]] = {}
 _BASE_DIR = Path(__file__).resolve().parent.parent / "queries"
+
+
+def _result_cache_key(
+    namespace: str, filename: str, params: dict[str, Any] | None
+) -> str:
+    """Include normalized bound parameters in the result-cache identity."""
+    normalized_params = json.dumps(
+        params or {}, sort_keys=True, separators=(",", ":"), default=str
+    )
+    params_hash = hashlib.sha256(normalized_params.encode("utf-8")).hexdigest()[:16]
+    return f"{namespace}:{filename}:{params_hash}"
 
 
 def _load_query(namespace: str, filename: str) -> str:
@@ -44,7 +57,7 @@ async def run_query(
     Returns:
         List of result rows as dictionaries
     """
-    cache_key = f"{namespace}:{filename}"
+    cache_key = _result_cache_key(namespace, filename, params)
 
     # Return cached result if available and caching is enabled
     if use_cache and cache_key in _RESULT_CACHE:
