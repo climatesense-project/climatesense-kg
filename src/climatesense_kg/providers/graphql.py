@@ -10,6 +10,10 @@ from ..config.schemas import ProviderConfig
 from .base import BaseProvider
 
 
+class GraphQLResponseError(RuntimeError):
+    """Raised when a GraphQL response includes top-level errors."""
+
+
 class GraphQLProvider(BaseProvider):
     """Provider for fetching data from GraphQL APIs."""
 
@@ -107,6 +111,19 @@ class GraphQLProvider(BaseProvider):
                 response.raise_for_status()
                 result = response.json()
                 if isinstance(result, dict):
+                    errors = result.get("errors")
+                    if errors:
+                        messages = (
+                            [
+                                error.get("message", "Unknown GraphQL error")
+                                if isinstance(error, dict)
+                                else str(error)
+                                for error in errors
+                            ]
+                            if isinstance(errors, list)
+                            else [str(errors)]
+                        )
+                        raise GraphQLResponseError("; ".join(messages))
                     return cast(dict[str, Any], result)
                 return None
 
