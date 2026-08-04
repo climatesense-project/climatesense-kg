@@ -10,3 +10,9 @@ def test_enrichment_coverage_counts_distinct_claims() -> None:
 
     assert query.count("COUNT(DISTINCT ?claim") == 8
     assert "COUNT(?" not in query
+
+
+def test_enrichment_coverage_includes_promoted_conspiracies() -> None:
+    query = (_QUERY_DIR / "enrichment_coverage.rq").read_text(encoding="utf-8")
+
+    assert "cimple:mentionsConspiracy|cimple:promotesConspiracy" in query
