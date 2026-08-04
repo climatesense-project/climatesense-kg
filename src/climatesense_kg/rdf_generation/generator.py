@@ -540,7 +540,7 @@ class RDFGenerator:
             self.graph.add((claim_uri, self.CIMPLE.promotesConspiracy, conspiracy_uri))
 
         # Readability score
-        if claim.readability_score:
+        if claim.readability_score is not None:
             self.graph.add(
                 (
                     claim_uri,

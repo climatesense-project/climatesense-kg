@@ -182,6 +182,16 @@ def test_generator_emits_climate_relatedness_boolean() -> None:
     assert (claim_uri, CIMPLE.isClimateRelated, expected_object) in graph
 
 
+def test_generator_emits_zero_readability_score() -> None:
+    review = _build_review(None)
+    review.claim.readability_score = 0.0
+
+    graph, generator = _generate_graph(review)
+    claim_uri = URIRef(generator.get_full_uri(review.claim.uri))
+
+    assert (claim_uri, CIMPLE.readability_score, Literal(0.0)) in graph
+
+
 def test_generator_emits_parent_organization() -> None:
     parent = CanonicalOrganization(name="AFP", website="https://www.afp.com")
     child = CanonicalOrganization(
