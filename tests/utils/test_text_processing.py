@@ -388,6 +388,7 @@ class TestFetchAndExtractText:
             headers={"Accept": "text/html", "Host": "reviews.example"},
             timeout=10,
             allow_redirects=False,
+            stream=True,
         )
         assert mock_session.trust_env is False
         adapter = mock_session.mount.call_args.args[1]
@@ -411,7 +412,8 @@ class TestFetchAndExtractText:
     ) -> None:
         """Test successful text extraction with trafilatura."""
         mock_sanitize.return_value = "https://example.com"
-        mock_response = Mock(text="<html>content</html>")
+        mock_response = Mock(headers={"Content-Type": "text/html"}, encoding="utf-8")
+        mock_response.iter_content.return_value = [b"<html>content</html>"]
         mock_fetch.return_value = mock_response
         mock_trafilatura.extract.return_value = "Extracted text content"
 
@@ -431,7 +433,8 @@ class TestFetchAndExtractText:
         """Test fallback to requests when trafilatura fails."""
         mock_sanitize.return_value = "https://example.com"
 
-        mock_response = Mock(text="<html>content</html>")
+        mock_response = Mock(headers={"Content-Type": "text/html"}, encoding="utf-8")
+        mock_response.iter_content.return_value = [b"<html>content</html>"]
         mock_fetch.return_value = mock_response
         mock_trafilatura.extract.return_value = "Extracted text"
 
@@ -458,7 +461,11 @@ class TestFetchAndExtractText:
         self, mock_sanitize: Mock, mock_fetch: Mock
     ) -> None:
         mock_sanitize.return_value = "https://example.com"
-        mock_fetch.return_value = Mock(text="")
+        mock_fetch.return_value = Mock(
+            headers={"Content-Type": "text/html"},
+            encoding="utf-8",
+            iter_content=Mock(return_value=[]),
+        )
 
         fetch_and_extract_text("https://example.com", timeout=37)
 
@@ -502,7 +509,11 @@ class TestFetchAndExtractText:
     ) -> None:
         """Test when no text content is extracted."""
         mock_sanitize.return_value = "https://example.com"
-        mock_fetch.return_value = Mock(text="<html>content</html>")
+        mock_fetch.return_value = Mock(
+            headers={"Content-Type": "text/html"},
+            encoding="utf-8",
+            iter_content=Mock(return_value=[b"<html>content</html>"]),
+        )
         mock_trafilatura.extract.return_value = None
 
         result = fetch_and_extract_text("https://example.com")
@@ -518,13 +529,52 @@ class TestFetchAndExtractText:
     ) -> None:
         """Test when no content is downloaded."""
         mock_sanitize.return_value = "https://example.com"
-        mock_fetch.return_value = Mock(text="")
+        mock_fetch.return_value = Mock(
+            headers={"Content-Type": "text/html"},
+            encoding="utf-8",
+            iter_content=Mock(return_value=[]),
+        )
         mock_trafilatura.extract.return_value = None
 
         result = fetch_and_extract_text("https://example.com")
 
         assert result.success is False
         assert result.error_type == ExtractionErrorType.DOWNLOAD_FAILED
+
+    @patch("src.climatesense_kg.utils.text_processing._fetch_public_url")
+    @patch("src.climatesense_kg.utils.text_processing.sanitize_url")
+    def test_rejects_non_text_response(
+        self, mock_sanitize: Mock, mock_fetch: Mock
+    ) -> None:
+        mock_sanitize.return_value = "https://example.com/file"
+        mock_fetch.return_value = Mock(
+            headers={"Content-Type": "application/octet-stream"},
+            encoding=None,
+        )
+
+        result = fetch_and_extract_text("https://example.com/file")
+
+        assert result.success is False
+        assert result.error_type == ExtractionErrorType.DOWNLOAD_FAILED
+        mock_fetch.return_value.iter_content.assert_not_called()
+
+    @patch("src.climatesense_kg.utils.text_processing._fetch_public_url")
+    @patch("src.climatesense_kg.utils.text_processing.sanitize_url")
+    def test_aborts_response_that_exceeds_size_limit(
+        self, mock_sanitize: Mock, mock_fetch: Mock
+    ) -> None:
+        mock_sanitize.return_value = "https://example.com/large"
+        mock_fetch.return_value = Mock(
+            headers={"Content-Type": "text/html"},
+            encoding="utf-8",
+            iter_content=Mock(return_value=[b"x" * (5 * 1024 * 1024 + 1)]),
+        )
+
+        result = fetch_and_extract_text("https://example.com/large")
+
+        assert result.success is False
+        assert result.error_type == ExtractionErrorType.DOWNLOAD_FAILED
+        assert "download limit" in result.error_message
 
 
 class TestTextExtractionResult:

@@ -20,11 +20,21 @@ _URL_PATTERN = re.compile(r"http\S+")
 _SURROGATE_PATTERN = re.compile(r"[\ud800-\udfff]")
 _REDIRECT_STATUS_CODES = {301, 302, 303, 307, 308}
 _MAX_REDIRECTS = 5
+_MAX_RESPONSE_BYTES = 5 * 1024 * 1024
+_ALLOWED_TEXT_CONTENT_TYPES = {
+    "text/html",
+    "application/xhtml+xml",
+    "text/plain",
+}
 _INVALID_PERCENT_ESCAPE = re.compile(r"%(?![0-9A-Fa-f]{2})")
 
 
 class _UnsafeURLError(ValueError):
     """Raised when a URL could reach a non-public network address."""
+
+
+class _ResponseTooLargeError(ValueError):
+    """Raised when a response exceeds the bounded extraction size."""
 
 
 class _PinnedHTTPSAdapter(HTTPAdapter):
@@ -329,6 +339,7 @@ def _request_url_at_address(
             headers={**headers, "Host": host_header},
             timeout=timeout,
             allow_redirects=False,
+            stream=True,
         )
     finally:
         session.close()
@@ -402,6 +413,43 @@ def _url_origin(url: str) -> tuple[str, str, int] | None:
     return scheme, hostname.rstrip(".").lower(), port or default_port
 
 
+def _read_bounded_text_response(
+    response: requests.Response, max_bytes: int = _MAX_RESPONSE_BYTES
+) -> str:
+    """Read an allowed textual response without exceeding the byte limit."""
+    content_type = response.headers.get("Content-Type", "").split(";", 1)[0].strip()
+    if content_type.lower() not in _ALLOWED_TEXT_CONTENT_TYPES:
+        raise ValueError(
+            f"Unsupported response content type: {content_type or '<none>'}"
+        )
+
+    content_length = response.headers.get("Content-Length")
+    if content_length:
+        try:
+            declared_length = int(content_length)
+        except ValueError as exc:
+            raise ValueError("Invalid response Content-Length") from exc
+        if declared_length > max_bytes:
+            raise _ResponseTooLargeError(
+                f"Response exceeds the {max_bytes}-byte download limit"
+            )
+
+    chunks: list[bytes] = []
+    bytes_read = 0
+    for chunk in response.iter_content(chunk_size=64 * 1024):
+        if not chunk:
+            continue
+        bytes_read += len(chunk)
+        if bytes_read > max_bytes:
+            raise _ResponseTooLargeError(
+                f"Response exceeds the {max_bytes}-byte download limit"
+            )
+        chunks.append(chunk)
+
+    encoding = response.encoding or "utf-8"
+    return b"".join(chunks).decode(encoding, errors="replace")
+
+
 def fetch_and_extract_text(url: str, timeout: float = 10) -> TextExtractionResult:
     """
     Fetch and extract main text content from a URL using trafilatura.
@@ -447,8 +495,11 @@ def fetch_and_extract_text(url: str, timeout: float = 10) -> TextExtractionResul
             "Cache-Control": "max-age=0",
         }
         response = _fetch_public_url(sanitized_url, headers=headers, timeout=timeout)
-        response.raise_for_status()
-        downloaded = response.text
+        try:
+            response.raise_for_status()
+            downloaded = _read_bounded_text_response(response)
+        finally:
+            response.close()
 
         if downloaded:
             main_text: str | None = trafilatura.extract(  # pyright: ignore[reportUnknownMemberType]
@@ -478,6 +529,13 @@ def fetch_and_extract_text(url: str, timeout: float = 10) -> TextExtractionResul
             success=False,
             error_message=str(e),
             error_type=ExtractionErrorType.INVALID_URL,
+        )
+    except (_ResponseTooLargeError, ValueError) as e:
+        logger.warning("Rejected URL response during text extraction: %s", e)
+        return TextExtractionResult(
+            success=False,
+            error_message=str(e),
+            error_type=ExtractionErrorType.DOWNLOAD_FAILED,
         )
     except requests.Timeout as e:
         logger.error(f"Timeout fetching URL {sanitized_url}: {e}")
