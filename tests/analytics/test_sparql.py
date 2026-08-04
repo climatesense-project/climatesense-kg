@@ -30,6 +30,16 @@ class StubResponse:
         }
 
 
+class CountingResponse(StubResponse):
+    def __init__(self, value: int) -> None:
+        self.value = value
+
+    def json(self) -> dict[str, Any]:
+        payload = super().json()
+        payload["results"]["bindings"][0]["tripleCount"]["value"] = str(self.value)
+        return payload
+
+
 def test_sends_standard_sparql_query_request(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -73,3 +83,32 @@ def test_sends_standard_sparql_query_request(
     }
     assert captured["auth"] is None
     assert captured["timeout"] == 15
+
+
+def test_expired_sparql_result_is_refreshed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sparql = importlib.import_module("services.analytics_api.services.sparql")
+    sparql.clear_cache()
+    monkeypatch.setattr(
+        sparql,
+        "settings",
+        SimpleNamespace(
+            sparql_endpoint="https://qlever.test",
+            sparql_user=None,
+            sparql_password=None,
+            sparql_timeout_seconds=15,
+            result_cache_ttl_seconds=10,
+        ),
+    )
+    responses = iter([CountingResponse(1), CountingResponse(2)])
+    monkeypatch.setattr(requests, "post", lambda *args, **kwargs: next(responses))
+
+    first = sparql.sparql_select("kg", "triple_volume.rq")
+    cache_key = "kg:triple_volume.rq"
+    inserted_at, rows = sparql._RESULT_CACHE[cache_key]
+    sparql._RESULT_CACHE[cache_key] = (inserted_at - 11, rows)
+    refreshed = sparql.sparql_select("kg", "triple_volume.rq")
+
+    assert first == [{"tripleCount": 1}]
+    assert refreshed == [{"tripleCount": 2}]

@@ -60,6 +60,10 @@ class Settings(BaseModel):
     sparql_timeout_seconds: int = Field(
         default_factory=lambda: int(os.getenv("ANALYTICS_SPARQL_TIMEOUT", "20"))
     )
+    result_cache_ttl_seconds: int = Field(
+        default_factory=lambda: int(os.getenv("ANALYTICS_RESULT_CACHE_TTL", "300")),
+        ge=0,
+    )
 
 
 @lru_cache

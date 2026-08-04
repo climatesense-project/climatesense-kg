@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
+import time
 from typing import Any
 
 from sqlalchemy import bindparam, text
@@ -12,7 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.types import DateTime, Integer, String
 
 _QUERY_CACHE: dict[str, str] = {}
-_RESULT_CACHE: dict[str, list[dict[str, Any]]] = {}
+_RESULT_CACHE: dict[str, tuple[float, list[dict[str, Any]]]] = {}
+_RESULT_CACHE_TTL_SECONDS = int(os.getenv("ANALYTICS_RESULT_CACHE_TTL", "300"))
 _BASE_DIR = Path(__file__).resolve().parent.parent / "queries"
 
 
@@ -25,6 +28,17 @@ def _result_cache_key(
     )
     params_hash = hashlib.sha256(normalized_params.encode("utf-8")).hexdigest()[:16]
     return f"{namespace}:{filename}:{params_hash}"
+
+
+def _get_cached_result(cache_key: str) -> list[dict[str, Any]] | None:
+    cached = _RESULT_CACHE.get(cache_key)
+    if cached is None:
+        return None
+    inserted_at, rows = cached
+    if time.monotonic() - inserted_at <= _RESULT_CACHE_TTL_SECONDS:
+        return rows
+    _RESULT_CACHE.pop(cache_key, None)
+    return None
 
 
 def _load_query(namespace: str, filename: str) -> str:
@@ -60,8 +74,8 @@ async def run_query(
     cache_key = _result_cache_key(namespace, filename, params)
 
     # Return cached result if available and caching is enabled
-    if use_cache and cache_key in _RESULT_CACHE:
-        return _RESULT_CACHE[cache_key]
+    if use_cache and (cached_rows := _get_cached_result(cache_key)) is not None:
+        return cached_rows
 
     # Execute the query
     raw_sql = _load_query(namespace, filename)
@@ -84,7 +98,7 @@ async def run_query(
 
     # Cache the results
     if use_cache:
-        _RESULT_CACHE[cache_key] = rows
+        _RESULT_CACHE[cache_key] = (time.monotonic(), rows)
 
     return rows
 

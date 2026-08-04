@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import time
 from typing import Any
 
 import requests
@@ -10,8 +11,19 @@ import requests
 from ..config import settings
 
 _QUERY_CACHE: dict[str, str] = {}
-_RESULT_CACHE: dict[str, list[dict[str, Any]]] = {}
+_RESULT_CACHE: dict[str, tuple[float, list[dict[str, Any]]]] = {}
 _BASE_DIR = Path(__file__).resolve().parent.parent / "queries"
+
+
+def _get_cached_result(cache_key: str) -> list[dict[str, Any]] | None:
+    cached = _RESULT_CACHE.get(cache_key)
+    if cached is None:
+        return None
+    inserted_at, rows = cached
+    if time.monotonic() - inserted_at <= settings.result_cache_ttl_seconds:
+        return rows
+    _RESULT_CACHE.pop(cache_key, None)
+    return None
 
 
 def _load_query(namespace: str, filename: str) -> str:
@@ -58,8 +70,8 @@ def sparql_select(
     cache_key = f"{namespace}:{filename}"
 
     # Return cached result if available and caching is enabled
-    if use_cache and cache_key in _RESULT_CACHE:
-        return _RESULT_CACHE[cache_key]
+    if use_cache and (cached_results := _get_cached_result(cache_key)) is not None:
+        return cached_results
 
     # Execute the query
     query = _load_query(namespace, filename)
@@ -87,7 +99,7 @@ def sparql_select(
 
     # Cache the results
     if use_cache:
-        _RESULT_CACHE[cache_key] = results
+        _RESULT_CACHE[cache_key] = (time.monotonic(), results)
 
     return results
 
