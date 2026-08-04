@@ -206,3 +206,23 @@ def test_generator_preserves_organizations_for_shared_ratings() -> None:
 
     assert (rating_uri, SCHEMA.author, first_org_uri) in graph
     assert (rating_uri, SCHEMA.author, second_org_uri) in graph
+
+
+def test_generator_percent_encodes_model_labels_in_uris() -> None:
+    review = _build_review(None)
+    review.claim.emotion = "Fear / Anxiety?#"
+    review.claim.tropes = ["It's a hoax / scam"]
+
+    graph, generator = _generate_graph(review)
+    claim_uri = URIRef(generator.get_full_uri(review.claim.uri))
+
+    assert (
+        claim_uri,
+        CIMPLE.hasEmotion,
+        URIRef("http://data.cimple.eu/emotion/fear_%2F_anxiety%3F%23"),
+    ) in graph
+    assert (
+        claim_uri,
+        CIMPLE.hasTrope,
+        URIRef("http://data.cimple.eu/trope/it%27s_a_hoax_%2F_scam"),
+    ) in graph

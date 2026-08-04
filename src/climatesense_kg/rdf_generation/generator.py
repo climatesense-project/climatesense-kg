@@ -3,6 +3,7 @@
 import logging
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from rdflib import Graph, Literal, Namespace, URIRef
 from rdflib.namespace import RDF, XSD
@@ -449,18 +450,21 @@ class RDFGenerator:
 
         # Enrichment data
         if claim.emotion and claim.emotion != "None":
-            emotion_uri = URIRef(f"{self.base_uri}/emotion/{claim.emotion.lower()}")
+            emotion_uri = URIRef(
+                f"{self.base_uri}/emotion/{self._encode_uri_segment(claim.emotion)}"
+            )
             self.graph.add((claim_uri, self.CIMPLE.hasEmotion, emotion_uri))
 
         if claim.sentiment:
             sentiment_uri = URIRef(
-                f"{self.base_uri}/sentiment/{claim.sentiment.lower()}"
+                f"{self.base_uri}/sentiment/{self._encode_uri_segment(claim.sentiment)}"
             )
             self.graph.add((claim_uri, self.CIMPLE.hasSentiment, sentiment_uri))
 
         if claim.political_leaning:
             political_uri = URIRef(
-                f"{self.base_uri}/political-leaning/{claim.political_leaning.lower()}"
+                f"{self.base_uri}/political-leaning/"
+                f"{self._encode_uri_segment(claim.political_leaning)}"
             )
             self.graph.add((claim_uri, self.CIMPLE.hasPoliticalLeaning, political_uri))
 
@@ -477,7 +481,7 @@ class RDFGenerator:
         for trope in claim.tropes:
             if not trope:
                 continue
-            slug = trope.strip().replace(" ", "_").lower()
+            slug = self._encode_uri_segment(trope)
             trope_uri = URIRef(f"{self.base_uri}/trope/{slug}")
             self.graph.add((claim_uri, self.CIMPLE.hasTrope, trope_uri))
 
@@ -485,7 +489,7 @@ class RDFGenerator:
         for technique in claim.persuasion_techniques:
             if not technique:
                 continue
-            slug = technique.strip().replace(" ", "_").lower()
+            slug = self._encode_uri_segment(technique)
             technique_uri = URIRef(f"{self.base_uri}/persuasion-technique/{slug}")
             self.graph.add(
                 (claim_uri, self.CIMPLE.hasPersuasionTechnique, technique_uri)
@@ -494,12 +498,12 @@ class RDFGenerator:
         # Conspiracies
         for conspiracy in claim.conspiracies["mentioned"]:
             conspiracy_uri = URIRef(
-                f"{self.base_uri}/conspiracy/{conspiracy.replace(' ', '_').lower()}"
+                f"{self.base_uri}/conspiracy/{self._encode_uri_segment(conspiracy)}"
             )
             self.graph.add((claim_uri, self.CIMPLE.mentionsConspiracy, conspiracy_uri))
         for conspiracy in claim.conspiracies["promoted"]:
             conspiracy_uri = URIRef(
-                f"{self.base_uri}/conspiracy/{conspiracy.replace(' ', '_').lower()}"
+                f"{self.base_uri}/conspiracy/{self._encode_uri_segment(conspiracy)}"
             )
             self.graph.add((claim_uri, self.CIMPLE.promotesConspiracy, conspiracy_uri))
 
@@ -648,6 +652,11 @@ class RDFGenerator:
 
     def _is_valid_normalized_rating(self, label: str) -> bool:
         return label in VALID_NORMALIZED_RATINGS
+
+    def _encode_uri_segment(self, value: str) -> str:
+        """Convert a model label into one safe URI path segment."""
+        normalized = value.strip().lower().replace(" ", "_")
+        return quote(normalized, safe="-._~")
 
     def get_full_uri(self, relative_uri: str) -> str:
         """
