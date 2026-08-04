@@ -187,3 +187,22 @@ def test_generator_merges_metadata_for_shared_claims() -> None:
     assert (claim_uri, SCHEMA.headline, Literal("Second headline")) in graph
     assert (claim_uri, SCHEMA.keywords, Literal("first")) in graph
     assert (claim_uri, SCHEMA.keywords, Literal("second")) in graph
+
+
+def test_generator_preserves_organizations_for_shared_ratings() -> None:
+    first = _build_review("credible")
+    second = _build_review("credible")
+    second.review_url = "https://example.org/another-review"
+    second.organization = CanonicalOrganization(
+        name="Another Org", website="https://another.example.org"
+    )
+
+    generator = RDFGenerator(base_uri="http://data.cimple.eu")
+    rdf_content = generator.generate([first, second], output_format="turtle")
+    graph = Graph().parse(data=rdf_content, format="turtle")
+    rating_uri = URIRef(generator.get_full_uri(first.rating.uri))  # type: ignore[union-attr]
+    first_org_uri = URIRef(generator.get_full_uri(first.organization.uri))  # type: ignore[union-attr]
+    second_org_uri = URIRef(generator.get_full_uri(second.organization.uri))
+
+    assert (rating_uri, SCHEMA.author, first_org_uri) in graph
+    assert (rating_uri, SCHEMA.author, second_org_uri) in graph

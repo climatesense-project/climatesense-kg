@@ -536,6 +536,10 @@ class RDFGenerator:
         """Generate RDF for a rating."""
         rating_uri = URIRef(self.get_full_uri(rating.uri))
 
+        # The rating identity is shared, but its organization context is not.
+        if organization_uri:
+            self.graph.add((rating_uri, self.SCHEMA.author, organization_uri))
+
         if str(rating_uri) in generated_uris:
             return rating_uri
 
@@ -582,10 +586,6 @@ class RDFGenerator:
             self.graph.add(
                 (rating_uri, self.SCHEMA.ratingExplanation, Literal(rating.explanation))
             )
-
-        # Link to organization if provided
-        if organization_uri:
-            self.graph.add((rating_uri, self.SCHEMA.author, organization_uri))
 
         return rating_uri
 
