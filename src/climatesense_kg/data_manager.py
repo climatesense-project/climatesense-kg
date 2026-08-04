@@ -99,6 +99,17 @@ class DataManager:
                 ignore_expiry=skip_download,
             )
 
+            fallback_key_config = provider.get_cache_fallback_key_fields(
+                provider_config
+            )
+            if skip_download and raw_data is None and fallback_key_config:
+                raw_data = self.cache.get(
+                    source_name,
+                    fallback_key_config,
+                    cache_ttl_hours,
+                    ignore_expiry=True,
+                )
+
             if skip_download and raw_data is not None:
                 self.logger.info(
                     f"Using cached data for {source_name} (--skip-download enabled, ignoring expiry)"
@@ -120,6 +131,8 @@ class DataManager:
 
                     # Store in cache
                     self.cache.put(source_name, cache_key_config, raw_data)
+                    if fallback_key_config and fallback_key_config != cache_key_config:
+                        self.cache.put(source_name, fallback_key_config, raw_data)
 
             # 4. Process data
             processor = self._create_processor(source_name, source_type)

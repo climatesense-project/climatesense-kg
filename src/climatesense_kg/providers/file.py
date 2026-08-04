@@ -45,3 +45,12 @@ class FileProvider(BaseProvider):
             cache_fields["file_mtime"] = str(Path(file_path).stat().st_mtime)
 
         return cache_fields
+
+    def get_cache_fallback_key_fields(
+        self, config: ProviderConfig
+    ) -> dict[str, Any] | None:
+        """Use the configured path as a stable cache-only recovery key."""
+        file_path = config.file_path
+        if not file_path:
+            return None
+        return {"file_path": str(file_path)}
