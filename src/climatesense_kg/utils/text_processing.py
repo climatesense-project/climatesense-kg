@@ -20,6 +20,7 @@ _URL_PATTERN = re.compile(r"http\S+")
 _SURROGATE_PATTERN = re.compile(r"[\ud800-\udfff]")
 _REDIRECT_STATUS_CODES = {301, 302, 303, 307, 308}
 _MAX_REDIRECTS = 5
+_INVALID_PERCENT_ESCAPE = re.compile(r"%(?![0-9A-Fa-f]{2})")
 
 
 class _UnsafeURLError(ValueError):
@@ -226,9 +227,9 @@ def sanitize_url(url: str) -> str | None:
             userinfo += f":{quote(parsed.password, safe='')}"
         netloc = f"{userinfo}@{netloc}"
 
-    path = quote(parsed.path, safe="/")
-    query = quote(parsed.query, safe="=&?")
-    fragment = quote(parsed.fragment, safe="")
+    path = _quote_url_component(parsed.path, safe="/")
+    query = _quote_url_component(parsed.query, safe="=&?")
+    fragment = _quote_url_component(parsed.fragment, safe="")
 
     sanitized = urlunparse(
         (
@@ -242,6 +243,12 @@ def sanitize_url(url: str) -> str | None:
     )
 
     return sanitized if sanitized else None
+
+
+def _quote_url_component(value: str, *, safe: str) -> str:
+    """Quote a URL component while preserving only valid existing escapes."""
+    normalized = _INVALID_PERCENT_ESCAPE.sub("%25", value)
+    return quote(normalized, safe=f"{safe}%")
 
 
 def _resolve_public_address(hostname: str, port: int) -> str:

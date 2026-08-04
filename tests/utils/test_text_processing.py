@@ -187,6 +187,17 @@ class TestSanitizeUrl:
         result = sanitize_url(url)
         assert result == "https://example.com/path%20with%20spaces?query=hello%20world"
 
+    def test_preserves_existing_percent_escapes(self) -> None:
+        url = "https://example.com/already%20encoded?q=also%2Fencoded"
+
+        assert sanitize_url(url) == url
+
+    def test_encodes_invalid_percent_escapes(self) -> None:
+        assert (
+            sanitize_url("https://example.com/invalid%escape")
+            == "https://example.com/invalid%25escape"
+        )
+
     def test_empty_url(self) -> None:
         """Test empty URL handling."""
         result = sanitize_url("")
