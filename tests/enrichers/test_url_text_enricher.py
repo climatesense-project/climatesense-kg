@@ -86,6 +86,26 @@ class TestURLTextEnricherEnrichment:
         )
         mock_cache.set.assert_not_called()
 
+    @patch("src.climatesense_kg.enrichers.url_text_enricher.time.sleep")
+    @patch("src.climatesense_kg.enrichers.url_text_enricher.fetch_and_extract_text")
+    def test_failed_extraction_is_rate_limited(
+        self,
+        mock_fetch: Mock,
+        mock_sleep: Mock,
+        sample_claim_review: CanonicalClaimReview,
+        mock_cache: Mock,
+    ) -> None:
+        """Every outbound request attempt must incur the configured delay."""
+        mock_fetch.return_value = TextExtractionResult(
+            success=False, error_message="request failed"
+        )
+        mock_cache.get_many.return_value = {}
+        enricher = URLTextEnricher(cache=mock_cache, rate_limit_delay=0.25)
+
+        enricher.enrich([sample_claim_review])
+
+        mock_sleep.assert_called_once_with(0.25)
+
     def test_empty_review_url(self, sample_claim_review: CanonicalClaimReview) -> None:
         """Test enrichment with empty review URL."""
         sample_claim_review.review_url = ""

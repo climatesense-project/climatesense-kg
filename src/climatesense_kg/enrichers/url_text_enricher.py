@@ -66,9 +66,6 @@ class URLTextEnricher(Enricher):
             }
             self.cache_success(claim_review.uri, success_data)
 
-            # Rate limiting only after successful requests
-            time.sleep(self.rate_limit_delay)
-
         else:
             self.logger.warning(
                 f"Failed to extract text from URL: {claim_review.review_url}"
@@ -142,6 +139,8 @@ class URLTextEnricher(Enricher):
                         error_message=str(e),
                         error_type=ExtractionErrorType.UNKNOWN,
                     )
+            finally:
+                time.sleep(self.rate_limit_delay)
 
         return last_result
 
