@@ -4,6 +4,7 @@ import base64
 from dataclasses import dataclass
 import io
 import os
+import tempfile
 from typing import Any, cast
 import zipfile
 
@@ -92,11 +93,26 @@ class GitHubProvider(BaseProvider):
 
         asset = target_assets[0]
         self.logger.info(f"Downloading asset: {asset.name} ({asset.size} bytes)")
+        if asset.size > config.max_download_bytes:
+            raise ValueError(
+                f"GitHub asset {asset.name!r} exceeds the configured "
+                f"{config.max_download_bytes}-byte download limit"
+            )
 
-        asset_data = self._download_asset(asset, timeout=max(config.timeout, 300))
+        asset_data = self._download_asset(
+            asset,
+            timeout=max(config.timeout, 300),
+            max_bytes=config.max_download_bytes,
+            spool_threshold_bytes=config.download_spool_threshold_bytes,
+        )
 
         if asset.name.endswith(".zip") and extract_file:
-            return self._extract_from_zip(asset_data, extract_file)
+            return self._extract_from_zip(
+                asset_data,
+                extract_file,
+                max_uncompressed_bytes=config.max_extract_bytes,
+                max_compressed_bytes=config.max_download_bytes,
+            )
         return asset_data
 
     def _get_latest_release(
@@ -130,7 +146,13 @@ class GitHubProvider(BaseProvider):
         else:
             return [asset for asset in assets if asset.name == pattern]
 
-    def _download_asset(self, asset: GitHubAsset, timeout: int) -> bytes:
+    def _download_asset(
+        self,
+        asset: GitHubAsset,
+        timeout: int,
+        max_bytes: int,
+        spool_threshold_bytes: int,
+    ) -> bytes:
         """Download asset data."""
         response = requests.get(
             asset.url,
@@ -141,16 +163,47 @@ class GitHubProvider(BaseProvider):
         response.raise_for_status()
 
         total_size = int(response.headers.get("content-length", 0))
+        if total_size > max_bytes:
+            response.close()
+            raise ValueError(
+                f"GitHub asset {asset.name!r} exceeds the configured "
+                f"{max_bytes}-byte download limit"
+            )
 
-        with tqdm(total=total_size, unit="B", unit_scale=True, desc=asset.name) as pbar:
-            buffer = io.BytesIO()
-            for chunk in response.iter_content(chunk_size=1024 * 1024):
-                buffer.write(chunk)
-                pbar.update(len(chunk))
+        bytes_read = 0
+        try:
+            with (
+                tqdm(
+                    total=total_size, unit="B", unit_scale=True, desc=asset.name
+                ) as pbar,
+                tempfile.SpooledTemporaryFile(
+                    max_size=spool_threshold_bytes, mode="w+b"
+                ) as buffer,
+            ):
+                for chunk in response.iter_content(chunk_size=1024 * 1024):
+                    if not chunk:
+                        continue
+                    bytes_read += len(chunk)
+                    if bytes_read > max_bytes:
+                        raise ValueError(
+                            f"GitHub asset {asset.name!r} exceeds the configured "
+                            f"{max_bytes}-byte download limit"
+                        )
+                    buffer.write(chunk)
+                    pbar.update(len(chunk))
+                buffer.seek(0)
+                return buffer.read()
+        finally:
+            response.close()
 
-        return buffer.getvalue()
-
-    def _extract_from_zip(self, zip_data: bytes, extract_file: str) -> bytes:
+    def _extract_from_zip(
+        self,
+        zip_data: bytes,
+        extract_file: str,
+        *,
+        max_uncompressed_bytes: int,
+        max_compressed_bytes: int,
+    ) -> bytes:
         """Extract specific file from zip data."""
         with zipfile.ZipFile(io.BytesIO(zip_data), "r") as zip_ref:
             # Handle wildcard patterns
@@ -175,9 +228,30 @@ class GitHubProvider(BaseProvider):
             # Use first match
             target_file = matching_files[0]
             self.logger.info(f"Extracting {target_file} from zip")
+            target_info = zip_ref.getinfo(target_file)
+            if target_info.compress_size > max_compressed_bytes:
+                raise ValueError(
+                    f"Compressed ZIP member {target_file!r} exceeds the configured "
+                    f"{max_compressed_bytes}-byte limit"
+                )
+            if target_info.file_size > max_uncompressed_bytes:
+                raise ValueError(
+                    f"Expanded ZIP member {target_file!r} exceeds the configured "
+                    f"{max_uncompressed_bytes}-byte limit"
+                )
 
             with zip_ref.open(target_file) as f:
-                return f.read()
+                chunks: list[bytes] = []
+                bytes_read = 0
+                while chunk := f.read(min(1024 * 1024, max_uncompressed_bytes + 1)):
+                    bytes_read += len(chunk)
+                    if bytes_read > max_uncompressed_bytes:
+                        raise ValueError(
+                            f"Expanded ZIP member {target_file!r} exceeds the "
+                            f"configured {max_uncompressed_bytes}-byte limit"
+                        )
+                    chunks.append(chunk)
+                return b"".join(chunks)
 
     def get_cache_key_fields(self, config: ProviderConfig) -> dict[str, Any]:
         """Repository and asset pattern affect cache."""
