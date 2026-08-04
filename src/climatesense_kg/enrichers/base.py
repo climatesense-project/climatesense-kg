@@ -49,8 +49,11 @@ class Enricher(ABC):
         for i, item in enumerate(items):
             try:
                 if item.uri and item.uri in cached_data:
-                    # Apply cached data
-                    enriched = self.apply_cached_data(item, cached_data[item.uri])
+                    cached_payload = cached_data[item.uri]
+                    if self.should_retry_cached_data(cached_payload):
+                        enriched = self._process_item(item)
+                    else:
+                        enriched = self.apply_cached_data(item, cached_payload)
                 else:
                     # Process item and cache result
                     enriched = self._process_item(item)
@@ -66,6 +69,10 @@ class Enricher(ABC):
                 results.append(item)
 
         return results
+
+    def should_retry_cached_data(self, cached_data: dict[str, Any]) -> bool:
+        """Return whether a cache entry represents retryable incomplete work."""
+        return False
 
     def apply_cached_only(
         self, items: list[CanonicalClaimReview]

@@ -152,6 +152,11 @@ class DBpediaPropertyEnricher(Enricher):
 
         return claim_review
 
+    def should_retry_cached_data(self, cached_data: dict[str, Any]) -> bool:
+        """Retry the entity URIs recorded as failed in a partial cache entry."""
+        data = cached_data.get("data", {})
+        return cached_data.get("success") is False and bool(data.get("failed_entities"))
+
     def _collect_entity_references(
         self, claim_review: CanonicalClaimReview
     ) -> dict[str, list[dict[str, Any]]]:

@@ -262,3 +262,36 @@ class TestDBpediaPropertyEnricherProcessing:
         mock_cache.set.assert_called_once()
         claim_payload: dict[str, Any] = mock_cache.set.call_args[0][2]
         assert claim_payload["success"] is True
+
+    @patch("src.climatesense_kg.enrichers.dbpedia_property_enricher.time.sleep")
+    @patch("src.climatesense_kg.enrichers.dbpedia_property_enricher.requests.get")
+    def test_partial_review_cache_retries_failed_entities(
+        self,
+        mock_get: Mock,
+        mock_sleep: Mock,
+        dbpedia_property_enricher: DBpediaPropertyEnricher,
+        sample_claim_review: CanonicalClaimReview,
+        mock_cache: Mock,
+    ) -> None:
+        entity_uri = "http://dbpedia.org/resource/Paris"
+        sample_claim_review.claim.entities.append({"uri": entity_uri})
+        mock_cache.get_many.return_value = {
+            sample_claim_review.uri: {
+                "success": False,
+                "data": {
+                    "entities": {},
+                    "failed_entities": [{"uri": entity_uri, "error": "timeout"}],
+                },
+            }
+        }
+        mock_cache.get.return_value = None
+        mock_get.return_value = Mock(
+            status_code=200,
+            json=Mock(return_value={"results": {"bindings": []}}),
+        )
+
+        dbpedia_property_enricher.enrich([sample_claim_review])
+
+        mock_get.assert_called_once()
+        payload = mock_cache.set.call_args.args[2]
+        assert payload["success"] is True
