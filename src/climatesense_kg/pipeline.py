@@ -527,93 +527,88 @@ class Pipeline:
                 "error": "No RDF generator available",
             }
 
-        try:
-            reviews_by_source: dict[str, list[CanonicalClaimReview]] = {}
-            for review in canonical_reviews:
-                source_name = review.source_name or "unknown"
-                if source_name not in reviews_by_source:
-                    reviews_by_source[source_name] = []
-                reviews_by_source[source_name].append(review)
+        reviews_by_source: dict[str, list[CanonicalClaimReview]] = {}
+        for review in canonical_reviews:
+            source_name = review.source_name or "unknown"
+            if source_name not in reviews_by_source:
+                reviews_by_source[source_name] = []
+            reviews_by_source[source_name].append(review)
 
-            generated_files: list[GeneratedFileInfo] = []
-            total_input_items = len(canonical_reviews)
-            total_successful_items = 0
-            total_failed_items = 0
-            total_file_size = 0
+        generated_files: list[GeneratedFileInfo] = []
+        total_input_items = len(canonical_reviews)
+        total_successful_items = 0
+        total_failed_items = 0
+        total_file_size = 0
+        source_errors: list[str] = []
 
-            for source_name, source_reviews in reviews_by_source.items():
-                self.logger.info(
-                    f"Generating RDF for source: {source_name} ({len(source_reviews)} reviews)"
+        for source_name, source_reviews in reviews_by_source.items():
+            self.logger.info(
+                f"Generating RDF for source: {source_name} ({len(source_reviews)} reviews)"
+            )
+
+            output_path = Path(
+                self._process_dynamic_path(
+                    str(self.config.output.output_path), source_name
                 )
+            )
+            output_format = self.config.output.format
 
-                output_path = Path(
-                    self._process_dynamic_path(
-                        str(self.config.output.output_path), source_name
-                    )
-                )
-                output_format = self.config.output.format
-
+            try:
                 successful_review_uris = self.rdf_generator.save(
                     source_reviews, output_path, output_format
                 )
-                successful_uri_set = set(successful_review_uris)
-                successful_items = len(successful_review_uris)
-                failed_items = len(source_reviews) - successful_items
-                total_successful_items += successful_items
-                total_failed_items += failed_items
-
-                # Mark URIs as processed after successful RDF generation
-                uri_tuples = [
-                    (review.uri, source_name, str(output_path))
-                    for review in source_reviews
-                    if review.uri and review.uri in successful_uri_set
-                ]
-                self._mark_uris_processed(uri_tuples)
-
-                if failed_items:
-                    self.logger.warning(
-                        "RDF generation failed for %s/%s reviews from source %s",
-                        failed_items,
-                        len(source_reviews),
-                        source_name,
-                    )
-
                 file_size = output_path.stat().st_size if output_path.exists() else 0
-                total_file_size += file_size
+            except Exception as e:
+                self.logger.error(
+                    "Error generating RDF for source %s: %s", source_name, e
+                )
+                source_errors.append(f"{source_name}: {e}")
+                total_failed_items += len(source_reviews)
+                continue
 
-                generated_files.append(
-                    {
-                        "source": source_name,
-                        "path": str(output_path),
-                        "items": successful_items,
-                        "failed_items": failed_items,
-                        "file_size": file_size,
-                    }
+            successful_uri_set = set(successful_review_uris)
+            successful_items = len(successful_review_uris)
+            failed_items = len(source_reviews) - successful_items
+            total_successful_items += successful_items
+            total_failed_items += failed_items
+
+            # Mark URIs as processed after successful RDF generation
+            uri_tuples = [
+                (review.uri, source_name, str(output_path))
+                for review in source_reviews
+                if review.uri and review.uri in successful_uri_set
+            ]
+            self._mark_uris_processed(uri_tuples)
+
+            if failed_items:
+                self.logger.warning(
+                    "RDF generation failed for %s/%s reviews from source %s",
+                    failed_items,
+                    len(source_reviews),
+                    source_name,
                 )
 
-            return {
-                "generated_files": generated_files,
-                "total_files": len(generated_files),
-                "input_items": total_input_items,
-                "successful_items": total_successful_items,
-                "failed_items": total_failed_items,
-                "output_format": self.config.output.format,
-                "total_file_size": total_file_size,
-                "error": None,
-            }
+            total_file_size += file_size
+            generated_files.append(
+                {
+                    "source": source_name,
+                    "path": str(output_path),
+                    "items": successful_items,
+                    "failed_items": failed_items,
+                    "file_size": file_size,
+                }
+            )
 
-        except Exception as e:
-            self.logger.error(f"Error generating RDF: {e}")
-            return {
-                "generated_files": [],
-                "total_files": 0,
-                "input_items": len(canonical_reviews),
-                "successful_items": 0,
-                "failed_items": len(canonical_reviews),
-                "output_format": self.config.output.format,
-                "total_file_size": 0,
-                "error": str(e),
-            }
+        return {
+            "generated_files": generated_files,
+            "total_files": len(generated_files),
+            "input_items": total_input_items,
+            "successful_items": total_successful_items,
+            "failed_items": total_failed_items,
+            "output_format": self.config.output.format,
+            "total_file_size": total_file_size,
+            "error": "; ".join(source_errors) or None,
+        }
 
     def _run_deployment(self, rdf_stats: RDFGenerationResults) -> bool:
         """Run deployment step."""

@@ -107,3 +107,62 @@ def test_rdf_generation_only_marks_successful_reviews_processed(
     assert stats["successful_items"] == 2
     assert stats["failed_items"] == 1
     assert stats["generated_files"][0]["items"] == 2
+
+
+def test_rdf_generation_preserves_files_when_a_later_source_fails(
+    tmp_path, sample_claim_reviews, mock_cache, monkeypatch
+) -> None:
+    """A source failure must not discard files completed for earlier sources."""
+    sample_claim_reviews[0].source_name = "source-a"
+    sample_claim_reviews[1].source_name = "source-b"
+    sample_claim_reviews[2].source_name = "source-c"
+
+    generator = RDFGenerator(base_uri="https://example.org")
+    save = generator.save
+
+    def fail_second_source(claim_reviews, output_path, output_format):
+        if claim_reviews[0].source_name == "source-b":
+            raise ValueError("serialization failed")
+        return save(claim_reviews, output_path, output_format)
+
+    monkeypatch.setattr(generator, "save", fail_second_source)
+
+    pipeline = object.__new__(Pipeline)
+    pipeline.cache = mock_cache
+    pipeline.config = SimpleNamespace(
+        output=SimpleNamespace(format="turtle", output_path=tmp_path / "{SOURCE}.ttl")
+    )
+    pipeline.logger = getLogger("test.pipeline")
+    pipeline.rdf_generator = generator
+    pipeline._run_datetime = None
+
+    stats = pipeline._run_rdf_generation(sample_claim_reviews)
+
+    expected_files = [
+        {
+            "source": source_name,
+            "path": str(tmp_path / f"{source_name}.ttl"),
+            "items": 1,
+            "failed_items": 0,
+            "file_size": (tmp_path / f"{source_name}.ttl").stat().st_size,
+        }
+        for source_name in ("source-a", "source-c")
+    ]
+    assert stats["generated_files"] == expected_files
+    assert stats["total_files"] == 2
+    assert stats["successful_items"] == 2
+    assert stats["failed_items"] == 1
+    assert stats["total_file_size"] == sum(
+        file_info["file_size"] for file_info in expected_files
+    )
+    assert stats["error"] == "source-b: serialization failed"
+
+    cached_uris = {
+        entry[0]
+        for call in mock_cache.set_many.call_args_list
+        for entry in call.args[0]
+    }
+    assert cached_uris == {
+        sample_claim_reviews[0].uri,
+        sample_claim_reviews[2].uri,
+    }
