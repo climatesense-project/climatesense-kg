@@ -1,6 +1,9 @@
 """Cache utility for storing and retrieving data."""
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
+import fcntl
 import gzip
 import hashlib
 import json
@@ -58,6 +61,19 @@ class DataCache:
         cache_path = self._get_cache_path(cache_key)
         return cache_path.with_suffix(".meta.json")
 
+    @contextmanager
+    def _cache_file_lock(self, cache_key: str, *, exclusive: bool) -> Iterator[None]:
+        """Hold a lock shared by every process accessing a cache entry."""
+        cache_path = self._get_cache_path(cache_key)
+        lock_path = cache_path.with_suffix(".lock")
+        with lock_path.open("a+b") as lock_file:
+            operation = fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH
+            fcntl.flock(lock_file.fileno(), operation)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
     def _is_expired(self, cache_key: str, ttl_hours: float) -> bool:
         """Check if cache entry is expired."""
         metadata_path = self._get_metadata_path(cache_key)
@@ -100,7 +116,7 @@ class DataCache:
         cache_key = self._generate_cache_key(source_name, config)
         self.logger.debug(f"Looking for cache key: {cache_key}")
 
-        with self._lock:
+        with self._lock, self._cache_file_lock(cache_key, exclusive=False):
             if not ignore_expiry and self._is_expired(cache_key, ttl_hours):
                 self.logger.info(f"Cache miss/expired for {source_name}")
                 return None
@@ -132,7 +148,7 @@ class DataCache:
         """
         cache_key = self._generate_cache_key(source_name, config)
 
-        with self._lock:
+        with self._lock, self._cache_file_lock(cache_key, exclusive=True):
             cache_path = self._get_cache_path(cache_key)
             metadata_path = self._get_metadata_path(cache_key)
             cache_temp_path: Path | None = None

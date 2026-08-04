@@ -1,6 +1,7 @@
 """Tests for the file-based data cache."""
 
 from pathlib import Path
+import threading
 from unittest.mock import patch
 
 import pytest
@@ -75,3 +76,26 @@ def test_failed_overwrite_preserves_previous_cache_entry(tmp_path: Path) -> None
         cache.put("source", config, b"replacement data")
 
     assert cache.get("source", config, ignore_expiry=True) == b"previous data"
+
+
+def test_separate_cache_instances_serialize_writes(tmp_path: Path) -> None:
+    """The cache lock must coordinate instances, not only threads on one instance."""
+    cache_dir = tmp_path / "cache"
+    first = DataCache(cache_dir)
+    second = DataCache(cache_dir)
+    config = {"url": "https://example.test/data"}
+    cache_key = first._generate_cache_key("source", config)
+    finished = threading.Event()
+
+    def write_from_second_instance() -> None:
+        second.put("source", config, b"new data")
+        finished.set()
+
+    with first._cache_file_lock(cache_key, exclusive=True):
+        writer = threading.Thread(target=write_from_second_instance)
+        writer.start()
+        assert not finished.wait(timeout=0.05)
+
+    writer.join(timeout=1)
+    assert finished.is_set()
+    assert first.get("source", config, ignore_expiry=True) == b"new data"
