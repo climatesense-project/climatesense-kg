@@ -20,23 +20,35 @@ class ClaimReviewDataProcessor(BaseProcessor):
         """Process ClaimReviewData raw data into CanonicalClaimReview objects."""
         try:
             data = json.loads(raw_data.decode("utf-8"))
+            if not isinstance(data, list):
+                raise ValueError("ClaimReviewData payload must be a list")
 
             for item in data:
-                is_valid, errors = self._validate_item(item)
-                if not is_valid:
-                    self.logger.warning(
-                        "Skipping invalid item %s: %s",
-                        item.get("review_url", "unknown"),
-                        "; ".join(errors),
-                    )
-                    continue
-
                 try:
+                    is_valid, errors = self._validate_item(item)
+                    if not is_valid:
+                        review_url = (
+                            item.get("review_url", "unknown")
+                            if isinstance(item, dict)
+                            else "unknown"
+                        )
+                        self.logger.warning(
+                            "Skipping invalid item %s: %s",
+                            review_url,
+                            "; ".join(errors),
+                        )
+                        continue
+
                     canonical_review = self._normalize_item(item)
                     yield canonical_review
                 except Exception as e:
+                    review_url = (
+                        item.get("review_url", "unknown")
+                        if isinstance(item, dict)
+                        else "unknown"
+                    )
                     self.logger.warning(
-                        f"Failed to normalize item {item.get('review_url', 'unknown')}: {e}"
+                        "Failed to normalize item %s: %s", review_url, e
                     )
                     continue
 
@@ -83,28 +95,46 @@ class ClaimReviewDataProcessor(BaseProcessor):
             source_name=self.name,
         )
 
-    def _validate_item(self, item: dict[str, Any]) -> tuple[bool, list[str]]:
+    def _validate_item(self, item: Any) -> tuple[bool, list[str]]:
         """Validate a ClaimReviewData item and return validation errors.
 
         Returns:
             (is_valid, errors)
         """
-        is_valid, errors = super()._validate_item(item)
-        if not is_valid:
-            return False, errors
+        if not isinstance(item, dict) or not item:
+            return False, ["item must be a non-empty mapping"]
 
-        if not item.get("claim_text"):
-            errors.append("missing claim_text")
+        errors: list[str] = []
 
-        if not item.get("review_url"):
+        claim_text = item.get("claim_text")
+        if (
+            not isinstance(claim_text, list)
+            or not claim_text
+            or not all(isinstance(text, str) and text for text in claim_text)
+        ):
+            errors.append("claim_text must be a non-empty list of strings")
+
+        if not isinstance(item.get("review_url"), str) or not item["review_url"]:
             errors.append("missing review_url")
 
-        reviews: list[dict[str, Any]] = item.get("reviews", [])
-        if not reviews:
-            errors.append("missing reviews")
+        fact_checker = item.get("fact_checker", {})
+        if not isinstance(fact_checker, dict):
+            errors.append("fact_checker must be a mapping")
+
+        appearances = item.get("appearances", [])
+        if not isinstance(appearances, list):
+            errors.append("appearances must be a list")
+
+        reviews = item.get("reviews")
+        if not isinstance(reviews, list) or not reviews:
+            errors.append("reviews must be a non-empty list")
         else:
             first_review = reviews[0]
-            if not first_review.get("original_label"):
+            if not isinstance(first_review, dict):
+                errors.append("review must be a mapping")
+            elif not isinstance(
+                first_review.get("original_label"), str
+            ) or not first_review.get("original_label"):
                 errors.append("review is missing original_label")
 
         return not errors, errors
