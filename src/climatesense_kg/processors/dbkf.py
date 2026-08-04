@@ -22,17 +22,19 @@ class DbkfProcessor(BaseProcessor):
         """Process DBKF raw data into CanonicalClaimReview objects."""
         try:
             data = json.loads(raw_data.decode("utf-8"))
+            if not isinstance(data, list):
+                raise ValueError("DBKF payload must be a list")
 
             item_count = 0
             for item in data:
-                is_valid, errors = self._validate_item(item)
-                if not is_valid:
-                    self.logger.warning(
-                        "Skipping invalid DBKF item: %s", "; ".join(errors)
-                    )
-                    continue
-
                 try:
+                    is_valid, errors = self._validate_item(item)
+                    if not is_valid:
+                        self.logger.warning(
+                            "Skipping invalid DBKF item: %s", "; ".join(errors)
+                        )
+                        continue
+
                     canonical_review = self._normalize_item(item)
                     item_count += 1
                     yield canonical_review
@@ -112,23 +114,39 @@ class DbkfProcessor(BaseProcessor):
             self.logger.warning(f"Could not parse date: {date_str}")
             return None
 
-    def _validate_item(self, item: dict[str, Any]) -> tuple[bool, list[str]]:
+    def _validate_item(self, item: Any) -> tuple[bool, list[str]]:
         """Validate a DBKF item and return validation errors."""
-        is_valid, errors = super()._validate_item(item)
-        if not is_valid:
-            return False, errors
+        if not isinstance(item, dict) or not item:
+            return False, ["item must be a non-empty mapping"]
+
+        errors: list[str] = []
 
         if not item.get("id"):
             errors.append("missing id")
 
-        if not item.get("externalUrl"):
+        if not isinstance(item.get("externalUrl"), str) or not item["externalUrl"]:
             errors.append("missing externalUrl")
 
         if not item.get("headline") and not item.get("reviewBody"):
             errors.append("missing headline and reviewBody")
 
         item_reviewed = item.get("itemReviewed", {})
-        if not item_reviewed.get("text"):
+        if not isinstance(item_reviewed, dict):
+            errors.append("itemReviewed must be a mapping")
+        elif not isinstance(item_reviewed.get("text"), str) or not item_reviewed.get(
+            "text"
+        ):
             errors.append("itemReviewed missing text")
+
+        publisher = item.get("publisher", {})
+        if not isinstance(publisher, dict):
+            errors.append("publisher must be a mapping")
+
+        languages = item.get("language", [])
+        if not isinstance(languages, str | list) or (
+            isinstance(languages, list)
+            and not all(isinstance(language, str) for language in languages)
+        ):
+            errors.append("language must be a string or list of strings")
 
         return not errors, errors
