@@ -1,6 +1,7 @@
 """ClimateSense Knowledge Graph Pipeline."""
 
 from datetime import datetime
+from importlib.resources import as_file, files
 import logging
 import os
 from pathlib import Path
@@ -140,12 +141,11 @@ class Pipeline:
         self._run_datetime: datetime | None = None
 
         # Load organization hierarchy
-        hierarchy_path = (
-            Path(__file__).resolve().parent.parent.parent
-            / "data"
-            / "organization_hierarchy.yaml"
+        hierarchy_resource = files("climatesense_kg.data").joinpath(
+            "organization_hierarchy.yaml"
         )
-        self.org_hierarchy = OrganizationHierarchy(hierarchy_path)
+        with as_file(hierarchy_resource) as hierarchy_path:
+            self.org_hierarchy = OrganizationHierarchy(hierarchy_path)
 
     def _initialize_components(self) -> None:
         """Initialize pipeline components from configuration."""

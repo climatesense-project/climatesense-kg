@@ -1,5 +1,6 @@
 """Tests for organization hierarchy resolver."""
 
+from importlib.resources import files
 from pathlib import Path
 
 from src.climatesense_kg.config.models import CanonicalOrganization
@@ -13,6 +14,11 @@ def _write_hierarchy(tmp: Path, content: str) -> Path:
 
 
 class TestOrganizationHierarchy:
+    def test_packaged_hierarchy_data_is_available(self) -> None:
+        resource = files("climatesense_kg.data").joinpath("organization_hierarchy.yaml")
+
+        assert resource.is_file()
+
     def test_resolves_parent_for_matching_domain(self, tmp_path: Path) -> None:
         path = _write_hierarchy(
             tmp_path,

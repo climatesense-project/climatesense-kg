@@ -1,0 +1,35 @@
+# This file defines the hierarchy for organizations in the ClimateSense KG.
+# It is used to link child organizations (e.g., regional fact-checking sites)
+# to their parent organization (e.g., AFP) via the `schema:parentOrganization`
+# property.
+
+- parent:
+    name: "AFP"
+    website: "https://www.afp.com"
+  children:
+    - "checamos.afp.com"
+    - "cinjenice.afp.com"
+    - "comprovem.afp.com"
+    - "factcheck.afp.com"
+    - "factcheckarabic.afp.com"
+    - "factcheckbangla.afp.com"
+    - "factcheckgreek.afp.com"
+    - "factcheckhindi.afp.com"
+    - "factcheckkorea.afp.com"
+    - "factcheckmyanmar.afp.com"
+    - "factchecknederland.afp.com"
+    - "factcheckthailand.afp.com"
+    - "factual.afp.com"
+    - "factuel.afp.com"
+    - "faktakoll.afp.com"
+    - "faktantarkistus.afp.com"
+    - "faktencheck.afp.com"
+    - "fakty.afp.com"
+    - "napravoumiru.afp.com"
+    - "periksafakta.afp.com"
+    - "proveri.afp.com"
+    - "provjeracinjenica.afp.com"
+    - "semakanfakta.afp.com"
+    - "sprawdzam.afp.com"
+    - "tenykerdes.afp.com"
+    - "verificat.afp.com"
