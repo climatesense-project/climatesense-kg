@@ -2,6 +2,8 @@
 
 from unittest.mock import Mock, patch
 
+import pytest
+from src.climatesense_kg.config.schemas import ProviderConfig
 from src.climatesense_kg.providers.xwiki import XWikiProvider
 
 
@@ -43,3 +45,47 @@ class TestXWikiProvider:
             allowed_origin="https://wiki.example",
         )
         response.raise_for_status.assert_called_once_with()
+
+    def test_complete_tag_failure_is_raised(self) -> None:
+        provider = XWikiProvider("xwiki")
+        config = ProviderConfig(
+            provider_type="xwiki",
+            base_url="https://wiki.example",
+            tags=["climate", "energy"],
+            rate_limit_delay=0,
+        )
+
+        with (
+            patch.object(
+                provider,
+                "_fetch_pages_for_tag",
+                side_effect=RuntimeError("unavailable"),
+            ),
+            pytest.raises(RuntimeError, match="All XWiki tag requests failed"),
+        ):
+            provider.fetch(config)
+
+    def test_complete_detail_failure_is_raised(self) -> None:
+        provider = XWikiProvider("xwiki")
+        config = ProviderConfig(
+            provider_type="xwiki",
+            base_url="https://wiki.example",
+            tags=["climate"],
+            rate_limit_delay=0,
+        )
+
+        with (
+            patch.object(
+                provider,
+                "_fetch_pages_for_tag",
+                return_value=[
+                    {
+                        "id": "page-1",
+                        "pageApiUrl": "https://wiki.example/rest/pages/1",
+                    }
+                ],
+            ),
+            patch.object(provider, "_fetch_page_details", return_value=None),
+            pytest.raises(RuntimeError, match="All XWiki page-detail requests failed"),
+        ):
+            provider.fetch(config)

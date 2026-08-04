@@ -53,12 +53,14 @@ class XWikiProvider(BaseProvider):
         session = requests.Session()
 
         all_pages_data: dict[str, PageSummary] = {}  # {page_id: page_data}
+        successful_tag_requests = 0
 
         # Fetch pages for each tag
         for tag in tags:
             try:
                 self.logger.info(f"Fetching pages for tag: {tag}")
                 pages = self._fetch_pages_for_tag(session, base_url, tag, timeout)
+                successful_tag_requests += 1
 
                 # Deduplicate pages by ID
                 for page in pages:
@@ -71,6 +73,9 @@ class XWikiProvider(BaseProvider):
             except Exception as e:
                 self.logger.error(f"Failed to fetch pages for tag '{tag}': {e}")
                 continue
+
+        if tags and successful_tag_requests == 0:
+            raise RuntimeError("All XWiki tag requests failed")
 
         self.logger.info(f"Found {len(all_pages_data)} unique pages across all tags")
 
@@ -93,6 +98,9 @@ class XWikiProvider(BaseProvider):
 
         self.logger.info(f"Fetched details for {len(all_page_details)} pages")
 
+        if all_pages_data and not all_page_details:
+            raise RuntimeError("All XWiki page-detail requests failed")
+
         # Return all data as JSON bytes
         return json.dumps(all_page_details, ensure_ascii=False).encode("utf-8")
 
@@ -102,26 +110,21 @@ class XWikiProvider(BaseProvider):
         """Fetch all pages for a specific tag."""
         url = f"{base_url}/rest/wikis/xwiki/tags/{quote(tag)}"
 
-        try:
-            response = session.get(url, timeout=timeout)
-            response.raise_for_status()
+        response = session.get(url, timeout=timeout)
+        response.raise_for_status()
 
-            root = ET.fromstring(response.content)
+        root = ET.fromstring(response.content)
 
-            pages: list[PageSummary] = []
-            ns = {"xwiki": "http://www.xwiki.org"}
+        pages: list[PageSummary] = []
+        ns = {"xwiki": "http://www.xwiki.org"}
 
-            for page_summary in root.findall(".//xwiki:pageSummary", ns):
-                page_info = self._extract_page_summary_info(page_summary, ns)
-                if page_info:
-                    pages.append(page_info)
+        for page_summary in root.findall(".//xwiki:pageSummary", ns):
+            page_info = self._extract_page_summary_info(page_summary, ns)
+            if page_info:
+                pages.append(page_info)
 
-            self.logger.info(f"Found {len(pages)} pages for tag '{tag}'")
-            return pages
-
-        except Exception as e:
-            self.logger.error(f"Failed to fetch pages for tag '{tag}': {e}")
-            return []
+        self.logger.info(f"Found {len(pages)} pages for tag '{tag}'")
+        return pages
 
     def _extract_page_summary_info(
         self, page_summary: Any, ns: dict[str, str]
