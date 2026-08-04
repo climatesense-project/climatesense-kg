@@ -7,6 +7,7 @@ data_sources:
       mode: "release"
       asset_pattern: "*.zip"
       extract_file: "claim_reviews.json"
+      max_extract_size: "512MB"
   - name: "euroclimatecheck"
     type: "euroclimatecheck"
     provider:

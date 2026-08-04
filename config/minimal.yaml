@@ -6,6 +6,7 @@ data_sources:
       repository: "MartinoMensio/claimreview-data"
       asset_pattern: "*.zip"
       extract_file: "claim_reviews.json"
+      max_extract_size: "512MB"
 
 output:
   format: "nt"

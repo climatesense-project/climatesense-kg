@@ -12,6 +12,7 @@ import requests
 from tqdm import tqdm
 
 from ..config.schemas import ProviderConfig
+from ..utils.logging import parse_file_size
 from .base import BaseProvider
 
 
@@ -92,17 +93,18 @@ class GitHubProvider(BaseProvider):
             )
 
         asset = target_assets[0]
+        max_download_bytes = parse_file_size(config.max_download_size)
         self.logger.info(f"Downloading asset: {asset.name} ({asset.size} bytes)")
-        if asset.size > config.max_download_bytes:
+        if asset.size > max_download_bytes:
             raise ValueError(
                 f"GitHub asset {asset.name!r} exceeds the configured "
-                f"{config.max_download_bytes}-byte download limit"
+                f"{max_download_bytes}-byte download limit"
             )
 
         asset_data = self._download_asset(
             asset,
             timeout=max(config.timeout, 300),
-            max_bytes=config.max_download_bytes,
+            max_bytes=max_download_bytes,
             spool_threshold_bytes=config.download_spool_threshold_bytes,
         )
 
@@ -110,8 +112,8 @@ class GitHubProvider(BaseProvider):
             return self._extract_from_zip(
                 asset_data,
                 extract_file,
-                max_uncompressed_bytes=config.max_extract_bytes,
-                max_compressed_bytes=config.max_download_bytes,
+                max_uncompressed_bytes=parse_file_size(config.max_extract_size),
+                max_compressed_bytes=max_download_bytes,
             )
         return asset_data
 

@@ -21,8 +21,8 @@ class ProviderConfig:
     mode: Literal["release", "repository"] = "release"
     repository_path: str = ""
     repository_ref: str = "main"
-    max_download_bytes: int = 512 * 1024 * 1024
-    max_extract_bytes: int = 256 * 1024 * 1024
+    max_download_size: str = "512MB"
+    max_extract_size: str = "256MB"
     download_spool_threshold_bytes: int = 8 * 1024 * 1024
 
     # GraphQL provider parameters
@@ -45,15 +45,10 @@ class ProviderConfig:
         """Validate provider-specific values that affect control flow."""
         if self.provider_type == "graphql" and self.batch_size <= 0:
             raise ValueError("GraphQL provider batch_size must be greater than zero")
-        if self.provider_type == "github" and any(
-            limit <= 0
-            for limit in (
-                self.max_download_bytes,
-                self.max_extract_bytes,
-                self.download_spool_threshold_bytes,
+        if self.provider_type == "github" and self.download_spool_threshold_bytes <= 0:
+            raise ValueError(
+                "GitHub download spool threshold must be greater than zero"
             )
-        ):
-            raise ValueError("GitHub provider size limits must be greater than zero")
 
 
 @dataclass
