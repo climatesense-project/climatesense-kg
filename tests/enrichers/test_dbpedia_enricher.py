@@ -163,6 +163,30 @@ class TestDBpediaEnricherEnrichment:
         )
         mock_cache.set.assert_not_called()
 
+    @patch("src.climatesense_kg.enrichers.dbpedia_enricher.time.sleep")
+    @patch("src.climatesense_kg.enrichers.dbpedia_enricher.requests.post")
+    def test_rate_limits_each_spotlight_request(
+        self,
+        mock_post: Mock,
+        mock_sleep: Mock,
+        dbpedia_enricher: DBpediaEnricher,
+        sample_claim_review: CanonicalClaimReview,
+        mock_cache: Mock,
+    ) -> None:
+        """Claim, review, and URL text requests each incur a delay."""
+        sample_claim_review.review_text = "Review text long enough for extraction"
+        sample_claim_review.review_url_text = "URL text long enough for extraction"
+        mock_response = Mock(status_code=200)
+        mock_response.json.return_value = {"Resources": []}
+        mock_post.return_value = mock_response
+        mock_cache.get_many.return_value = {}
+
+        dbpedia_enricher.enrich([sample_claim_review])
+
+        assert mock_post.call_count == 3
+        assert mock_sleep.call_count == 3
+        mock_sleep.assert_called_with(0.1)
+
     def test_partial_api_failure_does_not_mutate_review(
         self,
         dbpedia_enricher: DBpediaEnricher,

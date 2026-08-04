@@ -95,9 +95,6 @@ class DBpediaEnricher(Enricher):
             }
             self.cache_success(claim_review.uri, success_data)
 
-            # Rate limiting
-            time.sleep(self.rate_limit_delay)
-
         except Exception as e:
             self.logger.error(f"DBpedia enrichment failed for {claim_review.uri}: {e}")
 
@@ -168,6 +165,8 @@ class DBpediaEnricher(Enricher):
         except Exception as e:
             self.logger.error(f"Error extracting entities: {e}")
             raise
+        finally:
+            time.sleep(self.rate_limit_delay)
 
     def _parse_dbpedia_response(
         self, data: dict[str, Any]
