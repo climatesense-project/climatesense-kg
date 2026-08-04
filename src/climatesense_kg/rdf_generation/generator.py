@@ -420,14 +420,14 @@ class RDFGenerator:
         """Generate RDF for a claim."""
         claim_uri = URIRef(self.get_full_uri(claim.uri))
 
-        if str(claim_uri) in generated_uris:
-            return claim_uri
+        if str(claim_uri) not in generated_uris:
+            generated_uris.add(str(claim_uri))
 
-        generated_uris.add(str(claim_uri))
-
-        # Claim type and text
-        self.graph.add((claim_uri, RDF.type, self.SCHEMA.Claim))
-        self.graph.add((claim_uri, self.SCHEMA.text, Literal(claim.normalized_text)))
+            # Invariant claim properties only need to be emitted once.
+            self.graph.add((claim_uri, RDF.type, self.SCHEMA.Claim))
+            self.graph.add(
+                (claim_uri, self.SCHEMA.text, Literal(claim.normalized_text))
+            )
 
         # Headline
         if claim.headline:

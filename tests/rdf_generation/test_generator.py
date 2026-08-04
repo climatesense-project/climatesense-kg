@@ -167,3 +167,23 @@ def test_generator_replaces_unpaired_surrogate_in_claim_text() -> None:
         "Valid mathematical character: \U0001d48d; truncated character: \ufffd"
     )
     assert (claim_uri, SCHEMA.text, expected_text) in graph
+
+
+def test_generator_merges_metadata_for_shared_claims() -> None:
+    first = _build_review(None)
+    first.claim.headline = "First headline"
+    first.claim.keywords = ["first"]
+    second = _build_review(None)
+    second.review_url = "https://example.org/another-review"
+    second.claim.headline = "Second headline"
+    second.claim.keywords = ["second"]
+
+    generator = RDFGenerator(base_uri="http://data.cimple.eu")
+    rdf_content = generator.generate([first, second], output_format="turtle")
+    graph = Graph().parse(data=rdf_content, format="turtle")
+    claim_uri = URIRef(generator.get_full_uri(first.claim.uri))
+
+    assert (claim_uri, SCHEMA.headline, Literal("First headline")) in graph
+    assert (claim_uri, SCHEMA.headline, Literal("Second headline")) in graph
+    assert (claim_uri, SCHEMA.keywords, Literal("first")) in graph
+    assert (claim_uri, SCHEMA.keywords, Literal("second")) in graph
