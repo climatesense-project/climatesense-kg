@@ -12,7 +12,7 @@ _SPEC = spec_from_file_location("isql_service_security", _SECURITY_MODULE_PATH)
 assert _SPEC is not None and _SPEC.loader is not None
 _SECURITY = module_from_spec(_SPEC)
 _SPEC.loader.exec_module(_SECURITY)
-is_valid_bearer_token = _SECURITY.is_valid_bearer_token
+is_valid_bearer_token = getattr(_SECURITY, "is_valid_bearer_token")  # noqa: B009
 
 
 @pytest.mark.parametrize("authorization", ["", "Bearer", "Bearer wrong-token"])
