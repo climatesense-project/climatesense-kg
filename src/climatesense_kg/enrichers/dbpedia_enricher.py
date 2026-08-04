@@ -73,7 +73,6 @@ class DBpediaEnricher(Enricher):
                 claim_entities = self._extract_entities(
                     claim_review.claim.normalized_text
                 )
-                claim_review.claim.entities.extend([asdict(e) for e in claim_entities])
 
             # Extract entities from review text if available
             if claim_review.review_text:
@@ -85,11 +84,13 @@ class DBpediaEnricher(Enricher):
                 url_text_entities = self._extract_entities(claim_review.review_url_text)
                 review_entities.extend([asdict(e) for e in url_text_entities])
 
+            serialized_claim_entities = [asdict(e) for e in claim_entities]
+            claim_review.claim.entities.extend(serialized_claim_entities)
             claim_review.entities_in_review.extend(review_entities)
 
             # Cache the successful results
             success_data = {
-                "claim_entities": [asdict(e) for e in claim_entities],
+                "claim_entities": serialized_claim_entities,
                 "review_entities": review_entities,
             }
             self.cache_success(claim_review.uri, success_data)

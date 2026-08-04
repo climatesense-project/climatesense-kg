@@ -5,7 +5,10 @@ from unittest.mock import Mock, patch
 
 import pytest
 from src.climatesense_kg.config.models import CanonicalClaimReview
-from src.climatesense_kg.enrichers.dbpedia_enricher import DBpediaEnricher
+from src.climatesense_kg.enrichers.dbpedia_enricher import (
+    DBpediaEnricher,
+    DBpediaSpotlightEntity,
+)
 
 
 @pytest.fixture
@@ -159,6 +162,38 @@ class TestDBpediaEnricherEnrichment:
             [sample_claim_review.uri], "enricher.dbpedia_spotlight"
         )
         mock_cache.set.assert_not_called()
+
+    def test_partial_api_failure_does_not_mutate_review(
+        self,
+        dbpedia_enricher: DBpediaEnricher,
+        sample_claim_review: CanonicalClaimReview,
+        mock_cache: Mock,
+    ) -> None:
+        """Entity changes must be staged until every extraction call succeeds."""
+        sample_claim_review.review_text = "A review body long enough for extraction"
+        entity = DBpediaSpotlightEntity(
+            uri="http://dbpedia.org/resource/Climate_change",
+            surface_form="climate change",
+            types=[],
+            confidence=0.9,
+            support=10,
+            offset=0,
+            source="dbpedia_spotlight",
+        )
+        mock_cache.get_many.return_value = {}
+
+        with patch.object(
+            dbpedia_enricher,
+            "_extract_entities",
+            side_effect=[[entity], RuntimeError("review request failed")],
+        ):
+            result = dbpedia_enricher.enrich([sample_claim_review])[0]
+
+        assert result.claim.entities == []
+        assert result.entities_in_review == []
+        payload = mock_cache.set.call_args.args[2]
+        assert payload["success"] is False
+        assert payload["data"] == {"claim_entities": [], "review_entities": []}
 
 
 class TestDBpediaEnricherBatch:
