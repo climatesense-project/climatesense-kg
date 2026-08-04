@@ -42,6 +42,7 @@ class GeneratedFileInfo(TypedDict):
     source: str
     path: str
     items: int
+    failed_items: int
     file_size: int
 
 
@@ -49,6 +50,8 @@ class RDFGenerationResults(TypedDict):
     generated_files: list[GeneratedFileInfo]
     total_files: int
     input_items: int
+    successful_items: int
+    failed_items: int
     output_format: str
     total_file_size: int
     error: str | None
@@ -489,6 +492,8 @@ class Pipeline:
                 "generated_files": [],
                 "total_files": 0,
                 "input_items": len(canonical_reviews),
+                "successful_items": 0,
+                "failed_items": len(canonical_reviews),
                 "output_format": self.config.output.format,
                 "total_file_size": 0,
                 "error": "No RDF generator available",
@@ -504,6 +509,8 @@ class Pipeline:
 
             generated_files: list[GeneratedFileInfo] = []
             total_input_items = len(canonical_reviews)
+            total_successful_items = 0
+            total_failed_items = 0
             total_file_size = 0
 
             for source_name, source_reviews in reviews_by_source.items():
@@ -518,15 +525,30 @@ class Pipeline:
                 )
                 output_format = self.config.output.format
 
-                self.rdf_generator.save(source_reviews, output_path, output_format)
+                successful_review_uris = self.rdf_generator.save(
+                    source_reviews, output_path, output_format
+                )
+                successful_uri_set = set(successful_review_uris)
+                successful_items = len(successful_review_uris)
+                failed_items = len(source_reviews) - successful_items
+                total_successful_items += successful_items
+                total_failed_items += failed_items
 
                 # Mark URIs as processed after successful RDF generation
                 uri_tuples = [
                     (review.uri, source_name, str(output_path))
                     for review in source_reviews
-                    if review.uri
+                    if review.uri and review.uri in successful_uri_set
                 ]
                 self._mark_uris_processed(uri_tuples)
+
+                if failed_items:
+                    self.logger.warning(
+                        "RDF generation failed for %s/%s reviews from source %s",
+                        failed_items,
+                        len(source_reviews),
+                        source_name,
+                    )
 
                 file_size = output_path.stat().st_size if output_path.exists() else 0
                 total_file_size += file_size
@@ -535,7 +557,8 @@ class Pipeline:
                     {
                         "source": source_name,
                         "path": str(output_path),
-                        "items": len(source_reviews),
+                        "items": successful_items,
+                        "failed_items": failed_items,
                         "file_size": file_size,
                     }
                 )
@@ -544,6 +567,8 @@ class Pipeline:
                 "generated_files": generated_files,
                 "total_files": len(generated_files),
                 "input_items": total_input_items,
+                "successful_items": total_successful_items,
+                "failed_items": total_failed_items,
                 "output_format": self.config.output.format,
                 "total_file_size": total_file_size,
                 "error": None,
@@ -555,6 +580,8 @@ class Pipeline:
                 "generated_files": [],
                 "total_files": 0,
                 "input_items": len(canonical_reviews),
+                "successful_items": 0,
+                "failed_items": len(canonical_reviews),
                 "output_format": self.config.output.format,
                 "total_file_size": 0,
                 "error": str(e),

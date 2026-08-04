@@ -97,6 +97,13 @@ class RDFGenerator:
         Raises:
             ValueError: If output format is not supported
         """
+        rdf_content, _ = self._generate_with_results(claim_reviews, output_format)
+        return rdf_content
+
+    def _generate_with_results(
+        self, claim_reviews: list[CanonicalClaimReview], output_format: str
+    ) -> tuple[str, list[str]]:
+        """Generate RDF and return its content and successfully generated review URIs."""
         if output_format.lower() not in self.SUPPORTED_FORMATS:
             raise ValueError(
                 f"Unsupported format: {output_format}. "
@@ -108,6 +115,7 @@ class RDFGenerator:
 
         # Track URIs for deduplication within this generation
         generated_uris: set[str] = set()
+        successful_review_uris: list[str] = []
 
         for claim_review in claim_reviews:
             try:
@@ -117,20 +125,22 @@ class RDFGenerator:
                     f"Error generating RDF for claim review {claim_review.uri}: {e}"
                 )
                 continue
+            successful_review_uris.append(claim_review.uri)
 
         rdflib_format = self._normalize_format_name(output_format)
 
         try:
-            return self.graph.serialize(format=rdflib_format)
+            rdf_content = self.graph.serialize(format=rdflib_format)
         except Exception as e:
             raise ValueError(f"Failed to serialize RDF as {output_format}: {e}") from e
+        return rdf_content, successful_review_uris
 
     def save(
         self,
         claim_reviews: list[CanonicalClaimReview],
         output_path: str | Path,
         output_format: str,
-    ) -> None:
+    ) -> list[str]:
         """
         Generate RDF and save to file.
 
@@ -138,8 +148,13 @@ class RDFGenerator:
             claim_reviews: List of canonical claim reviews
             output_path: Output file path
             output_format: Output format (turtle, xml, n3, nt, json-ld, etc.)
+
+        Returns:
+            URIs of claim reviews that were successfully added to the RDF graph
         """
-        rdf_content = self.generate(claim_reviews, output_format)
+        rdf_content, successful_review_uris = self._generate_with_results(
+            claim_reviews, output_format
+        )
 
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -150,6 +165,7 @@ class RDFGenerator:
         self.logger.info(
             f"RDF saved to {output_path} in {output_format} format with {len(self.graph)} triples"
         )
+        return successful_review_uris
 
     def _normalize_format_name(self, format_name: str) -> str:
         """

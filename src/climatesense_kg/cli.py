@@ -92,6 +92,7 @@ def _print_rdf_generation_summary(rdf_data: "RDFGenerationResults") -> None:
     generated_files = rdf_data.get("generated_files", [])
     total_files = rdf_data.get("total_files", 0)
     total_size = rdf_data.get("total_file_size", 0)
+    failed_items = rdf_data.get("failed_items", 0)
 
     if not generated_files:
         print("RDF Generation: No files generated")
@@ -99,9 +100,17 @@ def _print_rdf_generation_summary(rdf_data: "RDFGenerationResults") -> None:
 
     print(f"RDF Generation: {total_files} files generated ({total_size} bytes total)")
 
+    if failed_items:
+        print(f"RDF Generation: {failed_items} items failed")
+
     for file_info in generated_files:
+        failure_summary = ""
+        if file_info["failed_items"]:
+            failure_summary = f", {file_info['failed_items']} failed"
         print(
-            f"  - {file_info['source']}: {file_info['path']} ({file_info['items']} items, {file_info['file_size']} bytes)"
+            f"  - {file_info['source']}: {file_info['path']} "
+            f"({file_info['items']} items{failure_summary}, "
+            f"{file_info['file_size']} bytes)"
         )
 
 
