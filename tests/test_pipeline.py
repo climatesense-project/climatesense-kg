@@ -4,6 +4,7 @@ from logging import getLogger
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+import pytest
 from src.climatesense_kg.pipeline import Pipeline
 from src.climatesense_kg.rdf_generation.generator import RDFGenerator
 
@@ -166,3 +167,27 @@ def test_rdf_generation_preserves_files_when_a_later_source_fails(
         sample_claim_reviews[0].uri,
         sample_claim_reviews[2].uri,
     }
+
+
+def test_rdf_generation_rejects_shared_output_path_for_multiple_sources(
+    tmp_path, sample_claim_reviews, mock_cache
+) -> None:
+    """Multiple sources must not be allowed to overwrite one RDF output file."""
+    sample_claim_reviews[0].source_name = "source-a"
+    sample_claim_reviews[1].source_name = "source-b"
+
+    pipeline = object.__new__(Pipeline)
+    pipeline.cache = mock_cache
+    pipeline.config = SimpleNamespace(
+        output=SimpleNamespace(format="turtle", output_path=tmp_path / "combined.ttl")
+    )
+    pipeline.logger = getLogger("test.pipeline")
+    pipeline.rdf_generator = SimpleNamespace(save=Mock(return_value=[]))
+    pipeline._run_datetime = None
+
+    with pytest.raises(ValueError, match=r"requires the \{SOURCE\} placeholder"):
+        pipeline._run_rdf_generation(sample_claim_reviews[:2])
+
+    pipeline.rdf_generator.save.assert_not_called()
+    mock_cache.set_many.assert_not_called()
+    assert not (tmp_path / "combined.ttl").exists()

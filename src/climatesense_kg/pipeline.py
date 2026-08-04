@@ -534,6 +534,13 @@ class Pipeline:
                 reviews_by_source[source_name] = []
             reviews_by_source[source_name].append(review)
 
+        output_path_template = str(self.config.output.output_path)
+        if len(reviews_by_source) > 1 and "{SOURCE}" not in output_path_template:
+            raise ValueError(
+                "Multi-source RDF generation requires the {SOURCE} placeholder "
+                f"in output.output_path: {output_path_template}"
+            )
+
         generated_files: list[GeneratedFileInfo] = []
         total_input_items = len(canonical_reviews)
         total_successful_items = 0
@@ -547,9 +554,7 @@ class Pipeline:
             )
 
             output_path = Path(
-                self._process_dynamic_path(
-                    str(self.config.output.output_path), source_name
-                )
+                self._process_dynamic_path(output_path_template, source_name)
             )
             output_format = self.config.output.format
 
