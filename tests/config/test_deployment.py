@@ -53,3 +53,18 @@ def test_rejects_output_extension_that_disagrees_with_format(tmp_path: Path) -> 
 
     with pytest.raises(ValueError, match=r"requires a file extension of \.ttl"):
         load_config(config_path)
+
+
+@pytest.mark.parametrize(("rdf_format", "suffix"), [("n3", ".n3"), ("rdf/xml", ".rdf")])
+def test_rejects_rdf_formats_qlever_cannot_deploy(
+    tmp_path: Path, rdf_format: str, suffix: str
+) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        "deployment:\n  backend: qlever\n"
+        f"output:\n  format: {rdf_format}\n  output_path: output/graph{suffix}\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="QLever deployment supports only"):
+        load_config(config_path)

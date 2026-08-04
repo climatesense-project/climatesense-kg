@@ -47,4 +47,13 @@ def load_config(config_path: str | Path) -> PipelineConfig:
             f"of {expected}; got {output_suffix or '<none>'}"
         )
 
+    if dataclass.deployment.backend == "qlever" and dataclass.output.format not in {
+        "nt",
+        "turtle",
+    }:
+        raise ValueError(
+            "QLever deployment supports only the 'nt' and 'turtle' RDF formats; "
+            f"got {dataclass.output.format!r}"
+        )
+
     return dataclass
