@@ -75,13 +75,15 @@ def parse_file_size(size_str: str) -> int:
 
     multipliers = {"B": 1, "KB": 1024, "MB": 1024**2, "GB": 1024**3, "TB": 1024**4}
 
-    for suffix, multiplier in multipliers.items():
+    for suffix, multiplier in sorted(
+        multipliers.items(), key=lambda item: len(item[0]), reverse=True
+    ):
         if size_str.endswith(suffix):
             try:
                 number = float(size_str[: -len(suffix)])
                 return int(number * multiplier)
             except ValueError:
-                break
+                continue
 
     try:
         return int(size_str)
