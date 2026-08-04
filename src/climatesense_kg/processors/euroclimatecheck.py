@@ -44,7 +44,7 @@ class EuroClimateCheckProcessor(BaseProcessor):
 
     def _normalize_item(self, item: dict[str, Any]) -> CanonicalClaimReview:
         """Convert EuroClimateCheck item to CanonicalClaimReview."""
-        claim_text = item.get("title", "") or item.get("description", "")
+        claim_text = self._extract_claim_text(item)
 
         claim = CanonicalClaim(
             text=claim_text,
@@ -106,7 +106,15 @@ class EuroClimateCheckProcessor(BaseProcessor):
         if not item.get("url"):
             errors.append("missing url")
 
-        if not item.get("content") and not item.get("description"):
-            errors.append("missing content and description")
+        if not self._extract_claim_text(item):
+            errors.append("missing title, description, and content")
 
         return not errors, errors
+
+    def _extract_claim_text(self, item: dict[str, Any]) -> str:
+        """Return the first accepted claim field used by both validation and output."""
+        for field in ("title", "description", "content"):
+            value = item.get(field)
+            if isinstance(value, str) and value.strip():
+                return value
+        return ""
