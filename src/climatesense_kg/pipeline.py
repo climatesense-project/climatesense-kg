@@ -353,20 +353,24 @@ class Pipeline:
 
             if skip_deployment:
                 self.logger.info("Step 4: Deployment skipped (--skip-deployment)")
-                files_deployed = 0
+                deployment_stats: DeploymentResults = {
+                    "success": True,
+                    "files_deployed": 0,
+                    "total_files": total_files,
+                }
             elif self.deployment_handler:
                 self.logger.info("Step 4: Deploying RDF data")
-                deployment_success = self._run_deployment(rdf_stats)
-                files_deployed = total_files if deployment_success else 0
+                deployment_stats = self._run_deployment(rdf_stats)
+                deployment_success = deployment_stats["success"]
             else:
                 self.logger.info("Step 4: No deployment handler configured, skipping")
-                files_deployed = 0
+                deployment_stats = {
+                    "success": True,
+                    "files_deployed": 0,
+                    "total_files": total_files,
+                }
 
-            results["deployment"] = {
-                "success": deployment_success,
-                "files_deployed": files_deployed,
-                "total_files": total_files,
-            }
+            results["deployment"] = deployment_stats
 
             # Final statistics
             rdf_success = rdf_stats["error"] is None
@@ -630,15 +634,16 @@ class Pipeline:
             "error": "; ".join(source_errors) or None,
         }
 
-    def _run_deployment(self, rdf_stats: RDFGenerationResults) -> bool:
+    def _run_deployment(self, rdf_stats: RDFGenerationResults) -> DeploymentResults:
         """Run deployment step."""
-        if not self.deployment_handler:
-            return True
-
         generated_files = rdf_stats.get("generated_files", [])
+        total_files = len(generated_files)
+        if not self.deployment_handler:
+            return {"success": True, "files_deployed": 0, "total_files": total_files}
+
         if not generated_files:
             self.logger.warning("No RDF files to deploy")
-            return False
+            return {"success": False, "files_deployed": 0, "total_files": 0}
 
         deployment_results: list[bool] = []
         for file_info in generated_files:
@@ -666,7 +671,11 @@ class Pipeline:
                     f"RDF data deployment failed: {output_path} (source: {source_name})"
                 )
 
-        return all(deployment_results)
+        return {
+            "success": all(deployment_results),
+            "files_deployed": sum(deployment_results),
+            "total_files": total_files,
+        }
 
     def _process_dynamic_path(
         self, path_template: str, source_name: str | None = None

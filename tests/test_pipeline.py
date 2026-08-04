@@ -243,7 +243,11 @@ def test_failed_deployment_does_not_finalize_reviews(tmp_path, mock_cache) -> No
         ]
     }
 
-    assert pipeline._run_deployment(rdf_stats) is False
+    assert pipeline._run_deployment(rdf_stats) == {
+        "success": False,
+        "files_deployed": 0,
+        "total_files": 1,
+    }
     mock_cache.set_many.assert_not_called()
 
 
@@ -282,3 +286,31 @@ def test_pipeline_reports_rdf_generation_error_when_deployment_is_skipped() -> N
 
     assert results["success"] is False
     assert results["error"] == "source-a: serialization failed"
+
+
+def test_partial_deployment_reports_successful_file_count(tmp_path, mock_cache) -> None:
+    """A later failure must not erase the count of files already deployed."""
+    generated_files = []
+    for index in range(2):
+        rdf_path = tmp_path / f"source-{index}.ttl"
+        rdf_path.write_text("", encoding="utf-8")
+        generated_files.append(
+            {
+                "source": f"source-{index}",
+                "path": str(rdf_path),
+                "items": 1,
+                "failed_items": 0,
+                "file_size": 0,
+                "review_uris": [f"https://example.org/review/{index}"],
+            }
+        )
+
+    pipeline = object.__new__(Pipeline)
+    pipeline.cache = mock_cache
+    pipeline.logger = getLogger("test.pipeline")
+    pipeline.deployment_handler = Mock()
+    pipeline.deployment_handler.deploy.side_effect = [True, False]
+
+    stats = pipeline._run_deployment({"generated_files": generated_files})
+
+    assert stats == {"success": False, "files_deployed": 1, "total_files": 2}
