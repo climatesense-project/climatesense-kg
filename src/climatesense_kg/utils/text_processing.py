@@ -329,15 +329,21 @@ def _fetch_public_url(
     url: str,
     headers: dict[str, str],
     timeout: float,
+    allowed_origin: str | None = None,
 ) -> requests.Response:
     """Fetch a public HTTP(S) URL while validating and pinning every hop."""
     current_url = url
+    required_origin = _url_origin(allowed_origin) if allowed_origin else None
+    if allowed_origin and required_origin is None:
+        raise _UnsafeURLError("Configured origin must use HTTP or HTTPS")
 
     for redirect_count in range(_MAX_REDIRECTS + 1):
         parsed = urlparse(current_url)
         hostname = parsed.hostname
         if parsed.scheme not in {"http", "https"} or not hostname:
             raise _UnsafeURLError("Redirect URL must use HTTP or HTTPS")
+        if required_origin is not None and _url_origin(current_url) != required_origin:
+            raise _UnsafeURLError("URL is outside the configured origin")
 
         port = parsed.port or (443 if parsed.scheme == "https" else 80)
         address = _resolve_public_address(hostname, port)
@@ -366,6 +372,23 @@ def _fetch_public_url(
         current_url = redirected_url
 
     raise requests.TooManyRedirects(f"Exceeded {_MAX_REDIRECTS} redirects")
+
+
+def _url_origin(url: str) -> tuple[str, str, int] | None:
+    """Return a canonical HTTP(S) origin tuple for exact comparisons."""
+    parsed = urlparse(url)
+    hostname = parsed.hostname
+    scheme = parsed.scheme.lower()
+    if scheme not in {"http", "https"} or not hostname:
+        return None
+
+    try:
+        port = parsed.port
+    except ValueError:
+        return None
+
+    default_port = 443 if scheme == "https" else 80
+    return scheme, hostname.rstrip(".").lower(), port or default_port
 
 
 def fetch_and_extract_text(url: str) -> TextExtractionResult:

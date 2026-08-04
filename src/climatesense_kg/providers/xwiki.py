@@ -9,6 +9,7 @@ import defusedxml.ElementTree as ET
 import requests
 
 from ..config.schemas import ProviderConfig
+from ..utils.text_processing import _fetch_public_url
 from .base import BaseProvider
 
 
@@ -78,7 +79,7 @@ class XWikiProvider(BaseProvider):
         for page_data in all_pages_data.values():
             try:
                 time.sleep(rate_limit_delay)
-                page_details = self._fetch_page_details(session, page_data, timeout)
+                page_details = self._fetch_page_details(base_url, page_data, timeout)
                 if page_details:
                     # Merge basic page data with details
                     combined_data = {**page_data, **page_details}
@@ -163,7 +164,7 @@ class XWikiProvider(BaseProvider):
         return element.text.strip() if element is not None and element.text else ""
 
     def _fetch_page_details(
-        self, session: requests.Session, page_data: PageSummary, timeout: int
+        self, base_url: str, page_data: PageSummary, timeout: int
     ) -> PageDetails | None:
         """Fetch detailed page information."""
         page_api_url = page_data.get("pageApiUrl")
@@ -171,7 +172,12 @@ class XWikiProvider(BaseProvider):
             return None
 
         try:
-            response = session.get(page_api_url, timeout=timeout)
+            response = _fetch_public_url(
+                page_api_url,
+                headers={"Accept": "application/xml"},
+                timeout=timeout,
+                allowed_origin=base_url,
+            )
             response.raise_for_status()
 
             root = ET.fromstring(response.content)

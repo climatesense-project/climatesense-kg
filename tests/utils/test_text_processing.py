@@ -2,11 +2,14 @@
 
 from unittest.mock import Mock, patch
 
+import pytest
 import requests
 from src.climatesense_kg.utils.text_processing import (
     ExtractionErrorType,
     TextExtractionResult,
+    _fetch_public_url,
     _request_url_at_address,
+    _UnsafeURLError,
     fetch_and_extract_text,
     normalize_organization_url,
     normalize_text,
@@ -288,6 +291,47 @@ class TestFetchAndExtractText:
 
         assert result.success is False
         assert result.error_type == ExtractionErrorType.INVALID_URL
+        mock_request.assert_called_once()
+
+    @patch("src.climatesense_kg.utils.text_processing._request_url_at_address")
+    @patch("socket.getaddrinfo")
+    def test_rejects_url_outside_allowed_origin(
+        self, mock_getaddrinfo: Mock, mock_request: Mock
+    ) -> None:
+        """An origin-constrained request must reject response-selected hosts."""
+        with pytest.raises(_UnsafeURLError, match="configured origin"):
+            _fetch_public_url(
+                "https://attacker.example/rest/pages/1",
+                {"Accept": "application/xml"},
+                timeout=10,
+                allowed_origin="https://wiki.example",
+            )
+
+        mock_getaddrinfo.assert_not_called()
+        mock_request.assert_not_called()
+
+    @patch("src.climatesense_kg.utils.text_processing._request_url_at_address")
+    @patch("socket.getaddrinfo")
+    def test_rejects_redirect_outside_allowed_origin(
+        self, mock_getaddrinfo: Mock, mock_request: Mock
+    ) -> None:
+        """Every redirect must remain on the configured origin."""
+        mock_getaddrinfo.return_value = [
+            (2, 1, 6, "", ("93.184.216.34", 443)),
+        ]
+        mock_request.return_value = Mock(
+            status_code=302,
+            headers={"Location": "https://attacker.example/private"},
+        )
+
+        with pytest.raises(_UnsafeURLError, match="configured origin"):
+            _fetch_public_url(
+                "https://wiki.example/rest/pages/1",
+                {"Accept": "application/xml"},
+                timeout=10,
+                allowed_origin="https://wiki.example",
+            )
+
         mock_request.assert_called_once()
 
     @patch("src.climatesense_kg.utils.text_processing.requests.Session")
