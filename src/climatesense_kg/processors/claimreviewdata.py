@@ -24,14 +24,20 @@ class ClaimReviewDataProcessor(BaseProcessor):
             for item in data:
                 is_valid, errors = self._validate_item(item)
                 if not is_valid:
-                    self.logger.warning("Skipping invalid item: %s", "; ".join(errors))
+                    self.logger.warning(
+                        "Skipping invalid item %s: %s",
+                        item.get("review_url", "unknown"),
+                        "; ".join(errors),
+                    )
                     continue
 
                 try:
                     canonical_review = self._normalize_item(item)
                     yield canonical_review
                 except Exception as e:
-                    self.logger.warning(f"Failed to normalize item: {e}")
+                    self.logger.warning(
+                        f"Failed to normalize item {item.get('review_url', 'unknown')}: {e}"
+                    )
                     continue
 
         except json.JSONDecodeError as e:
