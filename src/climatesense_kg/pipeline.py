@@ -31,6 +31,15 @@ logger = logging.getLogger(__name__)
 class DataSourceResults(TypedDict):
     total_items: int
     sources_processed: int
+    sources_failed: int
+    successful_sources: list[str]
+    failed_sources: list[str]
+
+
+class IngestionResults(TypedDict):
+    items: list[CanonicalClaimReview]
+    successful_sources: list[str]
+    failed_sources: list[str]
 
 
 class EnrichmentResults(TypedDict):
@@ -283,15 +292,25 @@ class Pipeline:
         try:
             # Step 1: Data Ingestion
             self.logger.info("Step 1: Data Ingestion")
-            canonical_reviews = self._run_ingestion(
+            ingestion_results = self._run_ingestion(
                 skip_download=skip_download, force_regenerate=force_regenerate
             )
+            canonical_reviews = ingestion_results["items"]
+            successful_sources = ingestion_results["successful_sources"]
+            failed_sources = ingestion_results["failed_sources"]
             results["data_sources"] = {
                 "total_items": len(canonical_reviews),
-                "sources_processed": len(
-                    [s for s in self.config.data_sources if s.enabled]
-                ),
+                "sources_processed": len(successful_sources),
+                "sources_failed": len(failed_sources),
+                "successful_sources": successful_sources,
+                "failed_sources": failed_sources,
             }
+
+            if failed_sources and not successful_sources:
+                raise RuntimeError(
+                    "All enabled data sources failed ingestion: "
+                    + ", ".join(failed_sources)
+                )
 
             if not canonical_reviews:
                 self.logger.info("No new items to process.")
@@ -376,7 +395,7 @@ class Pipeline:
 
     def _run_ingestion(
         self, skip_download: bool = False, force_regenerate: bool = False
-    ) -> list[CanonicalClaimReview]:
+    ) -> IngestionResults:
         """Run data ingestion using DataManager.
 
         Args:
@@ -384,6 +403,8 @@ class Pipeline:
         """
         all_items: list[CanonicalClaimReview] = []
         total_items_before_filtering = 0
+        successful_sources: list[str] = []
+        failed_sources: list[str] = []
 
         for source_config in self.config.data_sources:
             if not source_config.enabled:
@@ -427,8 +448,11 @@ class Pipeline:
                     )
                     all_items.extend(items)
 
+                successful_sources.append(source_config.name)
+
             except Exception as e:
                 self.logger.error(f"Error ingesting from {source_config.name}: {e}")
+                failed_sources.append(source_config.name)
 
         skipped_total = total_items_before_filtering - len(all_items)
         if skipped_total > 0:
@@ -438,7 +462,11 @@ class Pipeline:
         else:
             self.logger.info(f"Total ingested items: {len(all_items)}")
 
-        return all_items
+        return {
+            "items": all_items,
+            "successful_sources": successful_sources,
+            "failed_sources": failed_sources,
+        }
 
     def _run_enrichment(
         self,

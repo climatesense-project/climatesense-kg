@@ -2,9 +2,73 @@
 
 from logging import getLogger
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 from src.climatesense_kg.pipeline import Pipeline
 from src.climatesense_kg.rdf_generation.generator import RDFGenerator
+
+
+def test_pipeline_fails_when_every_enabled_source_fails() -> None:
+    """An empty aggregate caused by total source failure must not report success."""
+    sources = [
+        SimpleNamespace(name="source-a", enabled=True),
+        SimpleNamespace(name="source-b", enabled=True),
+    ]
+
+    pipeline = object.__new__(Pipeline)
+    pipeline.cache = None
+    pipeline.config = SimpleNamespace(data_sources=sources)
+    pipeline.data_manager = Mock()
+    pipeline.data_manager.get_data.side_effect = RuntimeError("source unavailable")
+    pipeline.logger = getLogger("test.pipeline")
+    pipeline._run_datetime = None
+
+    results = pipeline.run()
+
+    assert results["success"] is False
+    assert results["error"] == (
+        "All enabled data sources failed ingestion: source-a, source-b"
+    )
+    assert results["data_sources"] == {
+        "total_items": 0,
+        "sources_processed": 0,
+        "sources_failed": 2,
+        "successful_sources": [],
+        "failed_sources": ["source-a", "source-b"],
+    }
+
+
+def test_pipeline_accepts_empty_ingestion_when_any_source_succeeds() -> None:
+    """A successful empty source must remain distinct from total source failure."""
+    sources = [
+        SimpleNamespace(name="healthy-source", enabled=True),
+        SimpleNamespace(name="failed-source", enabled=True),
+    ]
+
+    def get_data(source, *, skip_download=False):
+        if source.name == "failed-source":
+            raise RuntimeError("source unavailable")
+        return []
+
+    pipeline = object.__new__(Pipeline)
+    pipeline.cache = None
+    pipeline.config = SimpleNamespace(data_sources=sources)
+    pipeline.data_manager = Mock()
+    pipeline.data_manager.get_data.side_effect = get_data
+    pipeline.logger = getLogger("test.pipeline")
+    pipeline._run_datetime = None
+
+    results = pipeline.run()
+
+    assert results["success"] is True
+    assert results["error"] is None
+    assert results["data_sources"] == {
+        "total_items": 0,
+        "sources_processed": 1,
+        "sources_failed": 1,
+        "successful_sources": ["healthy-source"],
+        "failed_sources": ["failed-source"],
+    }
 
 
 def test_rdf_generation_only_marks_successful_reviews_processed(
