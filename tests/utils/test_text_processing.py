@@ -233,6 +233,12 @@ class TestSanitizeUrl:
         result = sanitize_url(url)
         assert result == "https://xn--maana-pta.com/path"
 
+    def test_strips_url_credentials(self) -> None:
+        assert (
+            sanitize_url("https://user:secret@example.com/private")
+            == "https://example.com/private"
+        )
+
     def test_malformed_url_exception(self) -> None:
         """Test malformed URL that raises exception."""
         with patch("src.climatesense_kg.utils.text_processing.urlparse") as mock_parse:
@@ -265,6 +271,21 @@ class TestFetchAndExtractText:
 
         assert result.success is False
         assert result.error_type == ExtractionErrorType.INVALID_URL
+        mock_request.assert_not_called()
+
+    @patch("src.climatesense_kg.utils.text_processing._request_url_at_address")
+    @patch("socket.getaddrinfo")
+    def test_rejects_credentials_before_request(
+        self, mock_getaddrinfo: Mock, mock_request: Mock
+    ) -> None:
+        with pytest.raises(_UnsafeURLError, match="credentials"):
+            _fetch_public_url(
+                "https://user:secret@example.com/private",
+                {"Accept": "text/html"},
+                timeout=10,
+            )
+
+        mock_getaddrinfo.assert_not_called()
         mock_request.assert_not_called()
 
     @patch("src.climatesense_kg.utils.text_processing._request_url_at_address")

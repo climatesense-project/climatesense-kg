@@ -9,7 +9,7 @@ import defusedxml.ElementTree as ET
 import requests
 
 from ..config.schemas import ProviderConfig
-from ..utils.text_processing import _fetch_public_url
+from ..utils.text_processing import _fetch_public_url, _redact_url_credentials
 from .base import BaseProvider
 
 
@@ -198,7 +198,11 @@ class XWikiProvider(BaseProvider):
             return page_details
 
         except Exception as e:
-            self.logger.error(f"Failed to fetch page details from {page_api_url}: {e}")
+            self.logger.error(
+                "Failed to fetch page details from %s: %s",
+                _redact_url_credentials(page_api_url),
+                e,
+            )
             return None
 
     def get_cache_key_fields(self, config: ProviderConfig) -> dict[str, Any]:

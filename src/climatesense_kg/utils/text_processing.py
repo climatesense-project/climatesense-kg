@@ -181,28 +181,30 @@ def sanitize_url(url: str) -> str | None:
     try:
         parsed = urlparse(to_parse)
     except Exception as exc:  # pragma: no cover
-        logger.warning(f"Failed to parse URL '{candidate}': {exc}")
+        logger.warning(
+            "Failed to parse URL '%s': %s", _redact_url_credentials(candidate), exc
+        )
         return None
 
     if parsed.scheme not in ("http", "https"):
-        logger.debug(f"Invalid scheme '{parsed.scheme}' in URL: {candidate}")
+        logger.debug("Invalid URL scheme: %s", parsed.scheme)
         return None
 
     if not parsed.netloc:
-        logger.debug(f"No netloc found in URL: {candidate}")
+        logger.debug("No network location found in URL")
         return None
 
     hostname = parsed.hostname
     if not hostname:
-        logger.debug(f"Hostname missing in URL: {candidate}")
+        logger.debug("Hostname missing in URL")
         return None
 
     if any(ch.isspace() for ch in hostname):
-        logger.debug(f"Whitespace found in hostname for URL: {candidate}")
+        logger.debug("Whitespace found in URL hostname")
         return None
 
     if any(ch in '"<>' for ch in hostname):
-        logger.debug(f"Invalid character in hostname for URL: {candidate}")
+        logger.debug("Invalid character in URL hostname")
         return None
 
     try:
@@ -215,17 +217,11 @@ def sanitize_url(url: str) -> str | None:
     try:
         port = parsed.port
     except ValueError:
-        logger.debug(f"Invalid port in URL: {candidate}")
+        logger.debug("Invalid port in URL")
         return None
 
     if port is not None:
         netloc = f"{netloc}:{port}"
-
-    if parsed.username:
-        userinfo = quote(parsed.username, safe="")
-        if parsed.password:
-            userinfo += f":{quote(parsed.password, safe='')}"
-        netloc = f"{userinfo}@{netloc}"
 
     path = _quote_url_component(parsed.path, safe="/")
     query = _quote_url_component(parsed.query, safe="=&?")
@@ -249,6 +245,17 @@ def _quote_url_component(value: str, *, safe: str) -> str:
     """Quote a URL component while preserving only valid existing escapes."""
     normalized = _INVALID_PERCENT_ESCAPE.sub("%25", value)
     return quote(normalized, safe=f"{safe}%")
+
+
+def _redact_url_credentials(url: str) -> str:
+    """Remove URL userinfo before including a URL in diagnostics."""
+    try:
+        parsed = urlparse(url)
+        if "@" not in parsed.netloc:
+            return url
+        return urlunparse(parsed._replace(netloc=parsed.netloc.rpartition("@")[2]))
+    except Exception:
+        return re.sub(r"(?<=//)[^/@\s]+@", "***@", url)
 
 
 def _resolve_public_address(hostname: str, port: int) -> str:
@@ -305,12 +312,7 @@ def _request_url_at_address(
     port = parsed.port or default_port
     address_netloc = f"[{address}]" if ip_address(address).version == 6 else address
 
-    userinfo = ""
-    if "@" in parsed.netloc:
-        userinfo = f"{parsed.netloc.rpartition('@')[0]}@"
-    pinned_url = urlunparse(
-        parsed._replace(netloc=f"{userinfo}{address_netloc}:{port}")
-    )
+    pinned_url = urlunparse(parsed._replace(netloc=f"{address_netloc}:{port}"))
 
     host_header = f"[{hostname}]" if ":" in hostname else hostname
     if parsed.port is not None and parsed.port != default_port:
@@ -349,6 +351,8 @@ def _fetch_public_url(
         hostname = parsed.hostname
         if parsed.scheme not in {"http", "https"} or not hostname:
             raise _UnsafeURLError("Redirect URL must use HTTP or HTTPS")
+        if parsed.username is not None or parsed.password is not None:
+            raise _UnsafeURLError("URL credentials are not allowed")
         if required_origin is not None and _url_origin(current_url) != required_origin:
             raise _UnsafeURLError("URL is outside the configured origin")
 
