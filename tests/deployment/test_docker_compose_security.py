@@ -19,7 +19,7 @@ def test_database_ports_are_loopback_only() -> None:
     services = _compose_services()
 
     assert services["postgres"]["ports"] == [
-        "${POSTGRES_BIND_ADDRESS:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
+        "${POSTGRES_BIND_ADDRESS:-127.0.0.1}:${POSTGRES_HOST_PORT:-5432}:5432"
     ]
     assert services["virtuoso"]["ports"] == [
         "${VIRTUOSO_BIND_ADDRESS:-127.0.0.1}:${VIRTUOSO_PORT:-8890}:8890"

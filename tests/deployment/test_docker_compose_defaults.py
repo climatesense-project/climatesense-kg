@@ -34,3 +34,13 @@ def test_daily_pipeline_and_analytics_share_qlever_endpoint_default() -> None:
     assert services["analytics-api"]["environment"]["ANALYTICS_SPARQL_ENDPOINT"] == (
         "${ANALYTICS_SPARQL_ENDPOINT:-${QLEVER_ENDPOINT:-http://qlever:7019}}"
     )
+
+
+def test_service_clients_use_postgres_container_port() -> None:
+    services = _compose_services()
+
+    assert services["pipeline"]["environment"]["POSTGRES_PORT"] == "5432"
+    assert services["analytics-api"]["environment"]["POSTGRES_PORT"] == "5432"
+    assert services["postgres"]["ports"] == [
+        "${POSTGRES_BIND_ADDRESS:-127.0.0.1}:${POSTGRES_HOST_PORT:-5432}:5432"
+    ]
