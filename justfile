@@ -76,13 +76,6 @@ run CONFIG *ARGS="":
 docker-build:
     docker compose -f docker/docker-compose.yml build
 
-# Run the daily pipeline in Docker
-docker-daily-run:
-    docker compose -f docker/docker-compose.yml run --build pipeline run --config config/daily.yaml
-
-docker-minimal-run:
-    docker compose -f docker/docker-compose.yml run --build -v ./samples:/app/samples pipeline run --config config/minimal.yaml
-
 # Start the stack with Virtuoso as the triplestore
 virtuoso-up:
     COMPOSE_PROFILES=virtuoso docker compose -f docker/docker-compose.yml up -d
