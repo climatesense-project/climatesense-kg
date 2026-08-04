@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import threading
 import time
 from typing import Any
 
@@ -15,6 +16,8 @@ from sqlalchemy.types import DateTime, Integer, String
 
 _QUERY_CACHE: dict[str, str] = {}
 _RESULT_CACHE: dict[str, tuple[float, list[dict[str, Any]]]] = {}
+_RESULT_CACHE_LOCK = threading.RLock()
+_RESULT_CACHE_GENERATION = 0
 _RESULT_CACHE_TTL_SECONDS = int(os.getenv("ANALYTICS_RESULT_CACHE_TTL", "300"))
 _BASE_DIR = Path(__file__).resolve().parent.parent / "queries"
 
@@ -31,14 +34,15 @@ def _result_cache_key(
 
 
 def _get_cached_result(cache_key: str) -> list[dict[str, Any]] | None:
-    cached = _RESULT_CACHE.get(cache_key)
-    if cached is None:
+    with _RESULT_CACHE_LOCK:
+        cached = _RESULT_CACHE.get(cache_key)
+        if cached is None:
+            return None
+        inserted_at, rows = cached
+        if time.monotonic() - inserted_at <= _RESULT_CACHE_TTL_SECONDS:
+            return rows
+        _RESULT_CACHE.pop(cache_key, None)
         return None
-    inserted_at, rows = cached
-    if time.monotonic() - inserted_at <= _RESULT_CACHE_TTL_SECONDS:
-        return rows
-    _RESULT_CACHE.pop(cache_key, None)
-    return None
 
 
 def _load_query(namespace: str, filename: str) -> str:
@@ -72,10 +76,14 @@ async def run_query(
         List of result rows as dictionaries
     """
     cache_key = _result_cache_key(namespace, filename, params)
+    cache_generation: int | None = None
 
     # Return cached result if available and caching is enabled
-    if use_cache and (cached_rows := _get_cached_result(cache_key)) is not None:
-        return cached_rows
+    if use_cache:
+        with _RESULT_CACHE_LOCK:
+            cache_generation = _RESULT_CACHE_GENERATION
+            if (cached_rows := _get_cached_result(cache_key)) is not None:
+                return cached_rows
 
     # Execute the query
     raw_sql = _load_query(namespace, filename)
@@ -98,7 +106,9 @@ async def run_query(
 
     # Cache the results
     if use_cache:
-        _RESULT_CACHE[cache_key] = (time.monotonic(), rows)
+        with _RESULT_CACHE_LOCK:
+            if cache_generation == _RESULT_CACHE_GENERATION:
+                _RESULT_CACHE[cache_key] = (time.monotonic(), rows)
 
     return rows
 
@@ -109,9 +119,13 @@ def clear_cache() -> int:
     Returns:
         Number of cache entries that were removed
     """
-    entries_removed = len(_RESULT_CACHE)
-    _RESULT_CACHE.clear()
-    return entries_removed
+    global _RESULT_CACHE_GENERATION
+
+    with _RESULT_CACHE_LOCK:
+        entries_removed = len(_RESULT_CACHE)
+        _RESULT_CACHE.clear()
+        _RESULT_CACHE_GENERATION += 1
+        return entries_removed
 
 
 def get_cache_stats() -> dict[str, Any]:
@@ -120,7 +134,8 @@ def get_cache_stats() -> dict[str, Any]:
     Returns:
         Dictionary with cache statistics including entry count and cached queries
     """
-    return {
-        "entry_count": len(_RESULT_CACHE),
-        "cached_queries": list(_RESULT_CACHE.keys()),
-    }
+    with _RESULT_CACHE_LOCK:
+        return {
+            "entry_count": len(_RESULT_CACHE),
+            "cached_queries": list(_RESULT_CACHE.keys()),
+        }
