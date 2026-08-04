@@ -81,13 +81,17 @@ def test_query_failure_closes_cursor_and_connection(
     cursor.execute.side_effect = RuntimeError("query failed")
     connection = Mock()
     connection.cursor.return_value = cursor
-    server.connection_manager.get_connection = Mock(return_value=connection)
+    connection_manager = getattr(server, "connection_manager")  # noqa: B009
+    connection_manager.get_connection = Mock(return_value=connection)
     request = Mock(headers={"Authorization": "Bearer test-token"})
-    query = server.QueryRequest(query="SELECT broken")
+    query_request_class = getattr(server, "QueryRequest")  # noqa: B009
+    http_exception_class = getattr(server, "HTTPException")  # noqa: B009
+    execute_sql_query = getattr(server, "execute_sql_query")  # noqa: B009
+    query = query_request_class(query="SELECT broken")
 
-    with pytest.raises(server.HTTPException) as exc_info:
-        server.execute_sql_query(query, request)
+    with pytest.raises(http_exception_class) as exc_info:
+        execute_sql_query(query, request)
 
-    assert exc_info.value.status_code == 400
+    assert getattr(exc_info.value, "status_code") == 400  # noqa: B009
     cursor.close.assert_called_once_with()
     connection.close.assert_called_once_with()
