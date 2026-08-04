@@ -84,6 +84,7 @@ just run config/minimal.yaml
 
 - [Docker](https://docs.docker.com/get-docker/)
 - [Docker Compose](https://docs.docker.com/compose/install/)
+- [just](https://github.com/casey/just)
 
 **Initial Setup:**
 
@@ -144,7 +145,7 @@ just run config/minimal.yaml
      Start the Virtuoso stack:
 
      ```bash
-     COMPOSE_PROFILES=virtuoso docker compose up -d
+     just virtuoso-up
      ```
 
    - **Option 2. QLever**
@@ -152,11 +153,11 @@ just run config/minimal.yaml
      Build the initial QLever index and start the QLever stack:
 
      ```bash
-     COMPOSE_PROFILES=qlever-init docker compose run --rm qlever-index
-     COMPOSE_PROFILES=qlever docker compose up -d
+     just qlever-init
+     just qlever-up
      ```
 
-4. Run the pipeline:
+4. Run the pipeline with minimal configuration to verify the setup:
    ```bash
    docker compose run --rm pipeline run -c config/minimal.yaml
    ```
