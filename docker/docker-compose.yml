@@ -136,6 +136,7 @@ services:
       QLEVER_MEMORY_FOR_QUERIES: ${QLEVER_MEMORY_FOR_QUERIES:-5G}
       QLEVER_CACHE_MAX_SIZE: ${QLEVER_CACHE_MAX_SIZE:-2G}
       QLEVER_QUERY_TIMEOUT: ${QLEVER_QUERY_TIMEOUT:-30s}
+      QLEVER_REQUEST_BODY_LIMIT: ${QLEVER_REQUEST_BODY_LIMIT:-3G}
     command:
       - -c
       - >-
@@ -145,6 +146,7 @@ services:
         --memory-for-queries "${QLEVER_MEMORY_FOR_QUERIES:-5G}"
         --cache-max-size "${QLEVER_CACHE_MAX_SIZE:-2G}"
         --timeout "${QLEVER_QUERY_TIMEOUT:-30s}"
+        request-body-limit="${QLEVER_REQUEST_BODY_LIMIT:-3G}"
     ports:
       - "${QLEVER_PORT:-7019}:7019"
     volumes:

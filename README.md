@@ -119,6 +119,7 @@ just run config/minimal.yaml
    - `QLEVER_MEMORY_FOR_QUERIES`: Memory available to queries (default `5G`)
    - `QLEVER_CACHE_MAX_SIZE`: Query-result cache size (default `2G`)
    - `QLEVER_QUERY_TIMEOUT`: Default query timeout (default `30s`)
+   - `QLEVER_REQUEST_BODY_LIMIT`: Maximum request body size, including RDF uploads (default `3G`)
    - `QLEVER_UI_PORT`: Published QLever UI port (default `7018`)
    - `QLEVERUI_SECRET_KEY`: Required Django signing key for QLever UI
    - `QLEVERUI_ALLOWED_HOSTS`: Hosts accepted by QLever UI
