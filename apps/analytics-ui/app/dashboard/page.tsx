@@ -44,10 +44,56 @@ function MetricsSkeleton() {
 }
 
 export default function DashboardPage() {
-  const { data: successData, loading: successLoading } = useEnricherSuccess();
-  const { data: errorData, loading: errorLoading } = useEnricherErrors({ limit: 25 });
-  const { data: domainFailures, loading: domainLoading } = useEnricherDomainFailures({ limit: 10 });
-  const { data: recentActivity, loading: activityLoading } = useEnricherActivity({ limit: 10 });
+  const {
+    data: successData,
+    error: successError,
+    loading: successLoading,
+  } = useEnricherSuccess();
+  const {
+    data: errorData,
+    error: errorsError,
+    loading: errorLoading,
+  } = useEnricherErrors({ limit: 25 });
+  const {
+    data: domainFailures,
+    error: domainError,
+    loading: domainLoading,
+  } = useEnricherDomainFailures({ limit: 10 });
+  const {
+    data: recentActivity,
+    error: activityError,
+    loading: activityLoading,
+  } = useEnricherActivity({ limit: 10 });
+
+  const requestError = successError ?? errorsError ?? domainError ?? activityError;
+
+  if (requestError) {
+    return (
+      <div className="space-y-6">
+        <section className="space-y-2">
+          <h1 className="text-3xl font-semibold tracking-tight">Pipeline Overview</h1>
+          <p className="text-muted-foreground">
+            Monitor the health and performance of the data enrichment pipeline.
+          </p>
+        </section>
+
+        <Card className="border-destructive" role="alert">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              Analytics data unavailable
+            </CardTitle>
+            <CardDescription>
+              The dashboard could not load its data. Try again after checking the analytics API.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground">
+            {requestError.message}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   const totals = successData?.reduce(
     (acc, current) => {
