@@ -143,6 +143,33 @@ class TestBertFactorsEnricherResults:
                 "climate_related", {"value": "not-a-boolean"}
             )
 
+    def test_fully_cached_item_skips_health_check_and_delay(
+        self,
+        bert_enricher: BertFactorsEnricher,
+        sample_claim_review: CanonicalClaimReview,
+    ) -> None:
+        uri = sample_claim_review.uri
+        cached_models = {
+            model: {
+                uri: {
+                    "success": True,
+                    "data": bert_enricher._empty_model_value(model),
+                }
+            }
+            for model in BertFactorsEnricher.MODEL_KEYS
+        }
+
+        with (
+            patch.object(bert_enricher, "is_available") as mock_available,
+            patch(
+                "src.climatesense_kg.enrichers.bert_factors_enricher.time.sleep"
+            ) as mock_sleep,
+        ):
+            bert_enricher._process_item(sample_claim_review, cached_models)
+
+        mock_available.assert_not_called()
+        mock_sleep.assert_not_called()
+
 
 class TestBertFactorsEnricherEnrichment:
     """Test enrichment functionality."""
@@ -349,11 +376,12 @@ class TestBertFactorsEnricherBatch:
             return [{"value": enricher._empty_model_value(model)} for _text in texts]
 
         with (
-            patch.object(enricher, "is_available", return_value=True),
+            patch.object(enricher, "is_available", return_value=True) as mock_available,
             patch.object(enricher, "_call_model", side_effect=model_results) as call,
         ):
             enricher.enrich(sample_claim_reviews)
 
+        mock_available.assert_called_once_with()
         assert call.call_count == len(BertFactorsEnricher.MODEL_KEYS)
         assert all(
             len(model_call.args[1]) == len(sample_claim_reviews)

@@ -269,7 +269,6 @@ class BertFactorsEnricher(Enricher):
         factors = self._merge_model_data(combined_values)
         self._apply_factors(claim_review, factors)
 
-        time.sleep(self.rate_limit_delay)
         return claim_review
 
     def _empty_factors_payload(self) -> dict[str, Any]:
@@ -442,6 +441,8 @@ class BertFactorsEnricher(Enricher):
                     default_value,
                     cached_models,
                 )
+            finally:
+                time.sleep(self.rate_limit_delay)
 
         return successes, errors
 
