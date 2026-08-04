@@ -1,5 +1,6 @@
 """GraphQL provider."""
 
+from collections.abc import Mapping
 import json
 import time
 from typing import Any, cast
@@ -63,6 +64,10 @@ class GraphQLProvider(BaseProvider):
                 break
 
             data = response_data["data"]
+            if not isinstance(data, Mapping):
+                raise GraphQLResponseError(
+                    "GraphQL response 'data' field must be a mapping"
+                )
             if not data:
                 break
 
@@ -75,11 +80,17 @@ class GraphQLProvider(BaseProvider):
                 None,
             )
 
+            if not isinstance(items, list) or not all(
+                isinstance(item, Mapping) for item in items
+            ):
+                raise GraphQLResponseError(
+                    "GraphQL item collection must be a list of mappings"
+                )
             if not items:
                 self.logger.info("No more data to fetch")
                 break
 
-            all_items.extend(items)
+            all_items.extend(dict(item) for item in items)
             self.logger.info(f"Fetched {len(items)} items (total: {len(all_items)})")
 
             # If we got fewer items than requested, we've reached the end
