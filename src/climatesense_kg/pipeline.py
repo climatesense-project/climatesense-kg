@@ -53,6 +53,7 @@ class GeneratedFileInfo(TypedDict):
     items: int
     failed_items: int
     file_size: int
+    review_uris: list[str]
 
 
 class RDFGenerationResults(TypedDict):
@@ -340,7 +341,8 @@ class Pipeline:
             # Step 3: RDF Generation
             self.logger.info("Step 3: RDF Generation")
             rdf_stats = self._run_rdf_generation(
-                enriched_reviews, mark_processed=not skip_deployment
+                enriched_reviews,
+                mark_processed=not skip_deployment and not self.deployment_handler,
             )
             results["rdf_generation"] = rdf_stats
 
@@ -606,6 +608,11 @@ class Pipeline:
                     "items": successful_items,
                     "failed_items": failed_items,
                     "file_size": file_size,
+                    "review_uris": [
+                        review.uri
+                        for review in source_reviews
+                        if review.uri and review.uri in successful_uri_set
+                    ],
                 }
             )
 
@@ -642,6 +649,12 @@ class Pipeline:
             deployment_results.append(success)
 
             if success:
+                self._mark_uris_processed(
+                    [
+                        (uri, source_name, str(output_path))
+                        for uri in file_info["review_uris"]
+                    ]
+                )
                 self.logger.info(
                     f"RDF data deployed successfully: {output_path} (source: {source_name})"
                 )

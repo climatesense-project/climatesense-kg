@@ -168,6 +168,11 @@ def test_rdf_generation_preserves_files_when_a_later_source_fails(
             "items": 1,
             "failed_items": 0,
             "file_size": (tmp_path / f"{source_name}.ttl").stat().st_size,
+            "review_uris": [
+                review.uri
+                for review in sample_claim_reviews
+                if review.source_name == source_name
+            ],
         }
         for source_name in ("source-a", "source-c")
     ]
@@ -213,3 +218,30 @@ def test_rdf_generation_rejects_shared_output_path_for_multiple_sources(
     pipeline.rdf_generator.save.assert_not_called()
     mock_cache.set_many.assert_not_called()
     assert not (tmp_path / "combined.ttl").exists()
+
+
+def test_failed_deployment_does_not_finalize_reviews(tmp_path, mock_cache) -> None:
+    """Reviews must remain eligible for retry when their RDF file is not deployed."""
+    rdf_path = tmp_path / "source-a.ttl"
+    rdf_path.write_text("", encoding="utf-8")
+
+    pipeline = object.__new__(Pipeline)
+    pipeline.cache = mock_cache
+    pipeline.logger = getLogger("test.pipeline")
+    pipeline.deployment_handler = Mock()
+    pipeline.deployment_handler.deploy.return_value = False
+    rdf_stats = {
+        "generated_files": [
+            {
+                "source": "source-a",
+                "path": str(rdf_path),
+                "items": 1,
+                "failed_items": 0,
+                "file_size": 0,
+                "review_uris": ["https://example.org/review/1"],
+            }
+        ]
+    }
+
+    assert pipeline._run_deployment(rdf_stats) is False
+    mock_cache.set_many.assert_not_called()
