@@ -454,6 +454,18 @@ class TestFetchAndExtractText:
 
     @patch("src.climatesense_kg.utils.text_processing._fetch_public_url")
     @patch("src.climatesense_kg.utils.text_processing.sanitize_url")
+    def test_forwards_configured_timeout(
+        self, mock_sanitize: Mock, mock_fetch: Mock
+    ) -> None:
+        mock_sanitize.return_value = "https://example.com"
+        mock_fetch.return_value = Mock(text="")
+
+        fetch_and_extract_text("https://example.com", timeout=37)
+
+        assert mock_fetch.call_args.kwargs["timeout"] == 37
+
+    @patch("src.climatesense_kg.utils.text_processing._fetch_public_url")
+    @patch("src.climatesense_kg.utils.text_processing.sanitize_url")
     def test_connection_error(self, mock_sanitize: Mock, mock_fetch: Mock) -> None:
         """Test connection error handling."""
         mock_sanitize.return_value = "https://example.com"

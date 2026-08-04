@@ -17,12 +17,14 @@ class TestURLTextEnricherInit:
         assert enricher.name == "url_text_extractor"
         assert enricher.rate_limit_delay == 0.5
         assert enricher.max_retries == 1
+        assert enricher.timeout == 10
 
     def test_init_custom_config(self) -> None:
         """Test initialization with custom configuration."""
-        enricher = URLTextEnricher(rate_limit_delay=1.0, max_retries=5)
+        enricher = URLTextEnricher(rate_limit_delay=1.0, max_retries=5, timeout=42)
         assert enricher.rate_limit_delay == 1.0
         assert enricher.max_retries == 5
+        assert enricher.timeout == 42
 
     def test_init_negative_rate_limit_raises_error(self) -> None:
         """Test initialization with negative rate_limit_delay raises ValueError."""
@@ -51,7 +53,7 @@ class TestURLTextEnricherEnrichment:
         result = enricher.enrich([sample_claim_review])[0]
 
         assert result.review_url_text == extracted_text
-        mock_fetch.assert_called_once_with(sample_claim_review.review_url)
+        mock_fetch.assert_called_once_with(sample_claim_review.review_url, timeout=10)
 
         mock_cache.get_many.assert_called_once_with(
             [sample_claim_review.uri], "enricher.url_text_extractor"

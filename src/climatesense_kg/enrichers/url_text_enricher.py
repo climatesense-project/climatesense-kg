@@ -23,6 +23,7 @@ class URLTextEnricher(Enricher):
             "rate_limit_delay", 0.5
         )  # seconds between requests
         self.max_retries = kwargs.get("max_retries", 1)
+        self.timeout = kwargs.get("timeout", 10)
 
         if self.rate_limit_delay < 0:
             raise ValueError("rate_limit_delay must be non-negative")
@@ -108,7 +109,7 @@ class URLTextEnricher(Enricher):
 
         for attempt in range(self.max_retries + 1):
             try:
-                result = fetch_and_extract_text(url)
+                result = fetch_and_extract_text(url, timeout=self.timeout)
                 last_result = result
 
                 if result.success:

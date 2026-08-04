@@ -402,7 +402,7 @@ def _url_origin(url: str) -> tuple[str, str, int] | None:
     return scheme, hostname.rstrip(".").lower(), port or default_port
 
 
-def fetch_and_extract_text(url: str) -> TextExtractionResult:
+def fetch_and_extract_text(url: str, timeout: float = 10) -> TextExtractionResult:
     """
     Fetch and extract main text content from a URL using trafilatura.
 
@@ -446,7 +446,7 @@ def fetch_and_extract_text(url: str) -> TextExtractionResult:
             "Connection": "keep-alive",
             "Cache-Control": "max-age=0",
         }
-        response = _fetch_public_url(sanitized_url, headers=headers, timeout=10)
+        response = _fetch_public_url(sanitized_url, headers=headers, timeout=timeout)
         response.raise_for_status()
         downloaded = response.text
 
