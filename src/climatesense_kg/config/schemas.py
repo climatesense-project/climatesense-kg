@@ -38,6 +38,11 @@ class ProviderConfig:
     rate_limit_delay: float = 1.0
     timeout: int = 30
 
+    def __post_init__(self) -> None:
+        """Validate provider-specific values that affect control flow."""
+        if self.provider_type == "graphql" and self.batch_size <= 0:
+            raise ValueError("GraphQL provider batch_size must be greater than zero")
+
 
 @dataclass
 class DataSourceConfig:
