@@ -7,6 +7,7 @@ import logging
 from typing import Any
 
 from psycopg.abc import Query
+from psycopg.conninfo import make_conninfo
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
@@ -43,10 +44,13 @@ class PostgresCache(CacheInterface):
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
         try:
-            # Create connection string for psycopg3
-            conninfo = f"host={host} port={port} dbname={database} user={user}"
-            if password:
-                conninfo += f" password={password}"
+            conninfo = make_conninfo(
+                host=host,
+                port=port,
+                dbname=database,
+                user=user,
+                password=password,
+            )
 
             self.connection_pool = ConnectionPool(
                 conninfo=conninfo,
