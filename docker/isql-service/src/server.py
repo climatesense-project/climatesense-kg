@@ -78,7 +78,11 @@ class ConnectionManager:
             )
 
         try:
-            connection = pyodbc.connect(self.connection_string, timeout=self.timeout)
+            connection = pyodbc.connect(
+                self.connection_string,
+                timeout=self.timeout,
+                autocommit=True,
+            )
             self.failure_count = 0
             self.last_failure_time = 0
             logger.info("Successfully established database connection")
