@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import re
 import time
 from typing import Any, cast
+from urllib.parse import urlsplit
 
 import requests
 
@@ -40,6 +42,8 @@ class DBpediaPropertyEnricher(Enricher):
 
     ENTITY_CACHE_STEP = "dbpedia.entity"
     DEFAULT_PROPERTIES: list[str] = []
+    _FORBIDDEN_IRI_CHARACTERS = re.compile(r'[\x00-\x20<>"{}|^`\\]')
+    _INVALID_PERCENT_ESCAPE = re.compile(r"%(?![0-9A-Fa-f]{2})")
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__("dbpedia_entity_properties", **kwargs)
@@ -241,11 +245,22 @@ class DBpediaPropertyEnricher(Enricher):
 
     def _build_query(self, entity_uri: str) -> str:
         """Construct the SPARQL query for the given entity URI."""
-        values = " ".join(f"<{prop}>" for prop in self.properties)
+        validated_entity_uri = self._validate_absolute_uri(entity_uri)
+        if validated_entity_uri is None:
+            raise ValueError(f"Invalid DBpedia entity URI: {entity_uri!r}")
+        validated_properties = [
+            validated
+            for prop in self.properties
+            if (validated := self._validate_absolute_uri(prop)) is not None
+        ]
+        if len(validated_properties) != len(self.properties):
+            raise ValueError("Invalid DBpedia property URI")
+
+        values = " ".join(f"<{prop}>" for prop in validated_properties)
         query = (
             "SELECT ?property ?value WHERE { "
             f"VALUES ?property {{ {values} }} "
-            f"<{entity_uri}> ?property ?value ."
+            f"<{validated_entity_uri}> ?property ?value ."
             " }"
         )
         return query
@@ -333,8 +348,31 @@ class DBpediaPropertyEnricher(Enricher):
         if not prop:
             return None
 
-        if prop.startswith("http://") or prop.startswith("https://"):
-            return prop
+        validated = self._validate_absolute_uri(prop)
+        if validated is not None:
+            return validated
 
         self.logger.warning("Ignoring non-URI DBpedia property identifier: %s", prop)
         return None
+
+    def _validate_absolute_uri(self, value: str) -> str | None:
+        """Return an HTTP(S) URI only when it is safe inside a SPARQL IRIREF."""
+        if (
+            not isinstance(value, str)
+            or self._FORBIDDEN_IRI_CHARACTERS.search(value)
+            or self._INVALID_PERCENT_ESCAPE.search(value)
+        ):
+            return None
+        try:
+            parsed = urlsplit(value)
+            if (
+                parsed.scheme not in {"http", "https"}
+                or not parsed.hostname
+                or parsed.username is not None
+                or parsed.password is not None
+            ):
+                return None
+            _ = parsed.port
+        except ValueError:
+            return None
+        return value

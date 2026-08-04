@@ -35,6 +35,23 @@ class TestDBpediaPropertyEnricherInit:
         enricher = DBpediaPropertyEnricher(properties=properties)
         assert properties == enricher.properties
 
+    def test_rejects_property_uri_that_can_break_sparql(self) -> None:
+        malicious = "http://dbpedia.org/ontology/name> } UNION { ?s ?p ?o"
+
+        enricher = DBpediaPropertyEnricher(properties=[malicious])
+
+        assert enricher.properties == []
+
+    def test_rejects_entity_uri_that_can_break_sparql(self) -> None:
+        enricher = DBpediaPropertyEnricher(
+            properties=["http://dbpedia.org/ontology/country"]
+        )
+
+        with pytest.raises(ValueError, match="Invalid DBpedia entity URI"):
+            enricher._build_query(
+                "http://dbpedia.org/resource/Paris> ?p ?o . <http://attacker.test"
+            )
+
 
 class TestDBpediaPropertyEnricherAvailability:
     """Availability check tests."""
