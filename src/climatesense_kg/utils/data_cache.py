@@ -113,7 +113,8 @@ class DataCache:
         Returns:
             Cached data as bytes, or None if not available/expired
         """
-        ttl_hours = ttl_hours or self.default_ttl_hours
+        if ttl_hours is None:
+            ttl_hours = self.default_ttl_hours
         cache_key = self._generate_cache_key(source_name, config)
         self.logger.debug(f"Looking for cache key: {cache_key}")
 

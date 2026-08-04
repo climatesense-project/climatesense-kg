@@ -80,6 +80,18 @@ def test_underscored_source_uses_its_full_name_for_cache_directory(
     assert cache.get_stats().total_entries == 0
 
 
+def test_zero_ttl_expires_cache_entry_immediately(tmp_path: Path) -> None:
+    """An explicit zero TTL must not fall back to the default TTL."""
+    cache = DataCache(tmp_path / "cache", default_ttl_hours=24)
+    config = {"url": "https://example.test/data"}
+
+    with patch("src.climatesense_kg.utils.data_cache.time.time", side_effect=[10, 11]):
+        cache.put("source", config, b"cached data")
+        result = cache.get("source", config, ttl_hours=0)
+
+    assert result is None
+
+
 def test_failed_overwrite_preserves_previous_cache_entry(tmp_path: Path) -> None:
     """A replacement must be complete before it can replace valid cache data."""
     cache = DataCache(tmp_path / "cache")
