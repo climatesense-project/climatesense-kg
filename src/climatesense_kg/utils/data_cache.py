@@ -49,22 +49,23 @@ class DataCache:
 
         return f"{source_name}_{config_hash}"
 
-    def _get_cache_path(self, cache_key: str) -> Path:
+    def _get_cache_path(self, source_name: str, cache_key: str) -> Path:
         """Get cache file path for given key."""
-        source_name = cache_key.split("_")[0]
         cache_subdir = self.cache_dir / source_name
         cache_subdir.mkdir(exist_ok=True)
         return cache_subdir / f"{cache_key}.gz"
 
-    def _get_metadata_path(self, cache_key: str) -> Path:
+    def _get_metadata_path(self, source_name: str, cache_key: str) -> Path:
         """Get metadata file path for given key."""
-        cache_path = self._get_cache_path(cache_key)
+        cache_path = self._get_cache_path(source_name, cache_key)
         return cache_path.with_suffix(".meta.json")
 
     @contextmanager
-    def _cache_file_lock(self, cache_key: str, *, exclusive: bool) -> Iterator[None]:
+    def _cache_file_lock(
+        self, source_name: str, cache_key: str, *, exclusive: bool
+    ) -> Iterator[None]:
         """Hold a lock shared by every process accessing a cache entry."""
-        cache_path = self._get_cache_path(cache_key)
+        cache_path = self._get_cache_path(source_name, cache_key)
         lock_path = cache_path.with_suffix(".lock")
         with lock_path.open("a+b") as lock_file:
             operation = fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH
@@ -74,9 +75,9 @@ class DataCache:
             finally:
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
-    def _is_expired(self, cache_key: str, ttl_hours: float) -> bool:
+    def _is_expired(self, source_name: str, cache_key: str, ttl_hours: float) -> bool:
         """Check if cache entry is expired."""
-        metadata_path = self._get_metadata_path(cache_key)
+        metadata_path = self._get_metadata_path(source_name, cache_key)
 
         if not metadata_path.exists():
             return True
@@ -116,12 +117,14 @@ class DataCache:
         cache_key = self._generate_cache_key(source_name, config)
         self.logger.debug(f"Looking for cache key: {cache_key}")
 
-        with self._lock, self._cache_file_lock(cache_key, exclusive=False):
-            if not ignore_expiry and self._is_expired(cache_key, ttl_hours):
+        with self._lock, self._cache_file_lock(source_name, cache_key, exclusive=False):
+            if not ignore_expiry and self._is_expired(
+                source_name, cache_key, ttl_hours
+            ):
                 self.logger.info(f"Cache miss/expired for {source_name}")
                 return None
 
-            cache_path = self._get_cache_path(cache_key)
+            cache_path = self._get_cache_path(source_name, cache_key)
 
             if not cache_path.exists():
                 self.logger.info(f"Cache miss for {source_name}")
@@ -148,9 +151,9 @@ class DataCache:
         """
         cache_key = self._generate_cache_key(source_name, config)
 
-        with self._lock, self._cache_file_lock(cache_key, exclusive=True):
-            cache_path = self._get_cache_path(cache_key)
-            metadata_path = self._get_metadata_path(cache_key)
+        with self._lock, self._cache_file_lock(source_name, cache_key, exclusive=True):
+            cache_path = self._get_cache_path(source_name, cache_key)
+            metadata_path = self._get_metadata_path(source_name, cache_key)
             cache_temp_path: Path | None = None
             metadata_temp_path: Path | None = None
 
@@ -174,7 +177,7 @@ class DataCache:
                 metadata: dict[str, Any] = {
                     "timestamp": time.time(),
                     "source_name": source_name,
-                    "config_hash": cache_key.split("_", 1)[1],
+                    "config_hash": cache_key.rsplit("_", 1)[1],
                     "size_bytes": len(data),
                 }
 

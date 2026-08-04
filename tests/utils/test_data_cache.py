@@ -60,6 +60,26 @@ def test_clear_removes_valid_source_directory(tmp_path: Path) -> None:
     assert not source_dir.exists()
 
 
+def test_underscored_source_uses_its_full_name_for_cache_directory(
+    tmp_path: Path,
+) -> None:
+    """Source-specific storage and statistics must preserve underscores."""
+    cache_dir = tmp_path / "cache"
+    cache = DataCache(cache_dir)
+    config = {"url": "https://example.test/data"}
+
+    cache.put("source_with_underscores", config, b"cached data")
+
+    assert cache.get("source_with_underscores", config) == b"cached data"
+    assert (cache_dir / "source_with_underscores").is_dir()
+    assert not (cache_dir / "source").exists()
+    assert cache.get_stats().sources.keys() == {"source_with_underscores"}
+
+    cache.clear("source_with_underscores")
+
+    assert cache.get_stats().total_entries == 0
+
+
 def test_failed_overwrite_preserves_previous_cache_entry(tmp_path: Path) -> None:
     """A replacement must be complete before it can replace valid cache data."""
     cache = DataCache(tmp_path / "cache")
@@ -91,7 +111,7 @@ def test_separate_cache_instances_serialize_writes(tmp_path: Path) -> None:
         second.put("source", config, b"new data")
         finished.set()
 
-    with first._cache_file_lock(cache_key, exclusive=True):
+    with first._cache_file_lock("source", cache_key, exclusive=True):
         writer = threading.Thread(target=write_from_second_instance)
         writer.start()
         assert not finished.wait(timeout=0.05)
