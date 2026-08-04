@@ -153,6 +153,22 @@ def _print_failure_summary(results: "PipelineResults") -> None:
         print(f"Error: {error}", file=sys.stderr)
 
 
+def _source_name_for_rdf_file(
+    rdf_file: Path, configured_source_names: set[str]
+) -> str | None:
+    """Match an RDF artifact to a configured source without splitting its name."""
+    matching_sources = [
+        source_name
+        for source_name in configured_source_names
+        if rdf_file.stem == source_name or rdf_file.stem.startswith(f"{source_name}_")
+    ]
+    if matching_sources:
+        return max(matching_sources, key=len)
+    if len(configured_source_names) == 1:
+        return next(iter(configured_source_names))
+    return None
+
+
 def run_redeploy(args: argparse.Namespace) -> int:
     """Redeploy existing RDF files to the configured backend."""
     from .config import load_config
@@ -193,10 +209,18 @@ def run_redeploy(args: argparse.Namespace) -> int:
         print(f"No supported RDF files found in {rdf_dir}", file=sys.stderr)
         return 1
 
-    # Group files by source name (prefix before the first '_' in the filename)
+    configured_source_names = {source.name for source in config.data_sources}
+
+    # Group files by their longest matching configured source name.
     files_by_source: dict[str, list[Path]] = {}
     for f in rdf_files:
-        source_name = f.stem.split("_")[0]
+        source_name = _source_name_for_rdf_file(f, configured_source_names)
+        if source_name is None:
+            print(
+                f"Could not determine a configured source for RDF file: {f}",
+                file=sys.stderr,
+            )
+            return 1
         files_by_source.setdefault(source_name, []).append(f)
 
     # Build the list of files to deploy
