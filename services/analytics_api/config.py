@@ -6,6 +6,7 @@ from functools import lru_cache
 import os
 
 from pydantic import BaseModel, Field
+from sqlalchemy import URL
 
 
 def _build_default_dsn() -> str:
@@ -26,13 +27,14 @@ def _build_default_dsn() -> str:
             f"Missing required environment variables: {', '.join(missing)}"
         )
 
-    return (
-        f"postgresql+asyncpg://{required_vars['POSTGRES_USER']}:"
-        f"{required_vars['POSTGRES_PASSWORD']}@"
-        f"{required_vars['POSTGRES_HOST']}:"
-        f"{required_vars['POSTGRES_PORT']}/"
-        f"{required_vars['POSTGRES_DB']}"
-    )
+    return URL.create(
+        drivername="postgresql+asyncpg",
+        username=required_vars["POSTGRES_USER"],
+        password=required_vars["POSTGRES_PASSWORD"],
+        host=required_vars["POSTGRES_HOST"],
+        port=int(required_vars["POSTGRES_PORT"]),
+        database=required_vars["POSTGRES_DB"],
+    ).render_as_string(hide_password=False)
 
 
 class Settings(BaseModel):
