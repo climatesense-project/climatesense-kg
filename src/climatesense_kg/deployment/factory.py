@@ -25,6 +25,7 @@ def create_deployment_handler(
             isql_service_url=os.getenv(
                 "VIRTUOSO_ISQL_SERVICE_URL", "http://isql-service:8080"
             ),
+            isql_service_token=os.getenv("ISQL_SERVICE_TOKEN", ""),
         )
 
     if config.backend == "qlever":

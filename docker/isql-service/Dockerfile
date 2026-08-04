@@ -39,8 +39,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the project files
 COPY . .
 
-# Expose the specified port
-EXPOSE 50118
+# Expose the service only to the container network
+EXPOSE 8080
 
 # Set environment variables
 ENV PYTHONPATH=/app

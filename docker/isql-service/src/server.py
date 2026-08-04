@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 """
-FastAPI service for executing SPARQL and SQL queries against Virtuoso triplestore.
+Internal FastAPI service for controlled RDF loader operations against Virtuoso.
 
 Provides REST endpoints for query execution with connection management,
 retry logic, and health monitoring.
@@ -15,10 +15,10 @@ import time
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import pyodbc
+from security import is_valid_bearer_token
 import uvicorn
 
 
@@ -30,6 +30,7 @@ class AppConfig:
     port: int
     virtuoso_connection_string: str
     connection_timeout: int
+    api_token: str
 
 
 class ConnectionManager:
@@ -152,7 +153,11 @@ config = AppConfig(
         f"PWD={os.getenv('VIRTUOSO_PASSWORD', 'dba')};"
     ),
     connection_timeout=30,
+    api_token=os.getenv("ISQL_SERVICE_TOKEN", ""),
 )
+
+if not config.api_token:
+    raise RuntimeError("ISQL_SERVICE_TOKEN is required")
 
 connection_manager = ConnectionManager(
     config.virtuoso_connection_string, config.connection_timeout
@@ -168,14 +173,6 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="ISQL Service", version="1.0.0", lifespan=lifespan)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 
 @app.exception_handler(Exception)
@@ -216,55 +213,18 @@ async def health_check():
         ) from e
 
 
-@app.post("/sparql", response_model=QueryResponse)
-async def execute_sparql_query(request: QueryRequest):
-    """Execute SPARQL query against the triplestore."""
-    if not request.query:
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "error": "Query is required",
-                "message": "The query parameter is missing in the request body",
-            },
-        )
-
-    try:
-        conn = connection_manager.get_connection()
-        conn.timeout = 7200
-        cursor = conn.cursor()
-
-        prefixed_query = f"SPARQL {request.query}"
-
-        logger.info(f"Executing SPARQL query: {prefixed_query}")
-        cursor.execute(prefixed_query)
-        results = cursor.fetchall()
-
-        # Convert results to list of dictionaries
-        columns = [column[0] for column in cursor.description]
-        result_list = [dict(zip(columns, row, strict=False)) for row in results]
-
-        cursor.close()
-        conn.close()
-
-        return QueryResponse(results=result_list)
-    except ConnectionError as e:
-        logger.error(f"Database connection failed: {e}")
-        raise HTTPException(
-            status_code=503,
-            detail={"error": "Database connection failed", "message": str(e)},
-        ) from e
-    except Exception as e:
-        logger.error(f"Error executing SPARQL query: {e}")
-        raise HTTPException(
-            status_code=400,
-            detail={"error": "Query execution failed", "message": str(e)},
-        ) from e
-
-
 @app.post("/sql", response_model=QueryResponse)
-async def execute_sql_query(request: QueryRequest):
-    """Execute SQL query against the database."""
-    if not request.query:
+async def execute_sql_query(query_request: QueryRequest, http_request: Request):
+    """Execute an authenticated SQL query against the database."""
+    authorization = http_request.headers.get("Authorization", "")
+    if not is_valid_bearer_token(authorization, config.api_token):
+        raise HTTPException(
+            status_code=401,
+            detail={"error": "Unauthorized"},
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if not query_request.query:
         raise HTTPException(
             status_code=400,
             detail={
@@ -278,8 +238,8 @@ async def execute_sql_query(request: QueryRequest):
         conn.timeout = 7200
         cursor = conn.cursor()
 
-        logger.info(f"Executing SQL query: {request.query}")
-        cursor.execute(request.query)
+        logger.info(f"Executing SQL query: {query_request.query}")
+        cursor.execute(query_request.query)
 
         # Check if this is a query that returns results or just a statement
         result_list = []
@@ -291,7 +251,7 @@ async def execute_sql_query(request: QueryRequest):
         except Exception:
             # This is expected for non-query statements like DELETE, INSERT, UPDATE, etc.
             # Just return empty results and log success
-            logger.info(f"SQL statement executed successfully: {request.query}")
+            logger.info(f"SQL statement executed successfully: {query_request.query}")
 
         cursor.close()
         conn.close()

@@ -18,6 +18,7 @@ class VirtuosoDeploymentHandler(DeploymentHandler):
         password: str,
         graph_template: str,
         isql_service_url: str,
+        isql_service_token: str,
     ):
         """Initialize Virtuoso deployment handler.
 
@@ -28,6 +29,7 @@ class VirtuosoDeploymentHandler(DeploymentHandler):
             password: Database password
             graph_template: Graph name template
             isql_service_url: URL of ISQL HTTP service
+            isql_service_token: Bearer token for the ISQL HTTP service
         """
         super().__init__()
         self.host = host
@@ -36,6 +38,9 @@ class VirtuosoDeploymentHandler(DeploymentHandler):
         self.password = password
         self.graph_template = graph_template
         self.isql_service_url = isql_service_url
+        if not isql_service_token:
+            raise ValueError("ISQL_SERVICE_TOKEN is required for Virtuoso deployment")
+        self.isql_service_token = isql_service_token
 
     def deploy(self, rdf_file_path: Path, source_name: str) -> bool:
         """Deploy RDF data to Virtuoso.
@@ -120,6 +125,9 @@ class VirtuosoDeploymentHandler(DeploymentHandler):
                 f"{self.isql_service_url}/sql",
                 json={
                     "query": sql_command,
+                },
+                headers={
+                    "Authorization": f"Bearer {self.isql_service_token}",
                 },
                 timeout=timeout + 10,
             )

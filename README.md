@@ -110,7 +110,7 @@ just run config/minimal.yaml
    - `VIRTUOSO_USER`: Virtuoso database user (default `dba`)
    - `VIRTUOSO_PASSWORD`: Virtuoso database password (default `dba`)
    - `VIRTUOSO_ISQL_SERVICE_URL`: Virtuoso ISQL HTTP endpoint (default `http://isql-service:8080`)
-   - `VIRTUOSO_ISQL_SERVICE_PORT`: Published port for the ISQL helper service (default `8080`)
+   - `ISQL_SERVICE_TOKEN`: Required bearer token shared by the pipeline and the internal ISQL helper
    - `QLEVER_ENDPOINT`: QLever Graph Store/SPARQL endpoint (default `http://qlever:7019`)
    - `QLEVER_PORT`: Published QLever port (default `7019`)
    - `QLEVER_ACCESS_TOKEN`: Required token for QLever updates and maintenance
