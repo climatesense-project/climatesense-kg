@@ -39,8 +39,7 @@ class ClaimReviewDataProcessor(BaseProcessor):
                         )
                         continue
 
-                    canonical_review = self._normalize_item(item)
-                    yield canonical_review
+                    yield from self._normalize_item(item)
                 except Exception as e:
                     review_url = (
                         item.get("review_url", "unknown")
@@ -57,12 +56,23 @@ class ClaimReviewDataProcessor(BaseProcessor):
         except Exception as e:
             self.logger.error(f"Error processing ClaimReviewData data: {e}")
 
-    def _normalize_item(self, item: dict[str, Any]) -> CanonicalClaimReview:
-        """Convert ClaimReviewData item to CanonicalClaimReview."""
-        claim_text_raw = item.get("claim_text", [])
-        claim_text = claim_text_raw[0] if claim_text_raw else ""
-
-        claim = CanonicalClaim(text=claim_text, appearances=item.get("appearances", []))
+    def _normalize_item(self, item: dict[str, Any]) -> list[CanonicalClaimReview]:
+        """Convert every unambiguous claim/rating pair in one source item."""
+        claim_texts: list[str] = item["claim_text"]
+        reviews: list[dict[str, Any]] = item["reviews"]
+        if len(claim_texts) == len(reviews):
+            claim_review_pairs = list(zip(claim_texts, reviews, strict=True))
+        elif len(claim_texts) == 1:
+            claim_review_pairs = [(claim_texts[0], review) for review in reviews]
+        elif len(reviews) == 1:
+            claim_review_pairs = [
+                (claim_text, reviews[0]) for claim_text in claim_texts
+            ]
+        else:
+            raise ValueError(
+                "Ambiguous multi-claim record: claim_text and reviews must have "
+                "equal lengths unless one side contains a single value"
+            )
 
         fact_checker = item.get("fact_checker", {})
         organization = CanonicalOrganization(
@@ -71,29 +81,33 @@ class ClaimReviewDataProcessor(BaseProcessor):
             language=fact_checker.get("language", ""),
         )
 
-        reviews = item.get("reviews", [])
-        rating = None
-        if reviews and isinstance(reviews[0], dict):
-            first_review = reviews[0]
+        canonical_reviews: list[CanonicalClaimReview] = []
+        for claim_text, source_review in claim_review_pairs:
+            claim = CanonicalClaim(
+                text=claim_text, appearances=item.get("appearances", [])
+            )
             rating = CanonicalRating(
-                label=first_review.get("label", ""),
-                original_label=first_review.get("original_label", ""),
+                label=source_review.get("label", ""),
+                original_label=source_review.get("original_label", ""),
             )
 
-        date_published = item.get("date_published")
-        if not date_published and reviews:
-            date_published = reviews[0].get("date_published")
+            date_published = item.get("date_published") or source_review.get(
+                "date_published"
+            )
+            canonical_reviews.append(
+                CanonicalClaimReview(
+                    claim=claim,
+                    organization=organization,
+                    review_url=item.get("review_url", ""),
+                    date_published=str(date_published) if date_published else None,
+                    language=item.get("language") or fact_checker.get("language"),
+                    rating=rating,
+                    source_type="claimreviewdata",
+                    source_name=self.name,
+                )
+            )
 
-        return CanonicalClaimReview(
-            claim=claim,
-            organization=organization,
-            review_url=item.get("review_url", ""),
-            date_published=str(date_published) if date_published else None,
-            language=item.get("language") or fact_checker.get("language"),
-            rating=rating,
-            source_type="claimreviewdata",
-            source_name=self.name,
-        )
+        return canonical_reviews
 
     def _validate_item(self, item: Any) -> tuple[bool, list[str]]:
         """Validate a ClaimReviewData item and return validation errors.
@@ -129,12 +143,12 @@ class ClaimReviewDataProcessor(BaseProcessor):
         if not isinstance(reviews, list) or not reviews:
             errors.append("reviews must be a non-empty list")
         else:
-            first_review = reviews[0]
-            if not isinstance(first_review, dict):
-                errors.append("review must be a mapping")
-            elif not isinstance(
-                first_review.get("original_label"), str
-            ) or not first_review.get("original_label"):
-                errors.append("review is missing original_label")
+            for review in reviews:
+                if not isinstance(review, dict):
+                    errors.append("review must be a mapping")
+                elif not isinstance(
+                    review.get("original_label"), str
+                ) or not review.get("original_label"):
+                    errors.append("review is missing original_label")
 
         return not errors, errors
