@@ -4,6 +4,7 @@ from pathlib import Path
 
 import requests
 
+from ..config.rdf_formats import RDF_EXTENSION_CONTENT_TYPES
 from .base import DeploymentHandler
 
 
@@ -11,8 +12,7 @@ class QLeverDeploymentHandler(DeploymentHandler):
     """Deploy RDF files to QLever through the Graph Store HTTP Protocol."""
 
     _CONTENT_TYPES = {
-        ".nt": "application/n-triples",
-        ".ttl": "text/turtle",
+        suffix: RDF_EXTENSION_CONTENT_TYPES[suffix] for suffix in (".nt", ".ttl")
     }
 
     def __init__(

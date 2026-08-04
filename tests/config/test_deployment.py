@@ -42,3 +42,14 @@ def test_rejects_unknown_deployment_backend(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="Failed to parse configuration"):
         load_config(config_path)
+
+
+def test_rejects_output_extension_that_disagrees_with_format(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        "output:\n  format: turtle\n  output_path: output/graph.nt\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match=r"requires a file extension of \.ttl"):
+        load_config(config_path)
