@@ -29,6 +29,7 @@ class RDFGenerator:
         "ttl",
         "xml",
         "rdf",
+        "rdf/xml",
         "n3",
         "nt",
         "json-ld",
@@ -180,6 +181,7 @@ class RDFGenerator:
         format_mapping = {
             "ttl": "turtle",
             "rdf": "xml",
+            "rdf/xml": "xml",
             "jsonld": "json-ld",
             "nq": "nquads",
         }

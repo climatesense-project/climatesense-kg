@@ -37,6 +37,16 @@ def _generate_graph(review: CanonicalClaimReview) -> tuple[Graph, RDFGenerator]:
     return graph, generator
 
 
+def test_rdf_xml_public_format_is_serialized_as_xml() -> None:
+    generator = RDFGenerator(base_uri="http://data.cimple.eu")
+
+    rdf_content = generator.generate([_build_review(None)], output_format="rdf/xml")
+
+    graph = Graph()
+    graph.parse(data=rdf_content, format="xml")
+    assert len(graph) > 0
+
+
 def test_generator_adds_normalized_rating_for_allowed_labels() -> None:
     review = _build_review("credible")
     graph, generator = _generate_graph(review)
