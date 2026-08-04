@@ -112,9 +112,38 @@ class BertFactorsEnricher(Enricher):
                         )
             else:
                 request_batch_size = max(1, self.batch_size)
+                total_pending = sum(
+                    len(model_items) for model_items in pending.values()
+                )
+                enrichment_started_at = time.monotonic()
+                self.logger.info(
+                    "CIMPLE Factors enrichment: processing %s uncached model "
+                    "results across %s models (batch size: %s)",
+                    total_pending,
+                    sum(bool(model_items) for model_items in pending.values()),
+                    request_batch_size,
+                )
                 for model, model_items in pending.items():
-                    for start in range(0, len(model_items), request_batch_size):
+                    if not model_items:
+                        continue
+
+                    total_batches = (
+                        len(model_items) + request_batch_size - 1
+                    ) // request_batch_size
+                    model_started_at = time.monotonic()
+                    self.logger.info(
+                        "CIMPLE Factors model %s: processing %s items in %s batches",
+                        model,
+                        len(model_items),
+                        total_batches,
+                    )
+
+                    for batch_number, start in enumerate(
+                        range(0, len(model_items), request_batch_size), start=1
+                    ):
                         batch = model_items[start : start + request_batch_size]
+                        batch_started_at = time.monotonic()
+                        cache_batch: list[tuple[str, str, dict[str, Any]]] = []
                         try:
                             api_results = self._call_model(
                                 model, [text for _uri, text in batch]
@@ -129,7 +158,11 @@ class BertFactorsEnricher(Enricher):
                             ):
                                 value = self._extract_model_value(model, api_result)
                                 self._cache_model_success(
-                                    uri, model, value, model_caches
+                                    uri,
+                                    model,
+                                    value,
+                                    model_caches,
+                                    cache_batch,
                                 )
                         except Exception as exc:
                             self.logger.error(
@@ -137,6 +170,7 @@ class BertFactorsEnricher(Enricher):
                                 model,
                                 exc,
                             )
+                            cache_batch = []
                             for uri, _text in batch:
                                 self._cache_model_error(
                                     uri,
@@ -145,9 +179,50 @@ class BertFactorsEnricher(Enricher):
                                     f"CIMPLE Factors API error: {exc!s}",
                                     self._empty_model_value(model),
                                     model_caches,
+                                    cache_batch,
                                 )
-                        finally:
-                            time.sleep(self.rate_limit_delay)
+
+                        if self.cache:
+                            self.cache.set_many(cache_batch)
+
+                        time.sleep(self.rate_limit_delay)
+                        batch_elapsed = time.monotonic() - batch_started_at
+                        model_elapsed = time.monotonic() - model_started_at
+                        processed_items = min(start + len(batch), len(model_items))
+                        remaining_batches = total_batches - batch_number
+                        eta_seconds = model_elapsed / batch_number * remaining_batches
+                        if (
+                            batch_number == 1
+                            or batch_number % 10 == 0
+                            or batch_number == total_batches
+                        ):
+                            self.logger.info(
+                                "CIMPLE Factors model %s: batch %s/%s complete "
+                                "(%s/%s items, %.1f%%; batch: %.1fs, elapsed: "
+                                "%.1fs, ETA: %.1fs)",
+                                model,
+                                batch_number,
+                                total_batches,
+                                processed_items,
+                                len(model_items),
+                                processed_items / len(model_items) * 100,
+                                batch_elapsed,
+                                model_elapsed,
+                                eta_seconds,
+                            )
+
+                    self.logger.info(
+                        "CIMPLE Factors model %s completed: %s items in %.1fs",
+                        model,
+                        len(model_items),
+                        time.monotonic() - model_started_at,
+                    )
+
+                self.logger.info(
+                    "CIMPLE Factors enrichment completed: %s model results in %.1fs",
+                    total_pending,
+                    time.monotonic() - enrichment_started_at,
+                )
 
         for item in items:
             uri = item.uri
@@ -452,9 +527,12 @@ class BertFactorsEnricher(Enricher):
         model: str,
         value: Any,
         cached_models: dict[str, dict[str, dict[str, Any]]] | None = None,
+        cache_batch: list[tuple[str, str, dict[str, Any]]] | None = None,
     ) -> None:
         payload: dict[str, Any] = {"success": True, "data": copy.deepcopy(value)}
-        if self.cache:
+        if cache_batch is not None:
+            cache_batch.append((uri, self._cache_step(model), payload))
+        elif self.cache:
             self.cache.set(uri, self._cache_step(model), payload)
         if cached_models is not None:
             cached_models.setdefault(model, {})[uri] = payload
@@ -467,13 +545,16 @@ class BertFactorsEnricher(Enricher):
         message: str,
         data: Any,
         cached_models: dict[str, dict[str, dict[str, Any]]] | None = None,
+        cache_batch: list[tuple[str, str, dict[str, Any]]] | None = None,
     ) -> None:
         payload: dict[str, Any] = {
             "success": False,
             "error": {"type": error_type, "message": message},
             "data": copy.deepcopy(data),
         }
-        if self.cache:
+        if cache_batch is not None:
+            cache_batch.append((uri, self._cache_step(model), payload))
+        elif self.cache:
             self.cache.set(uri, self._cache_step(model), payload)
         if cached_models is not None:
             cached_models.setdefault(model, {})[uri] = payload

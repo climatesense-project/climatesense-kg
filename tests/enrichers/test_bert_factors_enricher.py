@@ -256,7 +256,7 @@ class TestBertFactorsEnricherEnrichment:
         assert result.claim.conspiracies == {"mentioned": [], "promoted": []}
         assert result.claim.climate_related is True
         assert mock_post.call_count == len(BertFactorsEnricher.MODEL_KEYS)
-        assert mock_cache.set.call_count == len(BertFactorsEnricher.MODEL_KEYS)
+        assert mock_cache.set_many.call_count == len(BertFactorsEnricher.MODEL_KEYS)
 
     def test_enrich_with_cached_data(
         self,
