@@ -3,17 +3,46 @@
 from dataclasses import dataclass
 from enum import Enum
 import html
+from ipaddress import ip_address
 import logging
 import re
-from urllib.parse import quote, urlparse, urlunparse
+import socket
+from typing import Any
+from urllib.parse import quote, urljoin, urlparse, urlunparse
 
 import requests
+from requests.adapters import HTTPAdapter
 import trafilatura  # pyright: ignore[reportMissingTypeStubs]
 
 logger = logging.getLogger(__name__)
 
 _URL_PATTERN = re.compile(r"http\S+")
 _SURROGATE_PATTERN = re.compile(r"[\ud800-\udfff]")
+_REDIRECT_STATUS_CODES = {301, 302, 303, 307, 308}
+_MAX_REDIRECTS = 5
+
+
+class _UnsafeURLError(ValueError):
+    """Raised when a URL could reach a non-public network address."""
+
+
+class _PinnedHTTPSAdapter(HTTPAdapter):
+    """Verify TLS for the original host while connecting to a resolved IP."""
+
+    def __init__(self, hostname: str) -> None:
+        self._hostname = hostname
+        super().__init__()
+
+    def init_poolmanager(
+        self,
+        connections: int,
+        maxsize: int,
+        block: bool = False,
+        **pool_kwargs: Any,
+    ) -> None:
+        pool_kwargs["assert_hostname"] = self._hostname
+        pool_kwargs["server_hostname"] = self._hostname
+        super().init_poolmanager(connections, maxsize, block, **pool_kwargs)
 
 
 class ExtractionErrorType(Enum):
@@ -215,6 +244,130 @@ def sanitize_url(url: str) -> str | None:
     return sanitized if sanitized else None
 
 
+def _resolve_public_address(hostname: str, port: int) -> str:
+    """Resolve a host once and return an address that is safe to connect to."""
+    try:
+        address_info = socket.getaddrinfo(
+            hostname,
+            port,
+            family=socket.AF_UNSPEC,
+            type=socket.SOCK_STREAM,
+        )
+    except socket.gaierror as exc:
+        raise requests.ConnectionError(f"Unable to resolve host: {hostname}") from exc
+
+    addresses: list[str] = []
+    for (
+        family,
+        _socket_type,
+        _protocol,
+        _canonical_name,
+        socket_address,
+    ) in address_info:
+        if family not in {socket.AF_INET, socket.AF_INET6}:
+            continue
+        address = socket_address[0]
+        if not isinstance(address, str):
+            continue
+        if address not in addresses:
+            addresses.append(address)
+
+    if not addresses:
+        raise requests.ConnectionError(f"No IP addresses found for host: {hostname}")
+
+    for address in addresses:
+        if not ip_address(address).is_global:
+            raise _UnsafeURLError("URL resolves to a non-public network address")
+
+    return addresses[0]
+
+
+def _request_url_at_address(
+    url: str,
+    address: str,
+    headers: dict[str, str],
+    timeout: float,
+) -> requests.Response:
+    """Request a URL through its already validated address without re-resolving it."""
+    parsed = urlparse(url)
+    hostname = parsed.hostname
+    if not hostname:
+        raise _UnsafeURLError("Redirect URL has no hostname")
+
+    default_port = 443 if parsed.scheme == "https" else 80
+    port = parsed.port or default_port
+    address_netloc = f"[{address}]" if ip_address(address).version == 6 else address
+
+    userinfo = ""
+    if "@" in parsed.netloc:
+        userinfo = f"{parsed.netloc.rpartition('@')[0]}@"
+    pinned_url = urlunparse(
+        parsed._replace(netloc=f"{userinfo}{address_netloc}:{port}")
+    )
+
+    host_header = f"[{hostname}]" if ":" in hostname else hostname
+    if parsed.port is not None and parsed.port != default_port:
+        host_header = f"{host_header}:{parsed.port}"
+
+    session = requests.Session()
+    session.trust_env = False
+    if parsed.scheme == "https":
+        session.mount("https://", _PinnedHTTPSAdapter(hostname))
+
+    try:
+        return session.get(
+            pinned_url,
+            headers={**headers, "Host": host_header},
+            timeout=timeout,
+            allow_redirects=False,
+        )
+    finally:
+        session.close()
+
+
+def _fetch_public_url(
+    url: str,
+    headers: dict[str, str],
+    timeout: float,
+) -> requests.Response:
+    """Fetch a public HTTP(S) URL while validating and pinning every hop."""
+    current_url = url
+
+    for redirect_count in range(_MAX_REDIRECTS + 1):
+        parsed = urlparse(current_url)
+        hostname = parsed.hostname
+        if parsed.scheme not in {"http", "https"} or not hostname:
+            raise _UnsafeURLError("Redirect URL must use HTTP or HTTPS")
+
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        address = _resolve_public_address(hostname, port)
+        response = _request_url_at_address(
+            current_url,
+            address,
+            headers,
+            timeout,
+        )
+
+        location = response.headers.get("Location")
+        if response.status_code not in _REDIRECT_STATUS_CODES or not location:
+            return response
+
+        if redirect_count == _MAX_REDIRECTS:
+            response.close()
+            raise requests.TooManyRedirects(
+                f"Exceeded {_MAX_REDIRECTS} redirects",
+                response=response,
+            )
+
+        redirected_url = sanitize_url(urljoin(current_url, location))
+        response.close()
+        if not redirected_url:
+            raise _UnsafeURLError("Redirect target is not a valid HTTP(S) URL")
+        current_url = redirected_url
+
+    raise requests.TooManyRedirects(f"Exceeded {_MAX_REDIRECTS} redirects")
+
+
 def fetch_and_extract_text(url: str) -> TextExtractionResult:
     """
     Fetch and extract main text content from a URL using trafilatura.
@@ -259,7 +412,7 @@ def fetch_and_extract_text(url: str) -> TextExtractionResult:
             "Connection": "keep-alive",
             "Cache-Control": "max-age=0",
         }
-        response = requests.get(sanitized_url, headers=headers, timeout=10)
+        response = _fetch_public_url(sanitized_url, headers=headers, timeout=10)
         response.raise_for_status()
         downloaded = response.text
 
@@ -285,6 +438,13 @@ def fetch_and_extract_text(url: str) -> TextExtractionResult:
             error_type=ExtractionErrorType.DOWNLOAD_FAILED,
         )
 
+    except _UnsafeURLError as e:
+        logger.warning("Rejected unsafe URL during text extraction: %s", e)
+        return TextExtractionResult(
+            success=False,
+            error_message=str(e),
+            error_type=ExtractionErrorType.INVALID_URL,
+        )
     except requests.Timeout as e:
         logger.error(f"Timeout fetching URL {sanitized_url}: {e}")
         return TextExtractionResult(

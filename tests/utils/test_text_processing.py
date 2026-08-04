@@ -6,6 +6,7 @@ import requests
 from src.climatesense_kg.utils.text_processing import (
     ExtractionErrorType,
     TextExtractionResult,
+    _request_url_at_address,
     fetch_and_extract_text,
     normalize_organization_url,
     normalize_text,
@@ -236,6 +237,87 @@ class TestFetchAndExtractText:
         assert result.error_type == ExtractionErrorType.INVALID_INPUT
         assert result.error_message == "Empty URL provided"
 
+    @patch("src.climatesense_kg.utils.text_processing._request_url_at_address")
+    @patch("socket.getaddrinfo")
+    def test_rejects_link_local_address_before_request(
+        self, mock_getaddrinfo: Mock, mock_request: Mock
+    ) -> None:
+        """Link-local metadata addresses must never reach the HTTP client."""
+        mock_getaddrinfo.return_value = [
+            (2, 1, 6, "", ("169.254.169.254", 80)),
+        ]
+
+        result = fetch_and_extract_text("http://169.254.169.254/latest/meta-data/")
+
+        assert result.success is False
+        assert result.error_type == ExtractionErrorType.INVALID_URL
+        mock_request.assert_not_called()
+
+    @patch("src.climatesense_kg.utils.text_processing._request_url_at_address")
+    @patch("socket.getaddrinfo")
+    def test_rejects_hostname_resolving_to_private_address(
+        self, mock_getaddrinfo: Mock, mock_request: Mock
+    ) -> None:
+        """Hostnames resolving to private addresses must not be requested."""
+        mock_getaddrinfo.return_value = [
+            (2, 1, 6, "", ("10.0.0.8", 443)),
+        ]
+
+        result = fetch_and_extract_text("https://reviews.example/article")
+
+        assert result.success is False
+        assert result.error_type == ExtractionErrorType.INVALID_URL
+        mock_request.assert_not_called()
+
+    @patch("src.climatesense_kg.utils.text_processing._request_url_at_address")
+    @patch("socket.getaddrinfo")
+    def test_rejects_redirect_to_link_local_address(
+        self, mock_getaddrinfo: Mock, mock_request: Mock
+    ) -> None:
+        """Every redirect target must pass the public-address check."""
+        mock_getaddrinfo.side_effect = [
+            [(2, 1, 6, "", ("93.184.216.34", 443))],
+            [(2, 1, 6, "", ("169.254.169.254", 80))],
+        ]
+        mock_request.return_value = Mock(
+            status_code=302,
+            headers={"Location": "http://169.254.169.254/latest/meta-data/"},
+        )
+
+        result = fetch_and_extract_text("https://reviews.example/article")
+
+        assert result.success is False
+        assert result.error_type == ExtractionErrorType.INVALID_URL
+        mock_request.assert_called_once()
+
+    @patch("src.climatesense_kg.utils.text_processing.requests.Session")
+    def test_request_is_pinned_and_redirects_are_disabled(
+        self, mock_session_factory: Mock
+    ) -> None:
+        """The request must connect to the validated IP without auto-redirecting."""
+        mock_session = mock_session_factory.return_value
+        mock_response = Mock()
+        mock_session.get.return_value = mock_response
+
+        result = _request_url_at_address(
+            "https://reviews.example/article?id=1",
+            "93.184.216.34",
+            {"Accept": "text/html"},
+            10,
+        )
+
+        assert result is mock_response
+        mock_session.get.assert_called_once_with(
+            "https://93.184.216.34:443/article?id=1",
+            headers={"Accept": "text/html", "Host": "reviews.example"},
+            timeout=10,
+            allow_redirects=False,
+        )
+        assert mock_session.trust_env is False
+        adapter = mock_session.mount.call_args.args[1]
+        assert adapter._hostname == "reviews.example"
+        mock_session.close.assert_called_once_with()
+
     @patch("src.climatesense_kg.utils.text_processing.sanitize_url")
     def test_invalid_url(self, mock_sanitize: Mock) -> None:
         """Test invalid URL input."""
@@ -245,14 +327,16 @@ class TestFetchAndExtractText:
         assert result.error_type == ExtractionErrorType.INVALID_URL
         assert result.error_message == "Invalid URL format"
 
+    @patch("src.climatesense_kg.utils.text_processing._fetch_public_url")
     @patch("src.climatesense_kg.utils.text_processing.trafilatura")
     @patch("src.climatesense_kg.utils.text_processing.sanitize_url")
     def test_successful_extraction(
-        self, mock_sanitize: Mock, mock_trafilatura: Mock
+        self, mock_sanitize: Mock, mock_trafilatura: Mock, mock_fetch: Mock
     ) -> None:
         """Test successful text extraction with trafilatura."""
         mock_sanitize.return_value = "https://example.com"
-        mock_trafilatura.fetch_url.return_value = "<html>content</html>"
+        mock_response = Mock(text="<html>content</html>")
+        mock_fetch.return_value = mock_response
         mock_trafilatura.extract.return_value = "Extracted text content"
 
         result = fetch_and_extract_text("https://example.com")
@@ -260,74 +344,61 @@ class TestFetchAndExtractText:
         assert result.success is True
         assert "Extracted text content" in result.content
         assert result.error_type is None
+        mock_response.raise_for_status.assert_called_once_with()
 
-    @patch("src.climatesense_kg.utils.text_processing.requests")
+    @patch("src.climatesense_kg.utils.text_processing._fetch_public_url")
     @patch("src.climatesense_kg.utils.text_processing.trafilatura")
     @patch("src.climatesense_kg.utils.text_processing.sanitize_url")
     def test_trafilatura_fallback_to_requests(
-        self, mock_sanitize: Mock, mock_trafilatura: Mock, mock_requests: Mock
+        self, mock_sanitize: Mock, mock_trafilatura: Mock, mock_fetch: Mock
     ) -> None:
         """Test fallback to requests when trafilatura fails."""
         mock_sanitize.return_value = "https://example.com"
-        mock_trafilatura.fetch_url.return_value = None
 
-        mock_response = Mock()
-        mock_response.text = "<html>content</html>"
-        mock_requests.get.return_value = mock_response
+        mock_response = Mock(text="<html>content</html>")
+        mock_fetch.return_value = mock_response
         mock_trafilatura.extract.return_value = "Extracted text"
 
         result = fetch_and_extract_text("https://example.com")
 
         assert result.success is True
-        mock_requests.get.assert_called_once()
+        mock_fetch.assert_called_once()
 
-    @patch("src.climatesense_kg.utils.text_processing.requests.get")
-    @patch("src.climatesense_kg.utils.text_processing.trafilatura")
+    @patch("src.climatesense_kg.utils.text_processing._fetch_public_url")
     @patch("src.climatesense_kg.utils.text_processing.sanitize_url")
-    def test_timeout_error(
-        self, mock_sanitize: Mock, mock_trafilatura: Mock, mock_get: Mock
-    ) -> None:
+    def test_timeout_error(self, mock_sanitize: Mock, mock_fetch: Mock) -> None:
         """Test timeout error handling."""
         mock_sanitize.return_value = "https://example.com"
-        mock_trafilatura.fetch_url.return_value = None
-        mock_get.side_effect = requests.Timeout("Timeout")
+        mock_fetch.side_effect = requests.Timeout("Timeout")
 
         result = fetch_and_extract_text("https://example.com")
 
         assert result.success is False
         assert result.error_type == ExtractionErrorType.TIMEOUT
 
-    @patch("src.climatesense_kg.utils.text_processing.requests.get")
-    @patch("src.climatesense_kg.utils.text_processing.trafilatura")
+    @patch("src.climatesense_kg.utils.text_processing._fetch_public_url")
     @patch("src.climatesense_kg.utils.text_processing.sanitize_url")
-    def test_connection_error(
-        self, mock_sanitize: Mock, mock_trafilatura: Mock, mock_get: Mock
-    ) -> None:
+    def test_connection_error(self, mock_sanitize: Mock, mock_fetch: Mock) -> None:
         """Test connection error handling."""
         mock_sanitize.return_value = "https://example.com"
-        mock_trafilatura.fetch_url.return_value = None
-        mock_get.side_effect = requests.ConnectionError("Connection failed")
+        mock_fetch.side_effect = requests.ConnectionError("Connection failed")
 
         result = fetch_and_extract_text("https://example.com")
 
         assert result.success is False
         assert result.error_type == ExtractionErrorType.CONNECTION
 
-    @patch("src.climatesense_kg.utils.text_processing.requests.get")
-    @patch("src.climatesense_kg.utils.text_processing.trafilatura")
+    @patch("src.climatesense_kg.utils.text_processing._fetch_public_url")
     @patch("src.climatesense_kg.utils.text_processing.sanitize_url")
-    def test_http_error(
-        self, mock_sanitize: Mock, mock_trafilatura: Mock, mock_get: Mock
-    ) -> None:
+    def test_http_error(self, mock_sanitize: Mock, mock_fetch: Mock) -> None:
         """Test HTTP error handling."""
         mock_sanitize.return_value = "https://example.com"
-        mock_trafilatura.fetch_url.return_value = None
 
         http_error = requests.HTTPError("404 Not Found")
         mock_response = Mock()
         mock_response.status_code = 404
         http_error.response = mock_response
-        mock_get.side_effect = http_error
+        mock_fetch.side_effect = http_error
 
         result = fetch_and_extract_text("https://example.com")
 
@@ -335,14 +406,15 @@ class TestFetchAndExtractText:
         assert result.error_type == ExtractionErrorType.HTTP_ERROR
         assert "404" in result.error_message
 
+    @patch("src.climatesense_kg.utils.text_processing._fetch_public_url")
     @patch("src.climatesense_kg.utils.text_processing.trafilatura")
     @patch("src.climatesense_kg.utils.text_processing.sanitize_url")
     def test_no_text_extracted(
-        self, mock_sanitize: Mock, mock_trafilatura: Mock
+        self, mock_sanitize: Mock, mock_trafilatura: Mock, mock_fetch: Mock
     ) -> None:
         """Test when no text content is extracted."""
         mock_sanitize.return_value = "https://example.com"
-        mock_trafilatura.fetch_url.return_value = "<html>content</html>"
+        mock_fetch.return_value = Mock(text="<html>content</html>")
         mock_trafilatura.extract.return_value = None
 
         result = fetch_and_extract_text("https://example.com")
@@ -350,27 +422,21 @@ class TestFetchAndExtractText:
         assert result.success is False
         assert result.error_type == ExtractionErrorType.EXTRACTION_FAILED
 
+    @patch("src.climatesense_kg.utils.text_processing._fetch_public_url")
     @patch("src.climatesense_kg.utils.text_processing.trafilatura")
     @patch("src.climatesense_kg.utils.text_processing.sanitize_url")
     def test_no_content_downloaded(
-        self, mock_sanitize: Mock, mock_trafilatura: Mock
+        self, mock_sanitize: Mock, mock_trafilatura: Mock, mock_fetch: Mock
     ) -> None:
         """Test when no content is downloaded."""
         mock_sanitize.return_value = "https://example.com"
-        mock_trafilatura.fetch_url.return_value = None
+        mock_fetch.return_value = Mock(text="")
+        mock_trafilatura.extract.return_value = None
 
-        with patch(
-            "src.climatesense_kg.utils.text_processing.requests"
-        ) as mock_requests:
-            mock_response = Mock()
-            mock_response.text = ""
-            mock_requests.get.return_value = mock_response
-            mock_trafilatura.extract.return_value = None
+        result = fetch_and_extract_text("https://example.com")
 
-            result = fetch_and_extract_text("https://example.com")
-
-            assert result.success is False
-            assert result.error_type == ExtractionErrorType.DOWNLOAD_FAILED
+        assert result.success is False
+        assert result.error_type == ExtractionErrorType.DOWNLOAD_FAILED
 
 
 class TestTextExtractionResult:
