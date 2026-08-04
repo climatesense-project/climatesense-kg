@@ -54,10 +54,10 @@ class TestNormalizeText:
         assert result == "This & that"
 
     def test_non_breaking_spaces(self) -> None:
-        """Test non-breaking space removal."""
+        """Test non-breaking space normalization."""
         text = "Hello\xa0world"
         result = normalize_text(text)
-        assert result == "Helloworld"
+        assert result == "Hello world"
 
     def test_url_removal(self) -> None:
         """Test URL removal."""
@@ -86,7 +86,7 @@ class TestNormalizeText:
         """Test combined text normalization."""
         text = "  &amp; Check\xa0this https://example.com &lt;tag&gt;  \n\t  "
         result = normalize_text(text)
-        assert result == "& Checkthis <tag>"
+        assert result == "& Check this <tag>"
 
 
 class TestNormalizeOrganizationUrl:

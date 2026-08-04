@@ -111,7 +111,7 @@ def normalize_text(text: str) -> str:
 
     # Normalize HTML entities and special characters
     text = text.replace("&amp;", "&")
-    text = text.replace("\xa0", "")  # Remove non-breaking spaces
+    text = text.replace("\xa0", " ")  # Normalize non-breaking spaces
     text = _URL_PATTERN.sub("", text)  # Remove URLs
     text = html.unescape(text)  # Unescape HTML entities
     text = " ".join(text.split())  # Normalize whitespace
