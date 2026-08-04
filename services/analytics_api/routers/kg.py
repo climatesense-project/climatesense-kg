@@ -13,7 +13,7 @@ from ..schemas.kg import (
     FactorDistributionItem,
     GraphTripleCount,
 )
-from ..services.sparql import sparql_select
+from ..services.sparql import sparql_select_async
 
 router = APIRouter(prefix="/metrics/kg", tags=["knowledge-graph"])
 
@@ -33,7 +33,7 @@ def _format_factor_label(value: str, category: str | None = None) -> str:
 
 @router.get("/triple-volume", response_model=list[GraphTripleCount])
 async def triple_volume() -> list[GraphTripleCount]:
-    rows = sparql_select("kg", "triple_volume.rq")
+    rows = await sparql_select_async("kg", "triple_volume.rq")
     return [
         GraphTripleCount(
             graph=row.get("graph"), triple_count=int(row.get("tripleCount", 0))
@@ -45,7 +45,7 @@ async def triple_volume() -> list[GraphTripleCount]:
 
 @router.get("/class-distribution", response_model=list[ClassDistribution])
 async def class_distribution() -> list[ClassDistribution]:
-    rows = sparql_select("kg", "class_distribution.rq")
+    rows = await sparql_select_async("kg", "class_distribution.rq")
     return [
         ClassDistribution(class_uri=row.get("class"), count=int(row.get("count", 0)))
         for row in rows
@@ -54,7 +54,7 @@ async def class_distribution() -> list[ClassDistribution]:
 
 @router.get("/core-counts", response_model=CoreCounts)
 async def core_counts() -> CoreCounts:
-    rows = sparql_select("kg", "core_counts.rq")
+    rows = await sparql_select_async("kg", "core_counts.rq")
     row = rows[0] if rows else {}
     return CoreCounts(
         total_claim_reviews=int(row.get("totalClaimReviews", 0)),
@@ -65,7 +65,7 @@ async def core_counts() -> CoreCounts:
 
 @router.get("/enrichment-coverage", response_model=EnrichmentCoverage)
 async def enrichment_coverage() -> EnrichmentCoverage:
-    rows = sparql_select("kg", "enrichment_coverage.rq")
+    rows = await sparql_select_async("kg", "enrichment_coverage.rq")
     row = rows[0] if rows else {}
     return EnrichmentCoverage(
         total_claims=int(row.get("totalClaims", 0)),
@@ -83,7 +83,7 @@ async def enrichment_coverage() -> EnrichmentCoverage:
 
 @router.get("/entity-types", response_model=list[EntityTypeCount])
 async def entity_types() -> list[EntityTypeCount]:
-    rows = sparql_select("kg", "entity_types.rq")
+    rows = await sparql_select_async("kg", "entity_types.rq")
     return [
         EntityTypeCount(type_uri=row.get("entity"), count=int(row.get("count", 0)))
         for row in rows
@@ -92,7 +92,7 @@ async def entity_types() -> list[EntityTypeCount]:
 
 @router.get("/claim-factors", response_model=ClaimFactorDistributions)
 async def claim_factors() -> ClaimFactorDistributions:
-    rows = sparql_select("kg", "claim_factors_distribution.rq")
+    rows = await sparql_select_async("kg", "claim_factors_distribution.rq")
 
     buckets: dict[str, list[FactorDistributionItem]] = {
         "sentiment": [],

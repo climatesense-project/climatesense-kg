@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 import time
 from typing import Any
@@ -102,6 +103,13 @@ def sparql_select(
         _RESULT_CACHE[cache_key] = (time.monotonic(), results)
 
     return results
+
+
+async def sparql_select_async(
+    namespace: str, filename: str, use_cache: bool = True
+) -> list[dict[str, Any]]:
+    """Execute the synchronous SPARQL client outside the API event loop."""
+    return await asyncio.to_thread(sparql_select, namespace, filename, use_cache)
 
 
 def clear_cache() -> int:

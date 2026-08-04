@@ -1,8 +1,10 @@
 """Tests for backend-neutral SPARQL requests."""
 
+import asyncio
 import importlib
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 import requests
@@ -112,3 +114,18 @@ def test_expired_sparql_result_is_refreshed(
 
     assert first == [{"tripleCount": 1}]
     assert refreshed == [{"tripleCount": 2}]
+
+
+def test_async_sparql_select_offloads_blocking_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sparql = importlib.import_module("services.analytics_api.services.sparql")
+    to_thread = AsyncMock(return_value=[{"count": 1}])
+    monkeypatch.setattr(sparql.asyncio, "to_thread", to_thread)
+
+    result = asyncio.run(sparql.sparql_select_async("kg", "core_counts.rq"))
+
+    assert result == [{"count": 1}]
+    to_thread.assert_awaited_once_with(
+        sparql.sparql_select, "kg", "core_counts.rq", True
+    )
