@@ -20,7 +20,7 @@ def create_deployment_handler(
             host=os.getenv("VIRTUOSO_HOST", "localhost"),
             port=int(os.getenv("VIRTUOSO_PORT", "8890")),
             user=os.getenv("VIRTUOSO_USER", "dba"),
-            password=os.getenv("VIRTUOSO_PASSWORD", "dba"),
+            password=os.getenv("VIRTUOSO_PASSWORD", ""),
             graph_template=config.graph_template,
             isql_service_url=os.getenv(
                 "VIRTUOSO_ISQL_SERVICE_URL", "http://isql-service:8080"

@@ -145,7 +145,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+def _required_secret(name: str) -> str:
+    """Read a required secret without supplying a weak fallback."""
+    value = os.getenv(name, "")
+    if not value:
+        raise RuntimeError(f"{name} is required")
+    return value
+
+
 # Configuration
+virtuoso_password = _required_secret("VIRTUOSO_PASSWORD")
 config = AppConfig(
     host=os.getenv("HOST", "127.0.0.1"),
     port=int(os.getenv("PORT", "50118")),
@@ -154,14 +164,11 @@ config = AppConfig(
         f"HOST={os.getenv('VIRTUOSO_HOST')};"
         f"PORT={os.getenv('VIRTUOSO_ISQL_PORT')};"
         f"UID={os.getenv('VIRTUOSO_USER', 'dba')};"
-        f"PWD={os.getenv('VIRTUOSO_PASSWORD', 'dba')};"
+        f"PWD={virtuoso_password};"
     ),
     connection_timeout=30,
-    api_token=os.getenv("ISQL_SERVICE_TOKEN", ""),
+    api_token=_required_secret("ISQL_SERVICE_TOKEN"),
 )
-
-if not config.api_token:
-    raise RuntimeError("ISQL_SERVICE_TOKEN is required")
 
 connection_manager = ConnectionManager(
     config.virtuoso_connection_string, config.connection_timeout

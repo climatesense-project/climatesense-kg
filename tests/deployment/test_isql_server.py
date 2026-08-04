@@ -22,6 +22,7 @@ def test_connections_enable_autocommit(
     monkeypatch.setitem(sys.modules, "pyodbc", fake_pyodbc)
     monkeypatch.syspath_prepend(str(_ISQL_SOURCE_DIR))
     monkeypatch.setenv("ISQL_SERVICE_TOKEN", "test-token")
+    monkeypatch.setenv("VIRTUOSO_PASSWORD", "test-password")
     monkeypatch.chdir(tmp_path)
 
     spec = spec_from_file_location(

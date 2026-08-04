@@ -35,6 +35,8 @@ class VirtuosoDeploymentHandler(DeploymentHandler):
         self.host = host
         self.port = port
         self.user = user
+        if not password:
+            raise ValueError("VIRTUOSO_PASSWORD is required for Virtuoso deployment")
         self.password = password
         self.graph_template = graph_template
         self.isql_service_url = isql_service_url

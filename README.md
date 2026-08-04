@@ -105,10 +105,10 @@ just run config/minimal.yaml
    - `COMPOSE_PROFILES`: Select exactly one triplestore profile (`virtuoso` or `qlever`)
    - `GITHUB_TOKEN`: GitHub token used for private repositories
    - `VIRTUOSO_HOST`: Virtuoso host name (default `virtuoso`)
+   - `VIRTUOSO_BIND_ADDRESS`: Host interface for the Virtuoso HTTP endpoint (default `127.0.0.1`)
    - `VIRTUOSO_PORT`: Virtuoso HTTP/SPARQL port (default `8890`)
-   - `VIRTUOSO_ISQL_PORT`: Virtuoso ISQL port (default `1111`)
    - `VIRTUOSO_USER`: Virtuoso database user (default `dba`)
-   - `VIRTUOSO_PASSWORD`: Virtuoso database password (default `dba`)
+   - `VIRTUOSO_PASSWORD`: Virtuoso database password (required; no default)
    - `VIRTUOSO_ISQL_SERVICE_URL`: Virtuoso ISQL HTTP endpoint (default `http://isql-service:8080`)
    - `ISQL_SERVICE_TOKEN`: Required bearer token shared by the pipeline and the internal ISQL helper
    - `QLEVER_ENDPOINT`: QLever Graph Store/SPARQL endpoint (default `http://qlever:7019`)
@@ -126,6 +126,7 @@ just run config/minimal.yaml
    - `QLEVER_UI_BACKEND_URL`: Browser-visible QLever endpoint used by the UI
    - `CIMPLE_FACTORS_API_URL`: CIMPLE Factors API base URL (default `http://localhost:8000`)
    - `POSTGRES_HOST`: Cache database host (default `postgres`)
+   - `POSTGRES_BIND_ADDRESS`: Host interface for PostgreSQL (default `127.0.0.1`)
    - `POSTGRES_PORT`: Cache database port (default `5432`)
    - `POSTGRES_DB`: Cache database name (default `climatesense_cache`)
    - `POSTGRES_USER`: Cache database user (default `postgres`)

@@ -12,9 +12,9 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-climatesense_cache}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${POSTGRES_BIND_ADDRESS:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
@@ -34,11 +34,10 @@ services:
     container_name: climatesense-virtuoso
     env_file: .env
     environment:
-      DBA_PASSWORD: ${VIRTUOSO_PASSWORD:-dba}
+      DBA_PASSWORD: ${VIRTUOSO_PASSWORD:?VIRTUOSO_PASSWORD must be set}
       SPARQL_UPDATE: true
     ports:
-      - "${VIRTUOSO_PORT:-8890}:8890"
-      - "${VIRTUOSO_ISQL_PORT:-1111}:1111"
+      - "${VIRTUOSO_BIND_ADDRESS:-127.0.0.1}:${VIRTUOSO_PORT:-8890}:8890"
     volumes:
       - virtuoso_data:/database
       - ./virtuoso/initdb.d:/initdb.d:ro
@@ -62,7 +61,7 @@ services:
       VIRTUOSO_HOST: virtuoso
       VIRTUOSO_ISQL_PORT: 1111
       VIRTUOSO_USER: dba
-      VIRTUOSO_PASSWORD: ${VIRTUOSO_PASSWORD:-dba}
+      VIRTUOSO_PASSWORD: ${VIRTUOSO_PASSWORD}
       ISQL_SERVICE_TOKEN: ${ISQL_SERVICE_TOKEN:-}
       HOST: 0.0.0.0
       PORT: 8080
@@ -253,11 +252,11 @@ services:
       POSTGRES_PORT: ${POSTGRES_PORT:-5432}
       POSTGRES_DB: ${POSTGRES_DB:-climatesense_cache}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       VIRTUOSO_HOST: ${VIRTUOSO_HOST:-virtuoso}
       VIRTUOSO_PORT: ${VIRTUOSO_PORT:-8890}
       VIRTUOSO_USER: ${VIRTUOSO_USER:-dba}
-      VIRTUOSO_PASSWORD: ${VIRTUOSO_PASSWORD:-dba}
+      VIRTUOSO_PASSWORD: ${VIRTUOSO_PASSWORD}
       VIRTUOSO_ISQL_SERVICE_URL: http://isql-service:8080
       ISQL_SERVICE_TOKEN: ${ISQL_SERVICE_TOKEN:-}
       QLEVER_ENDPOINT: ${QLEVER_ENDPOINT:-http://qlever:7019}
@@ -287,7 +286,7 @@ services:
       POSTGRES_PORT: ${POSTGRES_PORT:-5432}
       POSTGRES_DB: ${POSTGRES_DB:-climatesense_cache}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     depends_on:
       - postgres
     ports:

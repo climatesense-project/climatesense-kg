@@ -12,7 +12,7 @@ def test_load_only_clears_its_own_load_list_entry(monkeypatch) -> None:
         host="virtuoso",
         port=1111,
         user="dba",
-        password="",
+        password="test-password",  # noqa: S106
         graph_template="https://example.test/graph/{SOURCE}",
         isql_service_url="http://isql-service:8080",
         isql_service_token="test-token",  # noqa: S106
@@ -53,7 +53,7 @@ def test_sql_requests_authenticate_to_isql_service(mock_post: Mock) -> None:
         host="virtuoso",
         port=1111,
         user="dba",
-        password="",
+        password="test-password",  # noqa: S106
         graph_template="https://example.test/graph/{SOURCE}",
         isql_service_url="http://isql-service:8080",
         isql_service_token="test-token",  # noqa: S106
