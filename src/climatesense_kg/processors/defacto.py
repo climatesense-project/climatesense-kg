@@ -4,6 +4,7 @@ from collections.abc import Iterator
 import json
 import re
 from typing import Any
+from urllib.parse import urlparse
 
 from dateutil import parser
 
@@ -12,6 +13,7 @@ from ..config.models import (
     CanonicalClaimReview,
     CanonicalOrganization,
 )
+from ..utils.text_processing import sanitize_url
 from .base import BaseProcessor
 
 
@@ -50,14 +52,13 @@ class DefactoProcessor(BaseProcessor):
             claim_text = self._extract_claim_text(page_data)
             if not claim_text:
                 return None
+            review_url = self._extract_review_url(page_data)
+            if not review_url:
+                return None
 
             claim = CanonicalClaim(
                 text=claim_text,
-                appearances=(
-                    [page_data.get("absoluteUrl", "")]
-                    if page_data.get("absoluteUrl")
-                    else []
-                ),
+                appearances=[review_url],
             )
 
             organization = self._extract_organization(page_data)
@@ -71,7 +72,7 @@ class DefactoProcessor(BaseProcessor):
             return CanonicalClaimReview(
                 claim=claim,
                 organization=organization,
-                review_url=page_data.get("absoluteUrl", ""),
+                review_url=review_url,
                 date_published=date_published,
                 language=language,
                 review_text=review_text if review_text else None,
@@ -85,7 +86,21 @@ class DefactoProcessor(BaseProcessor):
 
     def _extract_claim_text(self, page_data: dict[str, Any]) -> str:
         """Extract the main claim text from the page."""
-        return str(page_data.get("title") or page_data.get("rawTitle", ""))
+        for field in ("title", "rawTitle"):
+            value = page_data.get(field)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return ""
+
+    def _extract_review_url(self, page_data: dict[str, Any]) -> str | None:
+        """Return a sanitized absolute HTTP(S) review URL."""
+        value = page_data.get("absoluteUrl")
+        if not isinstance(value, str):
+            return None
+        parsed = urlparse(value)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            return None
+        return sanitize_url(value)
 
     def _clean_xwiki_content(self, content: str) -> str:
         """Clean XWiki syntax from content to get plain text."""
