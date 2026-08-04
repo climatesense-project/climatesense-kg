@@ -13,7 +13,6 @@ def _write_hierarchy(tmp: Path, content: str) -> Path:
 
 
 class TestOrganizationHierarchy:
-
     def test_resolves_parent_for_matching_domain(self, tmp_path: Path) -> None:
         path = _write_hierarchy(
             tmp_path,
@@ -26,7 +25,9 @@ class TestOrganizationHierarchy:
 """,
         )
         hierarchy = OrganizationHierarchy(path)
-        org = CanonicalOrganization(name="AFP Factuel", website="https://factuel.afp.com")
+        org = CanonicalOrganization(
+            name="AFP Factuel", website="https://factuel.afp.com"
+        )
 
         hierarchy.resolve_parent(org)
 

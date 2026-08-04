@@ -99,7 +99,9 @@ class TestNormalizeOrganizationUrl:
             "http://www.stopfake.org/en/about-us/",
         ]
         for variant in variants:
-            assert normalize_organization_url(variant) == expected, f"Failed for {variant}"
+            assert normalize_organization_url(variant) == expected, (
+                f"Failed for {variant}"
+            )
 
     def test_preserves_non_standard_port(self) -> None:
         """Non-standard ports should be preserved."""
@@ -148,7 +150,10 @@ class TestNormalizeOrganizationUrl:
 
     def test_unicode_hostname(self) -> None:
         """Unicode hostnames should be converted to punycode."""
-        assert normalize_organization_url("https://mañana.com/path") == "https://xn--maana-pta.com"
+        assert (
+            normalize_organization_url("https://mañana.com/path")
+            == "https://xn--maana-pta.com"
+        )
 
 
 class TestSanitizeUrl:
