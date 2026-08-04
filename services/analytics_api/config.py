@@ -64,6 +64,15 @@ class Settings(BaseModel):
         default_factory=lambda: int(os.getenv("ANALYTICS_RESULT_CACHE_TTL", "300")),
         ge=0,
     )
+    admin_token: str | None = Field(
+        default_factory=lambda: os.getenv("ANALYTICS_ADMIN_TOKEN")
+    )
+    admin_rate_limit_seconds: float = Field(
+        default_factory=lambda: float(
+            os.getenv("ANALYTICS_ADMIN_RATE_LIMIT_SECONDS", "5")
+        ),
+        ge=0,
+    )
 
 
 @lru_cache

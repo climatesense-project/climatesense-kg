@@ -2,16 +2,58 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+import hmac
+import threading
+import time
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..config import settings
 from ..db import get_session
 from ..routers import kg as kg_router
 from ..routers import pipeline as pipeline_router
 from ..services import sparql, sql
 
 router = APIRouter(prefix="/cache", tags=["cache"])
+_ADMIN_RATE_LIMIT_LOCK = threading.Lock()
+_LAST_ADMIN_REQUESTS: dict[str, float] = {}
+
+
+def _require_admin(request: Request) -> None:
+    """Authenticate, authorize, and rate-limit cache mutations."""
+    if not settings.admin_token:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Analytics cache administration is not configured",
+        )
+
+    authorization = request.headers.get("Authorization", "")
+    scheme, _, token = authorization.partition(" ")
+    if (
+        scheme.lower() != "bearer"
+        or not token
+        or not hmac.compare_digest(token, settings.admin_token)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid administrator credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    client_host = request.client.host if request.client else "unknown"
+    now = time.monotonic()
+    with _ADMIN_RATE_LIMIT_LOCK:
+        previous = _LAST_ADMIN_REQUESTS.get(client_host)
+        if previous is not None and now - previous < settings.admin_rate_limit_seconds:
+            retry_after = settings.admin_rate_limit_seconds - (now - previous)
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Cache administration rate limit exceeded",
+                headers={"Retry-After": str(max(1, int(retry_after + 0.999)))},
+            )
+        _LAST_ADMIN_REQUESTS[client_host] = now
 
 
 class CacheStats(BaseModel):
@@ -52,7 +94,11 @@ async def cache_status() -> CacheStats:
     )
 
 
-@router.post("/clear", response_model=CacheOperationResult)
+@router.post(
+    "/clear",
+    response_model=CacheOperationResult,
+    dependencies=[Depends(_require_admin)],
+)
 async def clear_cache() -> CacheOperationResult:
     """Clear all cached query results (SQL and SPARQL).
 
@@ -73,7 +119,11 @@ async def clear_cache() -> CacheOperationResult:
     )
 
 
-@router.post("/refresh", response_model=CacheOperationResult)
+@router.post(
+    "/refresh",
+    response_model=CacheOperationResult,
+    dependencies=[Depends(_require_admin)],
+)
 async def refresh_cache(
     session: AsyncSession = Depends(get_session),
 ) -> CacheOperationResult:
