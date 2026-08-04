@@ -1,6 +1,8 @@
 """Virtuoso triplestore deployment utilities."""
 
 from pathlib import Path
+import re
+from urllib.parse import urlsplit
 
 import requests
 
@@ -9,6 +11,8 @@ from .base import DeploymentHandler
 
 class VirtuosoDeploymentHandler(DeploymentHandler):
     """Handles RDF data deployment to Virtuoso triplestore."""
+
+    _INVALID_SQL_INPUT = re.compile(r"[\x00-\x1f\x7f]")
 
     def __init__(
         self,
@@ -78,6 +82,7 @@ class VirtuosoDeploymentHandler(DeploymentHandler):
 
     def _load_rdf_file(self, file_path: Path, graph_uri: str) -> bool:
         """Load RDF file into a specific graph."""
+        self._validate_loader_inputs(file_path, graph_uri)
         file_name = self._escape_sql_literal(file_path.name)
         file_directory = self._escape_sql_literal(file_path.parent.as_posix())
         load_list_path = self._escape_sql_literal(file_path.as_posix())
@@ -111,6 +116,25 @@ class VirtuosoDeploymentHandler(DeploymentHandler):
     def _escape_sql_literal(value: str) -> str:
         """Escape a string for use as a Virtuoso SQL literal."""
         return value.replace("'", "''")
+
+    @classmethod
+    def _validate_loader_inputs(cls, file_path: Path, graph_uri: str) -> None:
+        """Reject loader values that are invalid paths or absolute graph IRIs."""
+        path_text = file_path.as_posix()
+        if (
+            not file_path.name
+            or file_path.name in {".", ".."}
+            or cls._INVALID_SQL_INPUT.search(path_text)
+        ):
+            raise ValueError("RDF loader path contains invalid characters")
+
+        if cls._INVALID_SQL_INPUT.search(graph_uri) or any(
+            character.isspace() for character in graph_uri
+        ):
+            raise ValueError("Virtuoso graph URI contains invalid characters")
+        parsed = urlsplit(graph_uri)
+        if not parsed.scheme or not (parsed.netloc or parsed.path):
+            raise ValueError("Virtuoso graph URI must be an absolute URI")
 
     def _execute_sql(self, sql_command: str, timeout: int = 300) -> bool:
         """Execute SQL commands via ISQL HTTP service.

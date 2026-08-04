@@ -3,6 +3,8 @@
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+import pytest
+
 from climatesense_kg.deployment.virtuoso import VirtuosoDeploymentHandler
 
 
@@ -67,3 +69,44 @@ def test_sql_requests_authenticate_to_isql_service(mock_post: Mock) -> None:
         headers={"Authorization": "Bearer test-token"},
         timeout=310,
     )
+
+
+def test_loader_escapes_quotes_in_paths_and_graph_uris(monkeypatch) -> None:
+    handler = VirtuosoDeploymentHandler(
+        host="virtuoso",
+        port=1111,
+        user="dba",
+        password="test-password",  # noqa: S106
+        graph_template="https://example.test/graph/{SOURCE}",
+        isql_service_url="http://isql-service:8080",
+        isql_service_token="test-token",  # noqa: S106
+    )
+    commands: list[str] = []
+    monkeypatch.setattr(
+        handler,
+        "_execute_sql",
+        lambda command, timeout=300: not commands.append(command),
+    )
+
+    assert handler._load_rdf_file(
+        Path("/database/data/team's/review's.nt"),
+        "https://example.test/graph/team's",
+    )
+
+    assert "team''s/review''s.nt" in commands[0]
+    assert "'/database/data/team''s', 'review''s.nt'" in commands[1]
+    assert "https://example.test/graph/team''s" in commands[1]
+
+
+@pytest.mark.parametrize(
+    ("file_path", "graph_uri"),
+    [
+        (Path("/database/data/bad\nname.nt"), "https://example.test/graph/source"),
+        (Path("/database/data/source.nt"), "not a graph URI"),
+    ],
+)
+def test_loader_rejects_invalid_path_and_graph_values(
+    file_path: Path, graph_uri: str
+) -> None:
+    with pytest.raises(ValueError):
+        VirtuosoDeploymentHandler._validate_loader_inputs(file_path, graph_uri)
