@@ -90,7 +90,7 @@ class ClimafactsProcessor(BaseProcessor):
     def _build_claim_review(
         self, graph: Graph, review_uri: URIRef
     ) -> CanonicalClaimReview:
-        review_url = self._literal_to_str(self._first_literal(graph, review_uri, "url"))
+        review_url = self._first_term_str(graph, review_uri, "url")
         if not review_url:
             raise ValueError("claim review missing schema:url")
 
@@ -219,7 +219,7 @@ class ClimafactsProcessor(BaseProcessor):
         # Add citations from claim nodes
         for node in claim_nodes:
             for value in self._objects(graph, node, "citation"):
-                candidate = self._literal_to_str(value)
+                candidate = self._term_to_str(value)
                 add_url(candidate)
 
         return appearances
@@ -277,8 +277,7 @@ class ClimafactsProcessor(BaseProcessor):
             return None
 
         name = self._resource_label(graph, resource)
-        website_literal = self._first_literal(graph, resource, "url")
-        website = self._literal_to_str(website_literal)
+        website = self._first_term_str(graph, resource, "url")
         sanitized = sanitize_url(website) if website else None
 
         if not name and sanitized:
@@ -311,8 +310,7 @@ class ClimafactsProcessor(BaseProcessor):
             return None
 
         name = self._resource_label(graph, resource)
-        website_literal = self._first_literal(graph, resource, "url")
-        website = self._literal_to_str(website_literal)
+        website = self._first_term_str(graph, resource, "url")
         sanitized = sanitize_url(website) if website else None
 
         if not name and sanitized:
@@ -350,10 +348,7 @@ class ClimafactsProcessor(BaseProcessor):
         for node in nodes:
             if not isinstance(node, (URIRef | BNode)):
                 continue
-            literal = self._first_literal(graph, node, "license")
-            if not literal:
-                continue
-            text = self._literal_to_str(literal)
+            text = self._first_term_str(graph, node, "license")
             if not text:
                 continue
             sanitized = sanitize_url(text) or text.strip()
@@ -471,6 +466,20 @@ class ClimafactsProcessor(BaseProcessor):
 
     def _objects(self, graph: Graph, node: Any, predicate_name: str) -> Iterator[Any]:
         yield from graph.objects(node, SCHEMA_NS[predicate_name])
+
+    def _first_term_str(
+        self, graph: Graph, node: Any, predicate_name: str
+    ) -> str | None:
+        for value in self._objects(graph, node, predicate_name):
+            if text := self._term_to_str(value):
+                return text
+        return None
+
+    def _term_to_str(self, value: Any) -> str | None:
+        if isinstance(value, (Literal | URIRef)):
+            text = str(value).strip()
+            return text if text else None
+        return None
 
     def _literal_to_str(self, value: Any) -> str | None:
         if isinstance(value, Literal):
