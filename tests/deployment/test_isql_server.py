@@ -1,5 +1,6 @@
 """Tests for the internal ISQL service connection behavior."""
 
+import ast
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 import sys
@@ -9,6 +10,20 @@ from unittest.mock import Mock
 import pytest
 
 _ISQL_SOURCE_DIR = Path(__file__).parents[2] / "docker" / "isql-service" / "src"
+
+
+def test_odbc_routes_are_synchronous_for_fastapi_threadpool() -> None:
+    """Blocking ODBC work must run as synchronous FastAPI route functions."""
+    tree = ast.parse((_ISQL_SOURCE_DIR / "server.py").read_text(encoding="utf-8"))
+    route_functions = {
+        node.name: node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+        and node.name in {"health_check", "execute_sql_query"}
+    }
+
+    assert set(route_functions) == {"health_check", "execute_sql_query"}
+    assert all(isinstance(node, ast.FunctionDef) for node in route_functions.values())
 
 
 def test_connections_enable_autocommit(

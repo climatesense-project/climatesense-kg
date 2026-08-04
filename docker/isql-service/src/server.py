@@ -196,7 +196,7 @@ async def exception_handler(request: Request, exc: Exception):
 
 
 @app.get("/health", response_model=HealthResponse)
-async def health_check():
+def health_check():
     """Health check endpoint to verify database connectivity."""
     try:
         is_healthy = connection_manager.test_connection()
@@ -225,7 +225,7 @@ async def health_check():
 
 
 @app.post("/sql", response_model=QueryResponse)
-async def execute_sql_query(query_request: QueryRequest, http_request: Request):
+def execute_sql_query(query_request: QueryRequest, http_request: Request):
     """Execute an authenticated SQL query against the database."""
     authorization = http_request.headers.get("Authorization", "")
     if not is_valid_bearer_token(authorization, config.api_token):
