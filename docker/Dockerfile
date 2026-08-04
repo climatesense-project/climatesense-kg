@@ -8,18 +8,17 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     uv sync --locked --no-install-project --no-dev
-COPY pyproject.toml uv.lock /app/
-RUN touch README.md
+COPY pyproject.toml uv.lock README.md /app/
+COPY src/ /app/src/
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-dev
+    uv sync --locked --no-dev --no-editable
 
 FROM python:3.11-slim-bookworm AS runtime
 
 WORKDIR /app
 
-COPY --from=builder --chown=app:app /app /app
+COPY --from=builder --chown=app:app /app/.venv /app/.venv
 
-COPY src/ ./src/
 COPY config/ ./config/
 
 ENV PATH="/app/.venv/bin:$PATH"
@@ -28,5 +27,5 @@ ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
 
 # Default command
-ENTRYPOINT [ "python", "-m", "src.climatesense_kg.cli" ]
+ENTRYPOINT [ "climatesense-kg" ]
 CMD [ "--help" ]
