@@ -57,7 +57,7 @@ class BertFactorsEnricher(Enricher):
         return [self._cache_step(model) for model in self.MODEL_KEYS]
 
     def enrich(self, items: list[CanonicalClaimReview]) -> list[CanonicalClaimReview]:
-        """Enrich claim reviews while persisting results per model."""
+        """Batch uncached claim texts per model and apply all cached/model results."""
 
         uris = [item.uri for item in items if item.uri]
         model_caches: dict[str, dict[str, dict[str, Any]]] = {
@@ -66,25 +66,105 @@ class BertFactorsEnricher(Enricher):
 
         if self.cache and uris:
             for model in self.MODEL_KEYS:
-                model_caches[model] = self.cache.get_many(uris, self._cache_step(model))
+                model_caches[model] = dict(
+                    self.cache.get_many(uris, self._cache_step(model))
+                )
 
-        results: list[CanonicalClaimReview] = []
-        for idx, item in enumerate(items):
-            try:
-                enriched = self._process_item(item, model_caches)
-                results.append(enriched)
-                if (idx + 1) % 100 == 0 or (idx + 1) == len(items):
-                    self.logger.info(
-                        "Enriched %d/%d items (%.1f%%)",
-                        idx + 1,
-                        len(items),
-                        ((idx + 1) / len(items)) * 100,
+        pending: dict[str, list[tuple[str, str]]] = {
+            model: [] for model in self.MODEL_KEYS
+        }
+        seen_pending: dict[str, set[str]] = {model: set() for model in self.MODEL_KEYS}
+        for item in items:
+            uri = item.uri
+            if not uri:
+                continue
+            text = item.claim.normalized_text
+            missing_models = [
+                model for model in self.MODEL_KEYS if uri not in model_caches[model]
+            ]
+            if not missing_models:
+                continue
+            if not text:
+                self._cache_error_for_models(
+                    uri,
+                    missing_models,
+                    model_caches,
+                    error_type="missing_text",
+                    message="No normalized claim text available for enrichment",
+                )
+                continue
+            for model in missing_models:
+                if uri not in seen_pending[model]:
+                    pending[model].append((uri, text))
+                    seen_pending[model].add(uri)
+
+        if any(pending.values()):
+            if not self.is_available():
+                for model, model_items in pending.items():
+                    for uri, _text in model_items:
+                        self._cache_model_error(
+                            uri,
+                            model,
+                            "service_unavailable",
+                            "CIMPLE Factors API health check failed",
+                            self._empty_model_value(model),
+                            model_caches,
+                        )
+            else:
+                request_batch_size = max(1, self.batch_size)
+                for model, model_items in pending.items():
+                    for start in range(0, len(model_items), request_batch_size):
+                        batch = model_items[start : start + request_batch_size]
+                        try:
+                            api_results = self._call_model(
+                                model, [text for _uri, text in batch]
+                            )
+                            if len(api_results) != len(batch):
+                                raise ValueError(
+                                    "CIMPLE Factors API returned an unexpected "
+                                    f"result count for model {model}"
+                                )
+                            for (uri, _text), api_result in zip(
+                                batch, api_results, strict=True
+                            ):
+                                value = self._extract_model_value(model, api_result)
+                                self._cache_model_success(
+                                    uri, model, value, model_caches
+                                )
+                        except Exception as exc:
+                            self.logger.error(
+                                "CIMPLE Factors batch enrichment failed for model %s: %s",
+                                model,
+                                exc,
+                            )
+                            for uri, _text in batch:
+                                self._cache_model_error(
+                                    uri,
+                                    model,
+                                    "api_error",
+                                    f"CIMPLE Factors API error: {exc!s}",
+                                    self._empty_model_value(model),
+                                    model_caches,
+                                )
+                        finally:
+                            time.sleep(self.rate_limit_delay)
+
+        for item in items:
+            uri = item.uri
+            if not uri:
+                continue
+            model_values: dict[str, Any] = {}
+            for model in self.MODEL_KEYS:
+                payload = model_caches[model].get(uri)
+                if isinstance(payload, dict):
+                    model_values[model] = payload.get(
+                        "data", self._empty_model_value(model)
                     )
-            except Exception as exc:  # pragma: no cover
-                self.logger.error("Error enriching claim review %s: %s", item.uri, exc)
-                results.append(item)
+                else:
+                    model_values[model] = self._empty_model_value(model)
+            self._apply_factors(item, self._merge_model_data(model_values))
 
-        return results
+        return items
 
     def is_available(self) -> bool:
         """Check if CIMPLE Factors API is available."""

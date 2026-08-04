@@ -309,6 +309,30 @@ class TestBertFactorsEnricherBatch:
             for result, original in zip(results, sample_claim_reviews, strict=False)
         )
 
+    def test_uncached_texts_are_batched_per_model(
+        self,
+        sample_claim_reviews: list[CanonicalClaimReview],
+        mock_cache: Mock,
+    ) -> None:
+        enricher = BertFactorsEnricher(batch_size=10, rate_limit_delay=0)
+        enricher.cache = mock_cache
+        mock_cache.get_many.return_value = {}
+
+        def model_results(model: str, texts: list[str]) -> list[dict[str, Any]]:
+            return [{"value": enricher._empty_model_value(model)} for _text in texts]
+
+        with (
+            patch.object(enricher, "is_available", return_value=True),
+            patch.object(enricher, "_call_model", side_effect=model_results) as call,
+        ):
+            enricher.enrich(sample_claim_reviews)
+
+        assert call.call_count == len(BertFactorsEnricher.MODEL_KEYS)
+        assert all(
+            len(model_call.args[1]) == len(sample_claim_reviews)
+            for model_call in call.call_args_list
+        )
+
     @patch("requests.post")
     def test_enrich_batch_with_mixed_cache(
         self,
