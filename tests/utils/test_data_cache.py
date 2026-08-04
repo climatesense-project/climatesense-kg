@@ -1,6 +1,7 @@
 """Tests for the file-based data cache."""
 
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from src.climatesense_kg.utils.data_cache import DataCache
@@ -56,3 +57,21 @@ def test_clear_removes_valid_source_directory(tmp_path: Path) -> None:
     cache.clear("source")
 
     assert not source_dir.exists()
+
+
+def test_failed_overwrite_preserves_previous_cache_entry(tmp_path: Path) -> None:
+    """A replacement must be complete before it can replace valid cache data."""
+    cache = DataCache(tmp_path / "cache")
+    config = {"url": "https://example.test/data"}
+    cache.put("source", config, b"previous data")
+
+    with (
+        patch(
+            "src.climatesense_kg.utils.data_cache.json.dump",
+            side_effect=OSError("disk full"),
+        ),
+        pytest.raises(OSError, match="disk full"),
+    ):
+        cache.put("source", config, b"replacement data")
+
+    assert cache.get("source", config, ignore_expiry=True) == b"previous data"

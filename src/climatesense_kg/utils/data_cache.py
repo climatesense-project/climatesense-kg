@@ -5,8 +5,10 @@ import gzip
 import hashlib
 import json
 import logging
+import os
 from pathlib import Path
 import shutil
+import tempfile
 import threading
 import time
 from typing import Any
@@ -133,10 +135,25 @@ class DataCache:
         with self._lock:
             cache_path = self._get_cache_path(cache_key)
             metadata_path = self._get_metadata_path(cache_key)
+            cache_temp_path: Path | None = None
+            metadata_temp_path: Path | None = None
 
             try:
-                with gzip.open(cache_path, "wb") as f:
-                    f.write(data)
+                cache_fd, cache_temp_name = tempfile.mkstemp(
+                    dir=cache_path.parent,
+                    prefix=f".{cache_path.name}.",
+                    suffix=".tmp",
+                )
+                cache_temp_path = Path(cache_temp_name)
+                with os.fdopen(cache_fd, "wb") as raw_cache:
+                    with gzip.GzipFile(fileobj=raw_cache, mode="wb") as compressed:
+                        compressed.write(data)
+                    raw_cache.flush()
+                    os.fsync(raw_cache.fileno())
+
+                with gzip.open(cache_temp_path, "rb") as compressed:
+                    if compressed.read() != data:
+                        raise OSError("Temporary cache validation failed")
 
                 metadata: dict[str, Any] = {
                     "timestamp": time.time(),
@@ -145,18 +162,34 @@ class DataCache:
                     "size_bytes": len(data),
                 }
 
-                with open(metadata_path, "w", encoding="utf-8") as f:
-                    json.dump(metadata, f, indent=2)
+                metadata_fd, metadata_temp_name = tempfile.mkstemp(
+                    dir=metadata_path.parent,
+                    prefix=f".{metadata_path.name}.",
+                    suffix=".tmp",
+                )
+                metadata_temp_path = Path(metadata_temp_name)
+                with os.fdopen(metadata_fd, "w", encoding="utf-8") as metadata_file:
+                    json.dump(metadata, metadata_file, indent=2)
+                    metadata_file.flush()
+                    os.fsync(metadata_file.fileno())
+
+                with metadata_temp_path.open(encoding="utf-8") as metadata_file:
+                    json.load(metadata_file)
+
+                os.replace(cache_temp_path, cache_path)
+                cache_temp_path = None
+                os.replace(metadata_temp_path, metadata_path)
+                metadata_temp_path = None
 
                 self.logger.info(f"Cached {len(data)} bytes for {source_name}")
 
             except Exception as e:
                 self.logger.error(f"Failed to cache data for {source_name}: {e}")
-                # Clean up partial files
-                for path in [cache_path, metadata_path]:
-                    if path.exists():
-                        path.unlink(missing_ok=True)
                 raise
+            finally:
+                for temp_path in (cache_temp_path, metadata_temp_path):
+                    if temp_path is not None:
+                        temp_path.unlink(missing_ok=True)
 
     def clear(self, source_name: str | None = None) -> None:
         """Clear cache entries.
