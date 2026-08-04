@@ -117,6 +117,33 @@ class TestBertFactorsEnricherAvailability:
         assert bert_enricher.is_available() is False
 
 
+class TestBertFactorsEnricherResults:
+    """Test model result validation."""
+
+    @pytest.mark.parametrize(
+        ("raw_value", "expected"),
+        [(False, False), (True, True), ("false", False), ("TRUE", True)],
+    )
+    def test_climate_related_parses_documented_boolean_values(
+        self,
+        bert_enricher: BertFactorsEnricher,
+        raw_value: bool | str,
+        expected: bool,
+    ) -> None:
+        assert (
+            bert_enricher._extract_model_value("climate_related", {"value": raw_value})
+            is expected
+        )
+
+    def test_climate_related_rejects_other_values(
+        self, bert_enricher: BertFactorsEnricher
+    ) -> None:
+        with pytest.raises(ValueError, match="must be a boolean"):
+            bert_enricher._extract_model_value(
+                "climate_related", {"value": "not-a-boolean"}
+            )
+
+
 class TestBertFactorsEnricherEnrichment:
     """Test enrichment functionality."""
 

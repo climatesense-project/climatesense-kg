@@ -360,7 +360,18 @@ class BertFactorsEnricher(Enricher):
         if model_key == "climate_related":
             if value is None:
                 return None
-            return bool(value)
+            if isinstance(value, bool):
+                return value
+            if isinstance(value, str):
+                normalized_value = value.strip().lower()
+                if normalized_value == "true":
+                    return True
+                if normalized_value == "false":
+                    return False
+            raise ValueError(
+                "CIMPLE Factors climate-related result must be a boolean or "
+                "the string 'true' or 'false'"
+            )
         return value
 
     def _call_model(self, model_key: str, texts: list[str]) -> list[dict[str, Any]]:
