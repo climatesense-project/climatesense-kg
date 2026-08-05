@@ -44,6 +44,28 @@ org:afp-fact-check
     ] ;
     schema:memberOf <https://efcsn.com/>, <https://www.poynter.org/ifcn/> .
 
+org:afp-checamos
+    a schema:Organization ;
+    schema:name "AFP Checamos" ;
+    schema:url <https://checamos.afp.com> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Brazil"@en ;
+        schema:identifier "BR"
+    ] ;
+    schema:parentOrganization org:afp-fact-check .
+
+org:afp-comprovem
+    a schema:Organization ;
+    schema:name "AFP Comprovem" ;
+    schema:url <https://comprovem.afp.com> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Spain"@en ;
+        schema:identifier "ES"
+    ] ;
+    schema:parentOrganization org:afp-fact-check .
+
 org:afp-factual
     a schema:Organization ;
     schema:name "AFP Factual" ;
@@ -52,6 +74,17 @@ org:afp-factual
         a schema:Country ;
         schema:name "Romania"@en ;
         schema:identifier "RO"
+    ] ;
+    schema:parentOrganization org:afp-fact-check .
+
+org:afp-fact-check-hindi
+    a schema:Organization ;
+    schema:name "AFP Fact Check Hindi" ;
+    schema:url <https://factcheckhindi.afp.com> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "India"@en ;
+        schema:identifier "IN"
     ] ;
     schema:parentOrganization org:afp-fact-check .
 
@@ -154,6 +187,17 @@ org:afp-proveri
     ] ;
     schema:parentOrganization org:afp-fact-check .
 
+org:afp-periksa-fakta
+    a schema:Organization ;
+    schema:name "AFP Periksa Fakta" ;
+    schema:url <https://periksafakta.afp.com> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Indonesia"@en ;
+        schema:identifier "ID"
+    ] ;
+    schema:parentOrganization org:afp-fact-check .
+
 org:afp-provjera-cinjenica
     a schema:Organization ;
     schema:name "AFP Provjera činjenica" ;
@@ -173,6 +217,17 @@ org:afp-sprawdzam
         a schema:Country ;
         schema:name "Poland"@en ;
         schema:identifier "PL"
+    ] ;
+    schema:parentOrganization org:afp-fact-check .
+
+org:afp-semakan-fakta
+    a schema:Organization ;
+    schema:name "AFP Semakan Fakta" ;
+    schema:url <https://semakanfakta.afp.com> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Malaysia"@en ;
+        schema:identifier "MY"
     ] ;
     schema:parentOrganization org:afp-fact-check .
 
