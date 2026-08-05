@@ -2,6 +2,7 @@
 
 import base64
 from dataclasses import dataclass
+import gzip
 import io
 import os
 import tempfile
@@ -112,6 +113,12 @@ class GitHubProvider(BaseProvider):
             return self._extract_from_zip(
                 asset_data,
                 extract_file,
+                max_uncompressed_bytes=parse_file_size(config.max_extract_size),
+                max_compressed_bytes=max_download_bytes,
+            )
+        if asset.name.endswith(".gz"):
+            return self._extract_from_gzip(
+                asset_data,
                 max_uncompressed_bytes=parse_file_size(config.max_extract_size),
                 max_compressed_bytes=max_download_bytes,
             )
@@ -254,6 +261,33 @@ class GitHubProvider(BaseProvider):
                         )
                     chunks.append(chunk)
                 return b"".join(chunks)
+
+    def _extract_from_gzip(
+        self,
+        gzip_data: bytes,
+        *,
+        max_uncompressed_bytes: int,
+        max_compressed_bytes: int,
+    ) -> bytes:
+        """Expand a gzip release asset within configured size limits."""
+        if len(gzip_data) > max_compressed_bytes:
+            raise ValueError(
+                "Compressed gzip asset exceeds the configured "
+                f"{max_compressed_bytes}-byte limit"
+            )
+
+        chunks: list[bytes] = []
+        bytes_read = 0
+        with gzip.GzipFile(fileobj=io.BytesIO(gzip_data)) as gzip_file:
+            while chunk := gzip_file.read(min(1024 * 1024, max_uncompressed_bytes + 1)):
+                bytes_read += len(chunk)
+                if bytes_read > max_uncompressed_bytes:
+                    raise ValueError(
+                        "Expanded gzip asset exceeds the configured "
+                        f"{max_uncompressed_bytes}-byte limit"
+                    )
+                chunks.append(chunk)
+        return b"".join(chunks)
 
     def get_cache_key_fields(self, config: ProviderConfig) -> dict[str, Any]:
         """Repository and asset pattern affect cache."""

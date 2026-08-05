@@ -24,79 +24,11 @@ data_sources:
   - name: "dbkf"
     type: "dbkf"
     provider:
-      provider_type: "graphql"
-      endpoint: "https://dbkf.ontotext.com/gql-api"
-      query: |
-        query GetReviewsWithConcepts($limit: PositiveInteger!, $offset: NonNegativeInteger!) {
-          claimReview(
-            limit: $limit,
-            offset: $offset,
-            where: {
-              OR: [
-                { annotation: { concept: { id: { EQ: "http://weverify.eu/resource/Concept/Q7937" } } } },
-                { annotation: { concept: { id: { EQ: "http://weverify.eu/resource/Concept/Q7942" } } } },
-                { annotation: { concept: { id: { EQ: "http://weverify.eu/resource/Concept/Q125928" } } } }
-              ]
-            }
-          ) {
-            id
-            externalUrl
-            headline
-            reviewBody
-            author {
-              id
-              name
-            }
-            publisher {
-              id
-              name
-            }
-            language
-            dateCreated
-            annotation {
-              concept {
-                id
-                prefLabel {
-                  value
-                }
-              }
-              description
-            }
-            containsEvent {
-              startOffset
-              endOffset
-              text
-              eventType {
-                id
-              }
-              hasTrigger {
-                startOffset
-                endOffset
-                text
-              }
-            }
-            imageObject {
-              image
-            }
-            audioObject {
-              audio
-            }
-            videoObject {
-              video
-            }
-            fileObject {
-              file
-            }
-            itemReviewed {
-              id
-              text
-            }
-            hasPart {
-              about
-            }
-          }
-        }
-      batch_size: 100
+      provider_type: "github"
+      repository: "climatesense-project/dbkf-scraper"
+      mode: "release"
+      asset_pattern: "dbkf.json.gz"
+      max_extract_size: "64MB"
   - name: "desmog"
     type: "desmog"
     provider:

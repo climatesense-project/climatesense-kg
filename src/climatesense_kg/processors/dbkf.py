@@ -16,7 +16,7 @@ from .base import BaseProcessor
 
 
 class DbkfProcessor(BaseProcessor):
-    """Processor for DBKF GraphQL data."""
+    """Processor for DBKF data."""
 
     def process(self, raw_data: bytes) -> Iterator[CanonicalClaimReview]:
         """Process DBKF raw data into CanonicalClaimReview objects."""

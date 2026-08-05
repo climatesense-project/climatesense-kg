@@ -1,5 +1,6 @@
 """Tests for bounded GitHub asset downloads."""
 
+import gzip
 import io
 from unittest.mock import Mock, patch
 import zipfile
@@ -37,6 +38,30 @@ def test_oversized_zip_member_is_rejected_before_expansion() -> None:
         GitHubProvider("github")._extract_from_zip(
             archive.getvalue(),
             "data.json",
+            max_uncompressed_bytes=10,
+            max_compressed_bytes=1000,
+        )
+
+
+def test_gzip_asset_is_expanded() -> None:
+    compressed = gzip.compress(b'[{"id": "review-1"}]')
+
+    assert (
+        GitHubProvider("github")._extract_from_gzip(
+            compressed,
+            max_uncompressed_bytes=100,
+            max_compressed_bytes=100,
+        )
+        == b'[{"id": "review-1"}]'
+    )
+
+
+def test_oversized_gzip_asset_is_rejected_during_expansion() -> None:
+    compressed = gzip.compress(b"x" * 100)
+
+    with pytest.raises(ValueError, match=r"Expanded gzip asset.*10-byte limit"):
+        GitHubProvider("github")._extract_from_gzip(
+            compressed,
             max_uncompressed_bytes=10,
             max_compressed_bytes=1000,
         )
