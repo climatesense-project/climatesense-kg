@@ -274,12 +274,8 @@ class RDFGenerator:
     ) -> None:
         """Generate RDF for a single claim review."""
 
-        # Generate organization RDF
-        org_uri = (
-            self._generate_organization_rdf(claim_review.organization, generated_uris)
-            if claim_review.organization
-            else None
-        )
+        # Organization metadata lives exclusively in the curated organization graph.
+        org_uri = self._get_organization_uri(claim_review.organization)
 
         # Generate people RDF
         person_uris = self._generate_people_rdf(claim_review.authors, generated_uris)
@@ -304,8 +300,7 @@ class RDFGenerator:
         self.graph.add((review_uri, self.SCHEMA.itemReviewed, claim_uri))
 
         # Link to organization
-        if org_uri:
-            self.graph.add((review_uri, self.SCHEMA.author, org_uri))
+        self.graph.add((review_uri, self.SCHEMA.author, org_uri))
 
         for person_uri in person_uris:
             self.graph.add((review_uri, self.SCHEMA.author, person_uri))
@@ -419,33 +414,10 @@ class RDFGenerator:
                 except Exception:
                     self.logger.warning(f"Invalid entity URI: {entity.get('uri')}")
 
-    def _generate_organization_rdf(
-        self, organization: CanonicalOrganization, generated_uris: set[str]
-    ) -> URIRef:
-        """Generate RDF for an organization."""
-        org_uri = URIRef(self.get_full_uri(organization.uri))
-        if str(org_uri) in generated_uris:
-            return org_uri
+    def _get_organization_uri(self, organization: CanonicalOrganization) -> URIRef:
+        """Return the catalog-assigned organization URI."""
 
-        generated_uris.add(str(org_uri))
-
-        # Organization type and basic properties
-        self.graph.add((org_uri, RDF.type, self.SCHEMA.Organization))
-        self.graph.add((org_uri, self.SCHEMA.name, Literal(organization.name)))
-
-        if organization.website:
-            sanitized_website = sanitize_url(organization.website)
-            if sanitized_website:
-                self.graph.add((org_uri, self.SCHEMA.url, URIRef(sanitized_website)))
-
-        # Parent organization
-        if organization.parent:
-            parent_uri = self._generate_organization_rdf(
-                organization.parent, generated_uris
-            )
-            self.graph.add((org_uri, self.SCHEMA.parentOrganization, parent_uri))
-
-        return org_uri
+        return URIRef(self.get_full_uri(organization.uri))
 
     def _generate_claim_rdf(
         self, claim: CanonicalClaim, generated_uris: set[str]

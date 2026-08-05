@@ -7,6 +7,7 @@ import sys
 from typing import TYPE_CHECKING
 
 from . import __version__
+from .config.organizations import ORGANIZATION_CATALOG_PATH, ORGANIZATION_SOURCE_NAME
 
 if TYPE_CHECKING:
     from .pipeline import (
@@ -202,8 +203,12 @@ def run_redeploy(args: argparse.Namespace) -> int:
         print(f"RDF directory not found: {rdf_dir}", file=sys.stderr)
         return 1
 
+    organization_resolved_path = ORGANIZATION_CATALOG_PATH.resolve()
     rdf_files = sorted(
-        path for pattern in ("*.nt", "*.ttl") for path in rdf_dir.rglob(pattern)
+        path
+        for pattern in ("*.nt", "*.ttl")
+        for path in rdf_dir.rglob(pattern)
+        if path.resolve() != organization_resolved_path
     )
     if not rdf_files:
         print(f"No supported RDF files found in {rdf_dir}", file=sys.stderr)
@@ -229,11 +234,28 @@ def run_redeploy(args: argparse.Namespace) -> int:
     ]
 
     print(
-        f"Found {len(files_to_deploy)} file(s) to deploy "
-        f"across {len(files_by_source)} source(s)"
+        f"Found {len(files_to_deploy)} source file(s) to deploy "
+        f"across {len(files_by_source)} source(s), plus the organization catalog"
     )
 
-    success_count = 0
+    organization_graph_uri = config.deployment.graph_template.replace(
+        "{SOURCE}", ORGANIZATION_SOURCE_NAME
+    )
+    print(
+        f"  Replacing {ORGANIZATION_CATALOG_PATH} -> {organization_graph_uri} ...",
+        end=" ",
+        flush=True,
+    )
+    if not handler.deploy(
+        ORGANIZATION_CATALOG_PATH,
+        ORGANIZATION_SOURCE_NAME,
+        replace=True,
+    ):
+        print("FAILED")
+        return 1
+    print("OK")
+
+    success_count = 1
     failure_count = 0
     for source_name, rdf_file in files_to_deploy:
         logger.info(f"Deploying {rdf_file} (source: {source_name})")

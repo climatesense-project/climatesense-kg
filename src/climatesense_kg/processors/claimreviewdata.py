@@ -134,6 +134,17 @@ class ClaimReviewDataProcessor(BaseProcessor):
         fact_checker = item.get("fact_checker", {})
         if not isinstance(fact_checker, dict):
             errors.append("fact_checker must be a mapping")
+        else:
+            if (
+                not isinstance(fact_checker.get("name"), str)
+                or not fact_checker["name"]
+            ):
+                errors.append("fact_checker is missing name")
+            if (
+                not isinstance(fact_checker.get("website"), str)
+                or not fact_checker["website"]
+            ):
+                errors.append("fact_checker is missing website")
 
         appearances = item.get("appearances", [])
         if not isinstance(appearances, list):

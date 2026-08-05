@@ -1,7 +1,6 @@
 """ClimateSense Knowledge Graph Pipeline."""
 
 from datetime import datetime
-from importlib.resources import as_file, files
 import logging
 import os
 from pathlib import Path
@@ -14,7 +13,11 @@ from .cache.interface import CacheInterface
 from .cache.postgres_cache import PostgresCache
 from .config import PipelineConfig
 from .config.models import CanonicalClaimReview
-from .config.organization_hierarchy import OrganizationHierarchy
+from .config.organizations import (
+    ORGANIZATION_CATALOG_PATH,
+    ORGANIZATION_SOURCE_NAME,
+    OrganizationCatalog,
+)
 from .data_manager import DataManager
 from .deployment.base import DeploymentHandler
 from .deployment.factory import create_deployment_handler
@@ -140,12 +143,7 @@ class Pipeline:
         self._initialize_components()
         self._run_datetime: datetime | None = None
 
-        # Load organization hierarchy
-        hierarchy_resource = files("climatesense_kg.data").joinpath(
-            "organization_hierarchy.yaml"
-        )
-        with as_file(hierarchy_resource) as hierarchy_path:
-            self.org_hierarchy = OrganizationHierarchy(hierarchy_path)
+        self.organization_catalog = OrganizationCatalog(ORGANIZATION_CATALOG_PATH)
 
     def _initialize_components(self) -> None:
         """Initialize pipeline components from configuration."""
@@ -315,18 +313,27 @@ class Pipeline:
 
             if not canonical_reviews:
                 self.logger.info("No new items to process.")
-                self.logger.info("Pipeline completed successfully.")
-                results["success"] = True
-                results["total_processed"] = 0
-                end_time = time.time()
-                results["end_time"] = end_time
-                results["duration"] = end_time - start_time
-                return results
 
-            # Resolve organization hierarchy (parent links)
+            unresolved_organizations: set[tuple[str, str, str]] = set()
             for review in canonical_reviews:
-                if review.organization:
-                    self.org_hierarchy.resolve_parent(review.organization)
+                resolved_uri = self.organization_catalog.resolve(review.organization)
+                if not resolved_uri:
+                    unresolved_organizations.add(
+                        (
+                            review.source_name or "unknown",
+                            review.organization.name,
+                            review.organization.website,
+                        )
+                    )
+
+            if unresolved_organizations:
+                details = "; ".join(
+                    f"{source}: {name!r} ({website})"
+                    for source, name, website in sorted(unresolved_organizations)
+                )
+                raise RuntimeError(
+                    "Organizations are missing from the curated catalog: " + details
+                )
 
             # Step 2: Enrichment
             self.logger.info("Step 2: Data Enrichment")
@@ -349,7 +356,7 @@ class Pipeline:
             # Step 4: Deployment
             deployment_success = True
             generated_files = rdf_stats.get("generated_files", [])
-            total_files = len(generated_files)
+            total_files = len(generated_files) + 1
 
             if skip_deployment:
                 self.logger.info("Step 4: Deployment skipped (--skip-deployment)")
@@ -485,6 +492,9 @@ class Pipeline:
         skip_enrichment: bool = False,
     ) -> list[CanonicalClaimReview]:
         """Run enrichment step, optionally using cache only."""
+        if not canonical_reviews:
+            return []
+
         if not self.enrichers:
             self.logger.warning("No enrichers available, skipping enrichment")
             return canonical_reviews
@@ -637,15 +647,27 @@ class Pipeline:
     def _run_deployment(self, rdf_stats: RDFGenerationResults) -> DeploymentResults:
         """Run deployment step."""
         generated_files = rdf_stats.get("generated_files", [])
-        total_files = len(generated_files)
+        total_files = len(generated_files) + 1
         if not self.deployment_handler:
             return {"success": True, "files_deployed": 0, "total_files": total_files}
 
-        if not generated_files:
-            self.logger.warning("No RDF files to deploy")
-            return {"success": False, "files_deployed": 0, "total_files": 0}
+        self.logger.info(
+            "Replacing curated organization graph from %s", ORGANIZATION_CATALOG_PATH
+        )
+        organization_success = self.deployment_handler.deploy(
+            ORGANIZATION_CATALOG_PATH,
+            ORGANIZATION_SOURCE_NAME,
+            replace=True,
+        )
+        if not organization_success:
+            self.logger.error("Curated organization graph deployment failed")
+            return {
+                "success": False,
+                "files_deployed": 0,
+                "total_files": total_files,
+            }
 
-        deployment_results: list[bool] = []
+        deployment_results: list[bool] = [organization_success]
         for file_info in generated_files:
             output_path = Path(file_info["path"])
             source_name = file_info["source"]

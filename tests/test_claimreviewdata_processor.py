@@ -12,7 +12,7 @@ def test_malformed_item_does_not_abort_later_records() -> None:
             "claim_text": ["valid claim"],
             "review_url": "https://example.test/review",
             "reviews": [{"original_label": "True", "label": "credible"}],
-            "fact_checker": {"name": "Example"},
+            "fact_checker": {"name": "Example", "website": "https://example.test"},
         },
     ]
     processor = ClaimReviewDataProcessor("claimreviewdata")
@@ -32,7 +32,7 @@ def test_emits_every_positionally_paired_claim_and_review() -> None:
                 {"original_label": "True", "label": "credible"},
                 {"original_label": "False", "label": "not_credible"},
             ],
-            "fact_checker": {"name": "Example"},
+            "fact_checker": {"name": "Example", "website": "https://example.test"},
         }
     ]
     processor = ClaimReviewDataProcessor("claimreviewdata")
@@ -51,7 +51,7 @@ def test_broadcasts_single_review_across_multiple_claims() -> None:
             "claim_text": ["first claim", "second claim"],
             "review_url": "https://example.test/review",
             "reviews": [{"original_label": "False", "label": "not_credible"}],
-            "fact_checker": {"name": "Example"},
+            "fact_checker": {"name": "Example", "website": "https://example.test"},
         }
     ]
     processor = ClaimReviewDataProcessor("claimreviewdata")

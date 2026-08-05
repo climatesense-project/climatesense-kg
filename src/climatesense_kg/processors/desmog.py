@@ -68,6 +68,8 @@ class DesmogProcessor(BaseProcessor):
         )
 
         organization = self._build_organization(graph, claim_uri)
+        if not organization:
+            raise ValueError("claim missing publisher with an HTTP(S) URL")
 
         # Get date_published from the archivedAt source
         date_published = None
@@ -149,7 +151,7 @@ class DesmogProcessor(BaseProcessor):
         if not publisher_name and isinstance(publisher, Literal):
             publisher_name = str(publisher)
 
-        if not publisher_name:
+        if not publisher_name or not publisher_url:
             return None
 
         return CanonicalOrganization(name=publisher_name, website=publisher_url)

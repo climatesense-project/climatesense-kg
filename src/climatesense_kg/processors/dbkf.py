@@ -62,9 +62,12 @@ class DbkfProcessor(BaseProcessor):
         )
 
         publisher = item.get("publisher", {})
+        organization_url = self._extract_website_from_url(item.get("externalUrl", ""))
+        if not organization_url:
+            raise ValueError("DBKF item requires an external organization URL")
         organization = CanonicalOrganization(
             name=publisher.get("name", ""),
-            website=self._extract_website_from_url(item.get("externalUrl", "")),
+            website=organization_url,
             language=self._get_primary_language(item.get("language", [])),
         )
 

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 from rdflib import Graph, Literal, Namespace, URIRef
-from rdflib.namespace import RDF, XSD
+from rdflib.namespace import XSD
 from src.climatesense_kg.config.models import (
     CanonicalClaim,
     CanonicalClaimReview,
@@ -20,7 +20,11 @@ SCHEMA = Namespace("http://schema.org/")
 
 def _build_review(label: str | None) -> CanonicalClaimReview:
     claim = CanonicalClaim(text="Example claim", appearances=["https://example.org"])
-    organization = CanonicalOrganization(name="Org", website="https://example.org")
+    organization = CanonicalOrganization(
+        name="Org",
+        website="https://example.org",
+        canonical_uri="http://data.climatesense-project.eu/organization/example",
+    )
     rating = CanonicalRating(label=label, original_label=label) if label else None
 
     return CanonicalClaimReview(
@@ -192,29 +196,23 @@ def test_generator_emits_zero_readability_score() -> None:
     assert (claim_uri, CIMPLE.readability_score, Literal(0.0)) in graph
 
 
-def test_generator_emits_parent_organization() -> None:
-    parent = CanonicalOrganization(name="AFP", website="https://www.afp.com")
-    child = CanonicalOrganization(
-        name="AFP Factuel", website="https://factuel.afp.com", parent=parent
+def test_generator_only_references_catalog_organization() -> None:
+    organization_uri = URIRef(
+        "http://data.climatesense-project.eu/organization/afp-factuel"
+    )
+    organization = CanonicalOrganization(
+        name="AFP Factuel",
+        website="https://factuel.afp.com",
+        canonical_uri=str(organization_uri),
     )
     review = _build_review(None)
-    review.organization = child
+    review.organization = organization
 
     graph, generator = _generate_graph(review)
+    review_uri = URIRef(generator.get_full_uri(review.uri))
 
-    child_uri = URIRef(generator.get_full_uri(child.uri))
-    parent_uri = URIRef(generator.get_full_uri(parent.uri))
-
-    # Child links to parent
-    assert (child_uri, SCHEMA.parentOrganization, parent_uri) in graph
-
-    # Both are typed as Organization
-    assert (child_uri, RDF.type, SCHEMA.Organization) in graph
-    assert (parent_uri, RDF.type, SCHEMA.Organization) in graph
-
-    # Parent has its own name and url
-    assert (parent_uri, SCHEMA.name, Literal("AFP")) in graph
-    assert (parent_uri, SCHEMA.url, URIRef("https://www.afp.com")) in graph
+    assert (review_uri, SCHEMA.author, organization_uri) in graph
+    assert list(graph.triples((organization_uri, None, None))) == []
 
 
 def test_generator_replaces_unpaired_surrogate_in_claim_text() -> None:
@@ -257,7 +255,11 @@ def test_generator_preserves_organizations_for_shared_ratings() -> None:
     second = _build_review("credible")
     second.review_url = "https://example.org/another-review"
     second.organization = CanonicalOrganization(
-        name="Another Org", website="https://another.example.org"
+        name="Another Org",
+        website="https://another.example.org",
+        canonical_uri=(
+            "http://data.climatesense-project.eu/organization/another-example"
+        ),
     )
 
     generator = RDFGenerator(base_uri="http://data.cimple.eu")

@@ -31,8 +31,10 @@ class QLeverDeploymentHandler(DeploymentHandler):
         self.graph_template = graph_template
         self.timeout = timeout
 
-    def deploy(self, rdf_file_path: Path, source_name: str) -> bool:
-        """Add an RDF file to the source's named graph in QLever."""
+    def deploy(
+        self, rdf_file_path: Path, source_name: str, *, replace: bool = False
+    ) -> bool:
+        """Add an RDF file to, or replace, a named graph in QLever."""
         if not rdf_file_path.exists():
             self.logger.error("RDF file not found: %s", rdf_file_path)
             return False
@@ -50,7 +52,8 @@ class QLeverDeploymentHandler(DeploymentHandler):
 
         try:
             with rdf_file_path.open("rb") as rdf_file:
-                response = requests.post(
+                request = requests.put if replace else requests.post
+                response = request(
                     self.endpoint,
                     params={"graph": graph_uri},
                     headers={

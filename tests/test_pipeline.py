@@ -5,6 +5,11 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
+from src.climatesense_kg.config.models import CanonicalOrganization
+from src.climatesense_kg.config.organizations import (
+    ORGANIZATION_CATALOG_PATH,
+    ORGANIZATION_SOURCE_NAME,
+)
 from src.climatesense_kg.pipeline import Pipeline
 from src.climatesense_kg.rdf_generation.generator import RDFGenerator
 
@@ -53,10 +58,16 @@ def test_pipeline_accepts_empty_ingestion_when_any_source_succeeds() -> None:
 
     pipeline = object.__new__(Pipeline)
     pipeline.cache = None
-    pipeline.config = SimpleNamespace(data_sources=sources)
+    pipeline.config = SimpleNamespace(
+        data_sources=sources,
+        output=SimpleNamespace(format="turtle", output_path="unused/{SOURCE}.ttl"),
+    )
     pipeline.data_manager = Mock()
     pipeline.data_manager.get_data.side_effect = get_data
     pipeline.logger = getLogger("test.pipeline")
+    pipeline.deployment_handler = None
+    pipeline.enrichers = []
+    pipeline.rdf_generator = RDFGenerator(base_uri="https://example.org")
     pipeline._run_datetime = None
 
     results = pipeline.run()
@@ -70,6 +81,41 @@ def test_pipeline_accepts_empty_ingestion_when_any_source_succeeds() -> None:
         "successful_sources": ["healthy-source"],
         "failed_sources": ["failed-source"],
     }
+
+
+def test_empty_ingestion_still_replaces_organization_graph(tmp_path) -> None:
+    pipeline = object.__new__(Pipeline)
+    pipeline.logger = getLogger("test.pipeline")
+    pipeline.cache = None
+    pipeline.deployment_handler = Mock()
+    pipeline.deployment_handler.deploy.return_value = True
+    pipeline.config = SimpleNamespace(
+        output=SimpleNamespace(format="turtle", output_path=tmp_path / "{SOURCE}.ttl"),
+    )
+    pipeline.enrichers = []
+    pipeline.rdf_generator = RDFGenerator(base_uri="https://example.org")
+    pipeline._run_datetime = None
+    pipeline._run_ingestion = Mock(
+        return_value={
+            "items": [],
+            "successful_sources": ["source-a"],
+            "failed_sources": [],
+        }
+    )
+
+    results = pipeline.run()
+
+    assert results["success"] is True
+    assert results["deployment"] == {
+        "success": True,
+        "files_deployed": 1,
+        "total_files": 1,
+    }
+    pipeline.deployment_handler.deploy.assert_called_once_with(
+        ORGANIZATION_CATALOG_PATH,
+        ORGANIZATION_SOURCE_NAME,
+        replace=True,
+    )
 
 
 def test_rdf_generation_only_marks_successful_reviews_processed(
@@ -229,7 +275,7 @@ def test_failed_deployment_does_not_finalize_reviews(tmp_path, mock_cache) -> No
     pipeline.cache = mock_cache
     pipeline.logger = getLogger("test.pipeline")
     pipeline.deployment_handler = Mock()
-    pipeline.deployment_handler.deploy.return_value = False
+    pipeline.deployment_handler.deploy.side_effect = [True, False]
     rdf_stats = {
         "generated_files": [
             {
@@ -245,15 +291,20 @@ def test_failed_deployment_does_not_finalize_reviews(tmp_path, mock_cache) -> No
 
     assert pipeline._run_deployment(rdf_stats) == {
         "success": False,
-        "files_deployed": 0,
-        "total_files": 1,
+        "files_deployed": 1,
+        "total_files": 2,
     }
     mock_cache.set_many.assert_not_called()
 
 
 def test_pipeline_reports_rdf_generation_error_when_deployment_is_skipped() -> None:
     """Skipping deployment must not mask a source-level RDF failure."""
-    review = SimpleNamespace(organization=None)
+    review = SimpleNamespace(
+        organization=CanonicalOrganization(
+            name="Example", website="https://example.org"
+        ),
+        source_name="source-a",
+    )
     rdf_stats = {
         "generated_files": [],
         "total_files": 0,
@@ -270,7 +321,9 @@ def test_pipeline_reports_rdf_generation_error_when_deployment_is_skipped() -> N
     pipeline.cache = None
     pipeline.enrichers = []
     pipeline.deployment_handler = None
-    pipeline.org_hierarchy = Mock()
+    pipeline.config = SimpleNamespace(output=SimpleNamespace(format="turtle"))
+    pipeline.organization_catalog = Mock()
+    pipeline.organization_catalog.resolve.return_value = "https://example.org/org"
     pipeline._run_datetime = None
     pipeline._run_ingestion = Mock(
         return_value={
@@ -309,8 +362,36 @@ def test_partial_deployment_reports_successful_file_count(tmp_path, mock_cache) 
     pipeline.cache = mock_cache
     pipeline.logger = getLogger("test.pipeline")
     pipeline.deployment_handler = Mock()
-    pipeline.deployment_handler.deploy.side_effect = [True, False]
+    pipeline.deployment_handler.deploy.side_effect = [True, True, False]
 
     stats = pipeline._run_deployment({"generated_files": generated_files})
 
-    assert stats == {"success": False, "files_deployed": 1, "total_files": 2}
+    assert stats == {"success": False, "files_deployed": 2, "total_files": 3}
+
+
+def test_pipeline_rejects_unresolved_organizations() -> None:
+    review = SimpleNamespace(
+        organization=SimpleNamespace(name="Unknown", website="https://unknown.test"),
+        source_name="source-a",
+    )
+    pipeline = object.__new__(Pipeline)
+    pipeline.logger = getLogger("test.pipeline")
+    pipeline.cache = None
+    pipeline.enrichers = []
+    pipeline.deployment_handler = None
+    pipeline.config = SimpleNamespace(output=SimpleNamespace(format="turtle"))
+    pipeline.organization_catalog = Mock()
+    pipeline.organization_catalog.resolve.return_value = None
+    pipeline._run_datetime = None
+    pipeline._run_ingestion = Mock(
+        return_value={
+            "items": [review],
+            "successful_sources": ["source-a"],
+            "failed_sources": [],
+        }
+    )
+
+    results = pipeline.run()
+
+    assert results["success"] is False
+    assert "Organizations are missing from the curated catalog" in results["error"]

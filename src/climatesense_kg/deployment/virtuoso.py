@@ -48,12 +48,15 @@ class VirtuosoDeploymentHandler(DeploymentHandler):
             raise ValueError("ISQL_SERVICE_TOKEN is required for Virtuoso deployment")
         self.isql_service_token = isql_service_token
 
-    def deploy(self, rdf_file_path: Path, source_name: str) -> bool:
+    def deploy(
+        self, rdf_file_path: Path, source_name: str, *, replace: bool = False
+    ) -> bool:
         """Deploy RDF data to Virtuoso.
 
         Args:
             rdf_file_path: Path to the RDF file to deploy
             source_name: Name of the data source
+            replace: Clear the named graph before loading the RDF file
 
         Returns:
             True if deployment was successful, False otherwise
@@ -67,6 +70,13 @@ class VirtuosoDeploymentHandler(DeploymentHandler):
         self.logger.info(f"Deploying {rdf_file_path} to graph {graph_uri}")
 
         try:
+            self._validate_loader_inputs(rdf_file_path, graph_uri)
+            if replace and not self._execute_sql(
+                f"SPARQL CLEAR SILENT GRAPH <{graph_uri}>"
+            ):
+                self.logger.error("Failed to clear Virtuoso graph %s", graph_uri)
+                return False
+
             if not self._load_rdf_file(rdf_file_path, graph_uri):
                 self.logger.error(f"Failed to load RDF file {rdf_file_path}")
                 return False
@@ -82,7 +92,6 @@ class VirtuosoDeploymentHandler(DeploymentHandler):
 
     def _load_rdf_file(self, file_path: Path, graph_uri: str) -> bool:
         """Load RDF file into a specific graph."""
-        self._validate_loader_inputs(file_path, graph_uri)
         file_name = self._escape_sql_literal(file_path.name)
         file_directory = self._escape_sql_literal(file_path.parent.as_posix())
         load_list_path = self._escape_sql_literal(file_path.as_posix())
@@ -128,8 +137,10 @@ class VirtuosoDeploymentHandler(DeploymentHandler):
         ):
             raise ValueError("RDF loader path contains invalid characters")
 
-        if cls._INVALID_SQL_INPUT.search(graph_uri) or any(
-            character.isspace() for character in graph_uri
+        if (
+            cls._INVALID_SQL_INPUT.search(graph_uri)
+            or any(character.isspace() for character in graph_uri)
+            or any(character in '<>"{}' for character in graph_uri)
         ):
             raise ValueError("Virtuoso graph URI contains invalid characters")
         parsed = urlsplit(graph_uri)

@@ -58,7 +58,7 @@ class ClimafactsProcessor(BaseProcessor):
         self,
         claim: CanonicalClaim,
         review_url: str,
-        organization: CanonicalOrganization | None,
+        organization: CanonicalOrganization,
         date_published: str | None,
         language: str | None,
         rating: CanonicalRating | None,
@@ -97,6 +97,8 @@ class ClimafactsProcessor(BaseProcessor):
         claim, metadata_nodes = self._extract_claim(graph, review_uri, review_url)
 
         organization = self._extract_organization(graph, review_uri)
+        if not organization:
+            raise ValueError("claim review missing organization with schema:url")
         authors = self._extract_people(graph, review_uri)
         rating = self._extract_rating(graph, review_uri)
 
@@ -298,10 +300,7 @@ class ClimafactsProcessor(BaseProcessor):
         self, graph: Graph, resource: Any
     ) -> CanonicalOrganization | None:
         if isinstance(resource, Literal):
-            name = self._literal_to_str(resource)
-            if not name:
-                return None
-            return CanonicalOrganization(name=name)
+            return None
 
         if not isinstance(resource, (URIRef | BNode)):
             return None
@@ -319,7 +318,7 @@ class ClimafactsProcessor(BaseProcessor):
         if not name and isinstance(resource, URIRef):
             name = str(resource)
 
-        if not name:
+        if not name or not sanitized:
             return None
 
         return CanonicalOrganization(name=name, website=sanitized)

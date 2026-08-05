@@ -14,7 +14,11 @@ from src.climatesense_kg.config.models import (
 @pytest.fixture
 def sample_claim_review():
     """Create a sample CanonicalClaimReview for testing."""
-    organization = CanonicalOrganization(name="Test Org", website="https://test.org")
+    organization = CanonicalOrganization(
+        name="Test Org",
+        website="https://test.org",
+        canonical_uri="http://data.climatesense-project.eu/organization/test-org",
+    )
     rating = CanonicalRating(label="false", original_label="False")
     claim = CanonicalClaim(text="This is a test claim about climate change.")
 
@@ -36,7 +40,11 @@ def sample_claim_reviews(
     reviews: list[CanonicalClaimReview] = []
     for i in range(3):
         org = CanonicalOrganization(
-            name=f"Test Org {i}", website=f"https://test{i}.org"
+            name=f"Test Org {i}",
+            website=f"https://test{i}.org",
+            canonical_uri=(
+                f"http://data.climatesense-project.eu/organization/test-org-{i}"
+            ),
         )
         rating = CanonicalRating(label="false", original_label="False")
         claim = CanonicalClaim(text=f"This is test claim {i} about climate change.")

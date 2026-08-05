@@ -61,6 +61,33 @@ def test_streams_supported_rdf_to_named_graph(
     assert captured["timeout"] == 30
 
 
+def test_replace_uses_graph_store_put(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rdf_path = tmp_path / "organizations.ttl"
+    rdf_path.write_text("<s> <p> <o> .\n", encoding="utf-8")
+    methods: list[str] = []
+
+    def fake_put(*args: Any, **kwargs: Any) -> StubResponse:
+        methods.append("PUT")
+        return StubResponse(status_code=204)
+
+    def fake_post(*args: Any, **kwargs: Any) -> StubResponse:
+        methods.append("POST")
+        return StubResponse(status_code=500)
+
+    monkeypatch.setattr(requests, "put", fake_put)
+    monkeypatch.setattr(requests, "post", fake_post)
+    handler = QLeverDeploymentHandler(
+        endpoint="https://qlever.test",
+        access_token=TEST_CREDENTIAL,
+        graph_template="http://data.test/graph/{SOURCE}",
+    )
+
+    assert handler.deploy(rdf_path, "organizations", replace=True) is True
+    assert methods == ["PUT"]
+
+
 def test_rejects_unsupported_format(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

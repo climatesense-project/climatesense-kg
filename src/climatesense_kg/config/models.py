@@ -61,22 +61,29 @@ class CanonicalOrganization:
     """Canonical model for fact-checking organizations."""
 
     name: str
-    website: str | None = None
+    website: str
     language: str | None = None
-    parent: CanonicalOrganization | None = None
+    canonical_uri: str | None = None
 
     def __post_init__(self) -> None:
         """Normalize website URL to canonical root form for deduplication."""
 
-        self.website = normalize_organization_url(self.website)
+        normalized_website = normalize_organization_url(self.website)
+        if not normalized_website:
+            raise ValueError(
+                f"Organization {self.name!r} requires a valid HTTP(S) website URL"
+            )
+        self.website = normalized_website
 
     @property
     def uri(self) -> str:
-        """Generate a unique URI for this organization."""
+        """Return the URI assigned by the curated organization catalog."""
 
-        identifier = "organization" + str(self.name)
-        hash_value = hashlib.sha224(identifier.encode()).hexdigest()
-        return f"organization/{hash_value}"
+        if not self.canonical_uri:
+            raise ValueError(
+                f"Organization {self.name!r} has not been resolved against the catalog"
+            )
+        return self.canonical_uri
 
 
 @dataclass
@@ -141,7 +148,7 @@ class CanonicalClaimReview:
 
     claim: CanonicalClaim
     review_url: str
-    organization: CanonicalOrganization | None = None
+    organization: CanonicalOrganization
     date_published: str | None = None
     language: str | None = None
 

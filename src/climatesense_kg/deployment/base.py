@@ -14,12 +14,15 @@ class DeploymentHandler(ABC):
         self.logger = logging.getLogger(self.__class__.__name__)
 
     @abstractmethod
-    def deploy(self, rdf_file_path: Path, source_name: str) -> bool:
+    def deploy(
+        self, rdf_file_path: Path, source_name: str, *, replace: bool = False
+    ) -> bool:
         """Deploy RDF data to the target system.
 
         Args:
             rdf_file_path: Path to the RDF file to deploy
             source_name: Name of the data source
+            replace: Replace the named graph instead of appending triples
 
         Returns:
             True if deployment was successful, False otherwise

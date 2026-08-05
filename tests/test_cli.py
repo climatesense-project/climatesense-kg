@@ -3,9 +3,13 @@
 from argparse import Namespace
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 from src.climatesense_kg.cli import run_redeploy
+from src.climatesense_kg.config.organizations import (
+    ORGANIZATION_CATALOG_PATH,
+    ORGANIZATION_SOURCE_NAME,
+)
 
 
 def test_redeploy_preserves_underscored_source_name(tmp_path: Path) -> None:
@@ -36,4 +40,11 @@ def test_redeploy_preserves_underscored_source_name(tmp_path: Path) -> None:
         exit_code = run_redeploy(args)
 
     assert exit_code == 0
-    handler.deploy.assert_called_once_with(rdf_file, "climate_feedback")
+    assert handler.deploy.call_args_list == [
+        call(
+            ORGANIZATION_CATALOG_PATH,
+            ORGANIZATION_SOURCE_NAME,
+            replace=True,
+        ),
+        call(rdf_file, "climate_feedback"),
+    ]

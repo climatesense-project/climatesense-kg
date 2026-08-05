@@ -47,6 +47,46 @@ def test_load_only_clears_its_own_load_list_entry(monkeypatch) -> None:
     ]
 
 
+def test_replace_clears_named_graph_before_loading(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rdf_path = tmp_path / "organizations.ttl"
+    rdf_path.write_text("<s> <p> <o> .\n", encoding="utf-8")
+    handler = VirtuosoDeploymentHandler(
+        host="virtuoso",
+        port=1111,
+        user="dba",
+        password="test-password",  # noqa: S106
+        graph_template="http://data.test/graph/{SOURCE}",
+        isql_service_url="http://isql-service:8080",
+        isql_service_token="test-token",  # noqa: S106
+    )
+    operations: list[tuple[str, str]] = []
+
+    monkeypatch.setattr(
+        handler,
+        "_execute_sql",
+        lambda command, timeout=300: not operations.append(("sql", command)),
+    )
+    monkeypatch.setattr(
+        handler,
+        "_load_rdf_file",
+        lambda path, graph: not operations.append(("load", f"{path}|{graph}")),
+    )
+
+    assert handler.deploy(rdf_path, "organizations", replace=True) is True
+    assert operations == [
+        (
+            "sql",
+            "SPARQL CLEAR SILENT GRAPH <http://data.test/graph/organizations>",
+        ),
+        (
+            "load",
+            f"{rdf_path}|http://data.test/graph/organizations",
+        ),
+    ]
+
+
 @patch("climatesense_kg.deployment.virtuoso.requests.post")
 def test_sql_requests_authenticate_to_isql_service(mock_post: Mock) -> None:
     """The DBA proxy must receive the configured bearer token."""

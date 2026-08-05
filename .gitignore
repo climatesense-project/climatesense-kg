@@ -9,6 +9,7 @@
 *.rdf
 *.jsonld
 !/data/vocabularies/*.ttl
+!/data/organizations.ttl
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
