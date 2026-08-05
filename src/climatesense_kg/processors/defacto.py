@@ -62,6 +62,8 @@ class DefactoProcessor(BaseProcessor):
             )
 
             organization = self._extract_organization(page_data)
+            if not organization:
+                raise ValueError("fact check missing organization website")
 
             date_published = self._parse_date(page_data.get("created", ""))
 
@@ -152,11 +154,8 @@ class DefactoProcessor(BaseProcessor):
         """Extract organization data from page information."""
         page_id = page_data.get("id", "")
         org_name = self._extract_organization_name_from_page_id(page_id)
-
-        if not org_name:
+        organization_url = page_data.get("organization_url")
+        if not org_name or not isinstance(organization_url, str):
             return None
 
-        org_title = page_data.get("org_title") or page_data.get("org_rawTitle")
-        name = org_title if org_title else org_name
-
-        return CanonicalOrganization(name=name)
+        return CanonicalOrganization(name=org_name, website=organization_url)

@@ -46,6 +46,43 @@ class TestXWikiProvider:
         )
         response.raise_for_status.assert_called_once_with()
 
+    @patch("src.climatesense_kg.providers.xwiki._fetch_public_url")
+    def test_media_site_is_derived_and_cached(self, mock_fetch: Mock) -> None:
+        response = Mock()
+        response.json.return_value = {
+            "name": "site",
+            "value": "https://www.lessurligneurs.eu/",
+        }
+        mock_fetch.return_value = response
+        provider = XWikiProvider("xwiki")
+        page_data = {
+            "pageApiUrl": (
+                "https://defacto-observatoire.fr/rest/wikis/xwiki/spaces/Medias/"
+                "spaces/Les-Surligneurs/spaces/Fact-checks/spaces/Example/"
+                "pages/WebHome"
+            )
+        }
+        cache: dict[str, str | None] = {}
+
+        first = provider._fetch_organization_site(
+            "https://defacto-observatoire.fr", page_data, 10, cache
+        )
+        second = provider._fetch_organization_site(
+            "https://defacto-observatoire.fr", page_data, 10, cache
+        )
+
+        assert first == "https://www.lessurligneurs.eu/"
+        assert second == first
+        mock_fetch.assert_called_once_with(
+            "https://defacto-observatoire.fr/rest/wikis/xwiki/spaces/Medias/"
+            "spaces/Les-Surligneurs/pages/WebHome/objects/"
+            "XWiki.DeFacto.Media.MediaClass/0/properties/site",
+            headers={"Accept": "application/json"},
+            timeout=10,
+            allowed_origin="https://defacto-observatoire.fr",
+        )
+        response.raise_for_status.assert_called_once_with()
+
     def test_complete_tag_failure_is_raised(self) -> None:
         provider = XWikiProvider("xwiki")
         config = ProviderConfig(

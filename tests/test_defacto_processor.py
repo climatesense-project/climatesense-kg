@@ -23,6 +23,7 @@ def test_emits_valid_title_and_absolute_review_url() -> None:
             "title": "  A valid claim  ",
             "absoluteUrl": "https://example.test/review",
             "id": "xwiki:Medias.Example.Fact-check.WebHome",
+            "organization_url": "https://www.example.org/about",
         }
     ]
 
@@ -31,3 +32,18 @@ def test_emits_valid_title_and_absolute_review_url() -> None:
     assert len(results) == 1
     assert results[0].claim.text == "A valid claim"
     assert results[0].review_url == "https://example.test/review"
+    assert results[0].organization.website == "https://example.org"
+
+
+def test_rejects_fact_check_without_organization_url() -> None:
+    payload = [
+        {
+            "title": "A valid claim",
+            "absoluteUrl": "https://example.test/review",
+            "id": "xwiki:Medias.Example.Fact-check.WebHome",
+        }
+    ]
+
+    results = list(DefactoProcessor("defacto").process(json.dumps(payload).encode()))
+
+    assert results == []

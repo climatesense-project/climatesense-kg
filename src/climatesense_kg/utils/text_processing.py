@@ -126,14 +126,14 @@ def normalize_organization_url(url: str | None) -> str | None:
     representations of the same website map to one organization:
       - Strips path, query, and fragment (keeps only scheme + authority)
       - Normalizes scheme to https
-      - Lowercases the hostname
+      - Lowercases the hostname and removes a leading ``www.``
       - Removes default ports (80, 443)
       - Strips trailing slashes
 
     Examples:
-        http://www.stopfake.org           → https://www.stopfake.org
-        https://www.stopfake.org/         → https://www.stopfake.org
-        https://www.stopfake.org/en/about → https://www.stopfake.org
+        http://www.stopfake.org           → https://stopfake.org
+        https://www.stopfake.org/         → https://stopfake.org
+        https://www.stopfake.org/en/about → https://stopfake.org
     """
     if not url:
         return None
@@ -156,6 +156,8 @@ def normalize_organization_url(url: str | None) -> str | None:
     hostname = parsed.hostname
     if not hostname:
         return None
+    if any(ch.isspace() or ch in '"<>' for ch in hostname):
+        return None
 
     try:
         hostname = hostname.encode("idna").decode("ascii")
@@ -167,6 +169,9 @@ def normalize_organization_url(url: str | None) -> str | None:
         port = parsed.port
     except ValueError:
         return None
+
+    if hostname.startswith("www."):
+        hostname = hostname[4:]
 
     netloc = hostname
     if port and port not in (80, 443):

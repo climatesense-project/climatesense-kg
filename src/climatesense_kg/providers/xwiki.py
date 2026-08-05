@@ -3,13 +3,17 @@
 import json
 import time
 from typing import Any, TypedDict
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit, urlunsplit
 
 import defusedxml.ElementTree as ET
 import requests
 
 from ..config.schemas import ProviderConfig
-from ..utils.text_processing import _fetch_public_url, _redact_url_credentials
+from ..utils.text_processing import (
+    _fetch_public_url,
+    _redact_url_credentials,
+    sanitize_url,
+)
 from .base import BaseProvider
 
 
@@ -81,13 +85,31 @@ class XWikiProvider(BaseProvider):
 
         # Fetch detailed data for each page
         all_page_details: list[dict[str, Any]] = []
+        organization_site_cache: dict[str, str | None] = {}
         for page_data in all_pages_data.values():
             try:
                 time.sleep(rate_limit_delay)
                 page_details = self._fetch_page_details(base_url, page_data, timeout)
                 if page_details:
+                    organization_url = self._fetch_organization_site(
+                        base_url,
+                        page_data,
+                        timeout,
+                        organization_site_cache,
+                    )
+                    if not organization_url:
+                        self.logger.warning(
+                            "Skipping XWiki page without an organization site: %s",
+                            page_data.get("id", "unknown"),
+                        )
+                        continue
+
                     # Merge basic page data with details
-                    combined_data = {**page_data, **page_details}
+                    combined_data = {
+                        **page_data,
+                        **page_details,
+                        "organization_url": organization_url,
+                    }
                     all_page_details.append(combined_data)
 
             except Exception as e:
@@ -99,7 +121,9 @@ class XWikiProvider(BaseProvider):
         self.logger.info(f"Fetched details for {len(all_page_details)} pages")
 
         if all_pages_data and not all_page_details:
-            raise RuntimeError("All XWiki page-detail requests failed")
+            raise RuntimeError(
+                "All XWiki page-detail requests failed or lacked organization sites"
+            )
 
         # Return all data as JSON bytes
         return json.dumps(all_page_details, ensure_ascii=False).encode("utf-8")
@@ -160,6 +184,77 @@ class XWikiProvider(BaseProvider):
 
         except Exception as e:
             self.logger.warning(f"Error extracting page summary info: {e}")
+            return None
+
+    @staticmethod
+    def _media_site_property_url(page_api_url: str) -> str | None:
+        """Build the MediaClass.site property URL for a DeFacto fact-check page."""
+
+        parsed = urlsplit(page_api_url)
+        parts = parsed.path.strip("/").split("/")
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.netloc
+            or len(parts) < 7
+            or parts[:2] != ["rest", "wikis"]
+            or parts[3:6] != ["spaces", "Medias", "spaces"]
+        ):
+            return None
+
+        wiki = parts[2]
+        media_space = parts[6]
+        property_path = (
+            f"/rest/wikis/{wiki}/spaces/Medias/spaces/{media_space}"
+            "/pages/WebHome/objects/XWiki.DeFacto.Media.MediaClass/0"
+            "/properties/site"
+        )
+        return urlunsplit((parsed.scheme, parsed.netloc, property_path, "", ""))
+
+    def _fetch_organization_site(
+        self,
+        base_url: str,
+        page_data: PageSummary,
+        timeout: int,
+        cache: dict[str, str | None],
+    ) -> str | None:
+        """Fetch and cache the public website for a page's media organization."""
+
+        page_api_url = page_data.get("pageApiUrl", "")
+        property_url = self._media_site_property_url(page_api_url)
+        if not property_url:
+            self.logger.error(
+                "Could not derive media site property from XWiki page URL: %s",
+                _redact_url_credentials(page_api_url),
+            )
+            return None
+
+        if property_url in cache:
+            return cache[property_url]
+
+        try:
+            response = _fetch_public_url(
+                property_url,
+                headers={"Accept": "application/json"},
+                timeout=timeout,
+                allowed_origin=base_url,
+            )
+            response.raise_for_status()
+            property_data = response.json()
+            value = (
+                property_data.get("value") if isinstance(property_data, dict) else None
+            )
+            organization_url = sanitize_url(value) if isinstance(value, str) else None
+            if not organization_url:
+                raise ValueError("MediaClass.site is missing a valid HTTP(S) URL")
+            cache[property_url] = organization_url
+            return organization_url
+        except Exception as exc:
+            self.logger.error(
+                "Failed to fetch organization site from %s: %s",
+                _redact_url_credentials(property_url),
+                exc,
+            )
+            cache[property_url] = None
             return None
 
     def _get_element_text(self, element: Any) -> str:

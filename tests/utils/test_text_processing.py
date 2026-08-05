@@ -94,7 +94,7 @@ class TestNormalizeOrganizationUrl:
 
     def test_all_variants_produce_same_result(self) -> None:
         """Different URL forms for the same site should produce identical output."""
-        expected = "https://www.stopfake.org"
+        expected = "https://stopfake.org"
         variants = [
             "http://www.stopfake.org",
             "https://www.stopfake.org",
