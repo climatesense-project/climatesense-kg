@@ -488,6 +488,17 @@ org:dubawa
         schema:identifier "NG"
     ] .
 
+org:ecuador-chequea
+    a schema:Organization ;
+    schema:name "Ecuador Chequea" ;
+    schema:url <https://ecuadorchequea.com/> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Ecuador"@en ;
+        schema:identifier "EC"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
 org:efe-verifica
     a schema:Organization ;
     schema:name "EFE Verifica" ;
@@ -727,6 +738,17 @@ org:faktoje
         schema:identifier "AL"
     ] ;
     schema:memberOf <https://efcsn.com/>, <https://www.poynter.org/ifcn/> .
+
+org:fast-check-cl
+    a schema:Organization ;
+    schema:name "Fast Check CL" ;
+    schema:url <https://www.fastcheck.cl/> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Chile"@en ;
+        schema:identifier "CL"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
 
 org:full-fact
     a schema:Organization ;
