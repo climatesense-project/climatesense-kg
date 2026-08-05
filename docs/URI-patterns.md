@@ -44,11 +44,11 @@ The hash incorporates:
 
 ### Organizations
 
-**Pattern**: `{base_uri}/organization/{catalog_identifier}`
+**Pattern**: `{base_uri}/organization/{human-readable-slug}`
 
-**Example**: `http://data.climatesense-project.eu/organization/9f8e7d6c5b4a...`
+**Example**: `http://data.climatesense-project.eu/organization/les-surligneurs`
 
-Organization IRIs are stable identifiers assigned in `data/organizations.ttl`; the pipeline does not derive them from names. Every processor must provide an organization website, and extracted organizations are resolved exclusively against a unique normalized catalog URL. An unresolved organization stops the run so that maintainers can add or correct its catalog entry instead of silently creating a second identity.
+Organization IRIs are stable, human-readable identifiers assigned in `data/organizations.ttl`; the pipeline does not derive them at runtime. Every processor must provide an organization website, and extracted organizations are resolved exclusively against a unique normalized catalog URL. An unresolved organization stops the run so that maintainers can add or correct its catalog entry instead of silently creating a second identity.
 
 The catalog is the sole source of organization metadata. Claim-review source graphs only link to organization IRIs with `schema:author`; names, websites, country-level locations, network memberships, and parent relationships live in `http://data.climatesense-project.eu/graph/organizations`.
 

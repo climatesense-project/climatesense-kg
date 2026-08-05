@@ -22,10 +22,17 @@ def _write_catalog(tmp_path: Path, organizations: str) -> Path:
     return path
 
 
-def test_repository_catalog_is_available() -> None:
+def test_repository_catalog_uses_readable_organization_iris() -> None:
     path = Path(__file__).parents[2] / "data" / "organizations.ttl"
+    catalog = OrganizationCatalog(path)
+    organization = CanonicalOrganization(
+        name="Source label is not used",
+        website="https://www.lessurligneurs.eu/article",
+    )
 
-    assert path.is_file()
+    assert catalog.resolve(organization) == (
+        "http://data.climatesense-project.eu/organization/les-surligneurs"
+    )
 
 
 def test_resolves_normalized_website(tmp_path: Path) -> None:
