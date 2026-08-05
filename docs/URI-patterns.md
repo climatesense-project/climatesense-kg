@@ -1,6 +1,6 @@
 # URI Design Patterns
 
-This document describes the URI design patterns used in the ClimateSense Knowledge Graph pipeline. The system generates deterministic, hash-based URIs for claims, organizations, ratings, and claim reviews to ensure deduplication across multiple pipeline runs.
+This document describes the URI design patterns used in the ClimateSense Knowledge Graph pipeline. The system generates deterministic, hash-based URIs for claims, ratings, and claim reviews. Organization identities are assigned explicitly in the curated organization catalog.
 
 ## Base URI Configuration
 
@@ -44,11 +44,13 @@ The hash incorporates:
 
 ### Organizations
 
-**Pattern**: `{base_uri}/organization/{sha224_hash}`
-
-**Hash Input**: `organization` + organization_name
+**Pattern**: `{base_uri}/organization/{catalog_identifier}`
 
 **Example**: `http://data.climatesense-project.eu/organization/9f8e7d6c5b4a...`
+
+Organization IRIs are stable identifiers assigned in `data/organizations.ttl`; the pipeline does not derive them from names. Every processor must provide an organization website, and extracted organizations are resolved exclusively against a unique normalized catalog URL. An unresolved organization stops the run so that maintainers can add or correct its catalog entry instead of silently creating a second identity.
+
+The catalog is the sole source of organization metadata. Claim-review source graphs only link to organization IRIs with `schema:author`; names, websites, country-level locations, network memberships, and parent relationships live in `http://data.climatesense-project.eu/graph/organizations`.
 
 ### Ratings
 
@@ -127,6 +129,6 @@ The `{SOURCE}` placeholder is replaced with the data source name from the config
 
 ## Implementation Details
 
-URI generation is implemented in the canonical data models ([`src/climatesense_kg/config/models.py`](src/climatesense_kg/config/models.py)) with each entity class providing a `uri` property that generates the appropriate hash-based identifier.
+URI generation is implemented in the canonical data models ([`src/climatesense_kg/config/models.py`](../src/climatesense_kg/config/models.py)). Organization resolution is implemented by the curated catalog loader ([`src/climatesense_kg/config/organizations.py`](../src/climatesense_kg/config/organizations.py)).
 
-The `RDFGenerator` class ([`src/climatesense_kg/rdf_generation/generator.py`](src/climatesense_kg/rdf_generation/generator.py)) handles the conversion from relative URIs to full URIs and manages the RDF serialization with proper namespace bindings.
+The `RDFGenerator` class ([`src/climatesense_kg/rdf_generation/generator.py`](../src/climatesense_kg/rdf_generation/generator.py)) handles the conversion from relative URIs to full URIs and manages the RDF serialization with proper namespace bindings.

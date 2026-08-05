@@ -213,6 +213,10 @@ deployment:
   graph_template: "http://data.climatesense-project.eu/graph/{SOURCE}"
 ```
 
+`data/organizations.ttl` is the fixed, manually maintained source of truth for fact-checker identity and metadata. Each entry has an explicit stable ClimateSense IRI, one curated name, one or more website URLs, country-level location, and memberships or parent relationships where applicable. Every processor must provide an organization website, and extracted organizations resolve exclusively by normalized URL.
+
+Every normal pipeline deployment replaces the named `organizations` graph from this file before appending generated source graphs.
+
 ## Querying the cache
 
 You can use any PostgreSQL client to connect to the PostgreSQL cache database and run SQL queries.
@@ -257,10 +261,12 @@ LIMIT 10
 
 ```sparql
 PREFIX schema: <http://schema.org/>
-SELECT ?claim ?author
+SELECT ?claim ?author ?authorName
 WHERE {
   ?claim a schema:ClaimReview ;
          schema:author ?author .
+  ?author a schema:Organization ;
+          schema:name ?authorName .
 }
 LIMIT 10
 ```
@@ -293,7 +299,7 @@ uv run climatesense-kg run --config config/minimal.yaml --debug
 # Run daily pipeline skipping data download and forcing full RDF regeneration
 uv run climatesense-kg run --config config/daily.yaml --skip-download --force-regenerate
 
-# Redeploy existing RDF to whichever backend the config selects
+# Replace the organization catalog and redeploy existing RDF to the selected backend
 uv run climatesense-kg redeploy --config config/daily.yaml --rdf-dir data/rdf
 ```
 
