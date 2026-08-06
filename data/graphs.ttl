@@ -1,0 +1,126 @@
+@prefix dcat: <http://www.w3.org/ns/dcat#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix foaf: <http://xmlns.com/foaf/0.1/> .
+@prefix graph: <http://data.climatesense-project.eu/graph/> .
+@prefix void: <http://rdfs.org/ns/void#> .
+
+graph:catalog
+    a dcat:Catalog, void:Dataset ;
+    dcterms:title "ClimateSense graph catalog"@en ;
+    dcterms:description "Metadata for the named graphs published by the ClimateSense knowledge graph."@en ;
+    dcterms:publisher <https://climatesense-project.eu/> ;
+    dcat:dataset
+        graph:claimreviewdata,
+        graph:euroclimatecheck,
+        graph:defacto,
+        graph:dbkf,
+        graph:desmog,
+        graph:climafacts,
+        graph:climate-fever,
+        graph:organizations,
+        graph:vocabularies ;
+    dcat:service <https://data.climatesense-project.eu/sparql> ;
+    void:sparqlEndpoint <https://data.climatesense-project.eu/sparql> .
+
+graph:claimreviewdata
+    a dcat:Dataset, void:Dataset ;
+    dcterms:identifier "claimreviewdata" ;
+    dcterms:title "ClaimReviewData claim reviews"@en ;
+    dcterms:description "Claim reviews imported from ClaimReviewData and normalized to the ClimateSense data model."@en ;
+    dcterms:publisher <https://climatesense-project.eu/> ;
+    dcterms:source <https://github.com/MartinoMensio/claimreview-data> ;
+    void:sparqlEndpoint <https://data.climatesense-project.eu/sparql> .
+
+graph:euroclimatecheck
+    a dcat:Dataset, void:Dataset ;
+    dcterms:identifier "euroclimatecheck" ;
+    dcterms:title "EuroClimateCheck claim reviews"@en ;
+    dcterms:description "Climate claim reviews imported from EuroClimateCheck and normalized to the ClimateSense data model."@en ;
+    dcterms:publisher <https://climatesense-project.eu/> ;
+    dcterms:source <https://euroclimatecheck.com/articles> ;
+    void:sparqlEndpoint <https://data.climatesense-project.eu/sparql> .
+
+graph:defacto
+    a dcat:Dataset, void:Dataset ;
+    dcterms:identifier "defacto" ;
+    dcterms:title "De Facto climate claim reviews"@en ;
+    dcterms:description "Climate claim reviews imported from the De Facto observatory and normalized to the ClimateSense data model."@en ;
+    dcterms:publisher <https://climatesense-project.eu/> ;
+    dcterms:source <https://defacto-observatoire.fr/Fact-checks/> ;
+    void:sparqlEndpoint <https://data.climatesense-project.eu/sparql> .
+
+graph:dbkf
+    a dcat:Dataset, void:Dataset ;
+    dcterms:identifier "dbkf" ;
+    dcterms:title "DBKF claim reviews"@en ;
+    dcterms:description "Claim reviews imported from DBKF and normalized to the ClimateSense data model."@en ;
+    dcterms:publisher <https://climatesense-project.eu/> ;
+    dcterms:source <https://dbkf.ontotext.com/> ;
+    void:sparqlEndpoint <https://data.climatesense-project.eu/sparql> .
+
+graph:desmog
+    a dcat:Dataset, void:Dataset ;
+    dcterms:identifier "desmog" ;
+    dcterms:title "DeSmog climate disinformation claims"@en ;
+    dcterms:description "Climate disinformation claims imported from DeSmog and normalized to the ClimateSense data model."@en ;
+    dcterms:publisher <https://climatesense-project.eu/> ;
+    dcterms:source <https://github.com/climatesense-project/climate-disinformation-database> ;
+    void:sparqlEndpoint <https://data.climatesense-project.eu/sparql> .
+
+graph:climafacts
+    a dcat:Dataset, void:Dataset ;
+    dcterms:identifier "climafacts" ;
+    dcterms:title "Climafacts claim reviews"@en ;
+    dcterms:description "Climate claim reviews imported from Climafacts and normalized to the ClimateSense data model."@en ;
+    dcterms:publisher <https://climatesense-project.eu/> ;
+    dcterms:source <https://github.com/climatesense-project/climafacts-kg> ;
+    void:sparqlEndpoint <https://data.climatesense-project.eu/sparql> .
+
+graph:climate-fever
+    a dcat:Dataset, void:Dataset ;
+    dcterms:identifier "climate-fever" ;
+    dcterms:title "CLIMATE-FEVER claims"@en ;
+    dcterms:description "Climate claims imported from the CLIMATE-FEVER dataset and normalized to the ClimateSense data model."@en ;
+    dcterms:publisher <https://climatesense-project.eu/> ;
+    dcterms:source <https://www.sustainablefinance.uzh.ch/en/research/climate-fever.html> ;
+    void:sparqlEndpoint <https://data.climatesense-project.eu/sparql> .
+
+graph:organizations
+    a dcat:Dataset, void:Dataset ;
+    dcterms:identifier "organizations" ;
+    dcterms:title "ClimateSense organization catalog"@en ;
+    dcterms:description "Curated identities and metadata for fact-checking organizations represented in ClimateSense."@en ;
+    dcterms:publisher <https://climatesense-project.eu/> ;
+    dcterms:source <https://github.com/climatesense-project/climatesense-kg> ;
+    void:sparqlEndpoint <https://data.climatesense-project.eu/sparql> .
+
+graph:vocabularies
+    a dcat:Dataset, void:Dataset ;
+    dcterms:identifier "vocabularies" ;
+    dcterms:title "ClimateSense vocabularies"@en ;
+    dcterms:description "Ontologies and controlled vocabularies used by the ClimateSense knowledge graph."@en ;
+    dcterms:publisher <https://climatesense-project.eu/> ;
+    dcterms:source <https://github.com/climatesense-project/climatesense-kg> ;
+    void:sparqlEndpoint <https://data.climatesense-project.eu/sparql> .
+
+<https://data.climatesense-project.eu/sparql>
+    a dcat:DataService ;
+    dcterms:title "ClimateSense SPARQL endpoint"@en ;
+    dcterms:description "SPARQL query service for the ClimateSense knowledge graph."@en ;
+    dcterms:publisher <https://climatesense-project.eu/> ;
+    dcat:endpointURL <https://data.climatesense-project.eu/sparql> ;
+    dcat:servesDataset
+        graph:claimreviewdata,
+        graph:euroclimatecheck,
+        graph:defacto,
+        graph:dbkf,
+        graph:desmog,
+        graph:climafacts,
+        graph:climate-fever,
+        graph:organizations,
+        graph:vocabularies .
+
+<https://climatesense-project.eu/>
+    a foaf:Organization ;
+    foaf:name "ClimateSense" ;
+    foaf:homepage <https://climatesense-project.eu/> .

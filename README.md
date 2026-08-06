@@ -215,7 +215,7 @@ deployment:
 
 `data/organizations.ttl` is the fixed, manually maintained source of truth for fact-checker identity and metadata. Each entry has an explicit stable ClimateSense IRI, one curated name, one or more website URLs, country-level location, and memberships or parent relationships where applicable. Every processor must provide an organization website, and extracted organizations resolve exclusively by normalized URL.
 
-Every normal pipeline deployment replaces the named `organizations` graph from this file before appending generated source graphs.
+`data/graphs.ttl` is the curated catalog for the published named graphs.
 
 ## Querying the cache
 

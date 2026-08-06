@@ -173,6 +173,7 @@ def _source_name_for_rdf_file(
 def run_redeploy(args: argparse.Namespace) -> int:
     """Redeploy existing RDF files to the configured backend."""
     from .config import load_config
+    from .config.graphs import GRAPH_CATALOG_PATH, GRAPH_CATALOG_SOURCE_NAME
     from .deployment.factory import create_deployment_handler
     from .utils.logging import setup_logging
 
@@ -203,12 +204,15 @@ def run_redeploy(args: argparse.Namespace) -> int:
         print(f"RDF directory not found: {rdf_dir}", file=sys.stderr)
         return 1
 
-    organization_resolved_path = ORGANIZATION_CATALOG_PATH.resolve()
+    curated_paths = {
+        GRAPH_CATALOG_PATH.resolve(),
+        ORGANIZATION_CATALOG_PATH.resolve(),
+    }
     rdf_files = sorted(
         path
         for pattern in ("*.nt", "*.ttl")
         for path in rdf_dir.rglob(pattern)
-        if path.resolve() != organization_resolved_path
+        if path.resolve() not in curated_paths
     )
     if not rdf_files:
         print(f"No supported RDF files found in {rdf_dir}", file=sys.stderr)
@@ -235,8 +239,25 @@ def run_redeploy(args: argparse.Namespace) -> int:
 
     print(
         f"Found {len(files_to_deploy)} source file(s) to deploy "
-        f"across {len(files_by_source)} source(s), plus the organization catalog"
+        f"across {len(files_by_source)} source(s), plus the graph and organization catalogs"
     )
+
+    graph_catalog_uri = config.deployment.graph_template.replace(
+        "{SOURCE}", GRAPH_CATALOG_SOURCE_NAME
+    )
+    print(
+        f"  Replacing {GRAPH_CATALOG_PATH} -> {graph_catalog_uri} ...",
+        end=" ",
+        flush=True,
+    )
+    if not handler.deploy(
+        GRAPH_CATALOG_PATH,
+        GRAPH_CATALOG_SOURCE_NAME,
+        replace=True,
+    ):
+        print("FAILED")
+        return 1
+    print("OK")
 
     organization_graph_uri = config.deployment.graph_template.replace(
         "{SOURCE}", ORGANIZATION_SOURCE_NAME
@@ -255,7 +276,7 @@ def run_redeploy(args: argparse.Namespace) -> int:
         return 1
     print("OK")
 
-    success_count = 1
+    success_count = 2
     failure_count = 0
     for source_name, rdf_file in files_to_deploy:
         logger.info(f"Deploying {rdf_file} (source: {source_name})")

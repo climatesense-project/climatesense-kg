@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 from .cache.interface import CacheInterface
 from .cache.postgres_cache import PostgresCache
 from .config import PipelineConfig
+from .config.graphs import GRAPH_CATALOG_PATH, GRAPH_CATALOG_SOURCE_NAME
 from .config.models import CanonicalClaimReview
 from .config.organizations import (
     ORGANIZATION_CATALOG_PATH,
@@ -647,9 +648,23 @@ class Pipeline:
     def _run_deployment(self, rdf_stats: RDFGenerationResults) -> DeploymentResults:
         """Run deployment step."""
         generated_files = rdf_stats.get("generated_files", [])
-        total_files = len(generated_files) + 1
+        total_files = len(generated_files) + 2
         if not self.deployment_handler:
             return {"success": True, "files_deployed": 0, "total_files": total_files}
+
+        self.logger.info("Replacing graph catalog from %s", GRAPH_CATALOG_PATH)
+        catalog_success = self.deployment_handler.deploy(
+            GRAPH_CATALOG_PATH,
+            GRAPH_CATALOG_SOURCE_NAME,
+            replace=True,
+        )
+        if not catalog_success:
+            self.logger.error("Graph catalog deployment failed")
+            return {
+                "success": False,
+                "files_deployed": 0,
+                "total_files": total_files,
+            }
 
         self.logger.info(
             "Replacing curated organization graph from %s", ORGANIZATION_CATALOG_PATH
@@ -663,11 +678,11 @@ class Pipeline:
             self.logger.error("Curated organization graph deployment failed")
             return {
                 "success": False,
-                "files_deployed": 0,
+                "files_deployed": 1,
                 "total_files": total_files,
             }
 
-        deployment_results: list[bool] = [organization_success]
+        deployment_results: list[bool] = [catalog_success, organization_success]
         for file_info in generated_files:
             output_path = Path(file_info["path"])
             source_name = file_info["source"]

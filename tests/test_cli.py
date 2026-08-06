@@ -6,6 +6,10 @@ from types import SimpleNamespace
 from unittest.mock import Mock, call, patch
 
 from src.climatesense_kg.cli import run_redeploy
+from src.climatesense_kg.config.graphs import (
+    GRAPH_CATALOG_PATH,
+    GRAPH_CATALOG_SOURCE_NAME,
+)
 from src.climatesense_kg.config.organizations import (
     ORGANIZATION_CATALOG_PATH,
     ORGANIZATION_SOURCE_NAME,
@@ -41,6 +45,11 @@ def test_redeploy_preserves_underscored_source_name(tmp_path: Path) -> None:
 
     assert exit_code == 0
     assert handler.deploy.call_args_list == [
+        call(
+            GRAPH_CATALOG_PATH,
+            GRAPH_CATALOG_SOURCE_NAME,
+            replace=True,
+        ),
         call(
             ORGANIZATION_CATALOG_PATH,
             ORGANIZATION_SOURCE_NAME,

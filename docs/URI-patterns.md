@@ -127,6 +127,8 @@ For triple store deployment, graph URIs follow a template pattern:
 
 The `{SOURCE}` placeholder is replaced with the data source name from the configuration.
 
+Each published graph IRI is described in the curated [`data/graphs.ttl`](../data/graphs.ttl) catalog.
+
 ## Implementation Details
 
 URI generation is implemented in the canonical data models ([`src/climatesense_kg/config/models.py`](../src/climatesense_kg/config/models.py)). Organization resolution is implemented by the curated catalog loader ([`src/climatesense_kg/config/organizations.py`](../src/climatesense_kg/config/organizations.py)).

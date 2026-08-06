@@ -2,9 +2,13 @@
 
 from logging import getLogger
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 
 import pytest
+from src.climatesense_kg.config.graphs import (
+    GRAPH_CATALOG_PATH,
+    GRAPH_CATALOG_SOURCE_NAME,
+)
 from src.climatesense_kg.config.models import CanonicalOrganization
 from src.climatesense_kg.config.organizations import (
     ORGANIZATION_CATALOG_PATH,
@@ -83,7 +87,7 @@ def test_pipeline_accepts_empty_ingestion_when_any_source_succeeds() -> None:
     }
 
 
-def test_empty_ingestion_still_replaces_organization_graph(tmp_path) -> None:
+def test_empty_ingestion_still_replaces_curated_graphs(tmp_path) -> None:
     pipeline = object.__new__(Pipeline)
     pipeline.logger = getLogger("test.pipeline")
     pipeline.cache = None
@@ -108,14 +112,21 @@ def test_empty_ingestion_still_replaces_organization_graph(tmp_path) -> None:
     assert results["success"] is True
     assert results["deployment"] == {
         "success": True,
-        "files_deployed": 1,
-        "total_files": 1,
+        "files_deployed": 2,
+        "total_files": 2,
     }
-    pipeline.deployment_handler.deploy.assert_called_once_with(
-        ORGANIZATION_CATALOG_PATH,
-        ORGANIZATION_SOURCE_NAME,
-        replace=True,
-    )
+    assert pipeline.deployment_handler.deploy.call_args_list == [
+        call(
+            GRAPH_CATALOG_PATH,
+            GRAPH_CATALOG_SOURCE_NAME,
+            replace=True,
+        ),
+        call(
+            ORGANIZATION_CATALOG_PATH,
+            ORGANIZATION_SOURCE_NAME,
+            replace=True,
+        ),
+    ]
 
 
 def test_rdf_generation_only_marks_successful_reviews_processed(
@@ -275,7 +286,7 @@ def test_failed_deployment_does_not_finalize_reviews(tmp_path, mock_cache) -> No
     pipeline.cache = mock_cache
     pipeline.logger = getLogger("test.pipeline")
     pipeline.deployment_handler = Mock()
-    pipeline.deployment_handler.deploy.side_effect = [True, False]
+    pipeline.deployment_handler.deploy.side_effect = [True, True, False]
     rdf_stats = {
         "generated_files": [
             {
@@ -291,8 +302,8 @@ def test_failed_deployment_does_not_finalize_reviews(tmp_path, mock_cache) -> No
 
     assert pipeline._run_deployment(rdf_stats) == {
         "success": False,
-        "files_deployed": 1,
-        "total_files": 2,
+        "files_deployed": 2,
+        "total_files": 3,
     }
     mock_cache.set_many.assert_not_called()
 
@@ -362,11 +373,11 @@ def test_partial_deployment_reports_successful_file_count(tmp_path, mock_cache) 
     pipeline.cache = mock_cache
     pipeline.logger = getLogger("test.pipeline")
     pipeline.deployment_handler = Mock()
-    pipeline.deployment_handler.deploy.side_effect = [True, True, False]
+    pipeline.deployment_handler.deploy.side_effect = [True, True, True, False]
 
     stats = pipeline._run_deployment({"generated_files": generated_files})
 
-    assert stats == {"success": False, "files_deployed": 2, "total_files": 3}
+    assert stats == {"success": False, "files_deployed": 3, "total_files": 4}
 
 
 def test_pipeline_rejects_unresolved_organizations() -> None:

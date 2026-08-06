@@ -10,6 +10,7 @@
 *.jsonld
 !/data/vocabularies/*.ttl
 !/data/organizations.ttl
+!/data/graphs.ttl
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
