@@ -125,7 +125,10 @@ For triple store deployment, graph URIs follow a template pattern:
 **Pattern**: `{base_uri}/graph/{SOURCE}`
 **Example**: `http://data.climatesense-project.eu/graph/euroclimatecheck`
 
-The `{SOURCE}` placeholder is replaced with the data source name from the configuration.
+The `{SOURCE}` placeholder is replaced with a managed logical graph name. Most generated graphs use the configured data source name. Provider-owned entity linking uses a stable enrichment graph name instead:
+
+- `http://data.climatesense-project.eu/graph/dbpedia-enricher` contains DBpedia Spotlight `schema:mentions` assertions and DBpedia entity properties.
+- Source graphs contain the claims and reviews referenced by those assertions, but no DBpedia entity-linking triples.
 
 Each published graph IRI is described in the curated [`data/graphs.ttl`](../data/graphs.ttl) catalog.
 
