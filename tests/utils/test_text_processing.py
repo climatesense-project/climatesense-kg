@@ -9,9 +9,10 @@ from src.climatesense_kg.utils.text_processing import (
     _fetch_public_url,
     _request_url_at_address,
     _UnsafeURLError,
+    canonicalize_text,
     fetch_and_extract_text,
+    normalize_analysis_text,
     normalize_organization_url,
-    normalize_text,
     sanitize_url,
 )
 
@@ -43,49 +44,58 @@ class TestExtractionErrorType:
             assert error_type.is_retryable is False
 
 
-class TestNormalizeText:
-    """Test normalize_text function."""
+class TestCanonicalizeText:
+    """Test identity-safe text canonicalization."""
 
     def test_html_entities(self) -> None:
         """Test HTML entity normalization."""
         text = "This &amp; that"
-        result = normalize_text(text)
+        result = canonicalize_text(text)
         assert result == "This & that"
 
     def test_non_breaking_spaces(self) -> None:
         """Test non-breaking space normalization."""
         text = "Hello\xa0world"
-        result = normalize_text(text)
+        result = canonicalize_text(text)
         assert result == "Hello world"
 
-    def test_url_removal(self) -> None:
-        """Test URL removal."""
+    def test_url_preservation(self) -> None:
+        """URLs remain part of identity-bearing text."""
         text = "Check this out https://example.com for more info"
-        result = normalize_text(text)
-        assert result == "Check this out for more info"
+        result = canonicalize_text(text)
+        assert result == text
 
     def test_whitespace_normalization(self) -> None:
         """Test whitespace normalization."""
         text = "  Multiple   \t\n  spaces  "
-        result = normalize_text(text)
+        result = canonicalize_text(text)
         assert result == "Multiple spaces"
 
     def test_html_unescape(self) -> None:
         """Test HTML unescaping."""
         text = "&lt;div&gt;Hello&lt;/div&gt;"
-        result = normalize_text(text)
+        result = canonicalize_text(text)
         assert result == "<div>Hello</div>"
 
     def test_empty_string(self) -> None:
         """Test empty string handling."""
-        result = normalize_text("")
+        result = canonicalize_text("")
         assert result == ""
 
     def test_combined_normalization(self) -> None:
         """Test combined text normalization."""
         text = "  &amp; Check\xa0this https://example.com &lt;tag&gt;  \n\t  "
-        result = normalize_text(text)
-        assert result == "& Check this <tag>"
+        result = canonicalize_text(text)
+        assert result == "& Check this https://example.com <tag>"
+
+
+class TestNormalizeAnalysisText:
+    """Test URL-stripped normalization for NLP inputs."""
+
+    def test_removes_urls(self) -> None:
+        text = "Check this out https://example.com for more info"
+
+        assert normalize_analysis_text(text) == "Check this out for more info"
 
 
 class TestNormalizeOrganizationUrl:
@@ -414,12 +424,14 @@ class TestFetchAndExtractText:
         mock_response = Mock(headers={"Content-Type": "text/html"}, encoding="utf-8")
         mock_response.iter_content.return_value = [b"<html>content</html>"]
         mock_fetch.return_value = mock_response
-        mock_trafilatura.extract.return_value = "Extracted text content"
+        mock_trafilatura.extract.return_value = (
+            "Extracted https://example.com text content"
+        )
 
         result = fetch_and_extract_text("https://example.com")
 
         assert result.success is True
-        assert "Extracted text content" in result.content
+        assert result.content == "Extracted text content"
         assert result.error_type is None
         mock_response.raise_for_status.assert_called_once_with()
 

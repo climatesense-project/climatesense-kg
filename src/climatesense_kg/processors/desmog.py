@@ -19,6 +19,8 @@ from ..utils.text_processing import sanitize_url
 from .base import BaseProcessor
 
 SCHEMA = Namespace("https://schema.org/")
+_MIN_CLAIM_ALPHANUMERIC_CHARACTERS = 4
+_MIN_CLAIM_TOKENS = 2
 
 
 class DesmogProcessor(BaseProcessor):
@@ -66,6 +68,13 @@ class DesmogProcessor(BaseProcessor):
             text=claim_text,
             appearances=self._extract_appearances(graph, claim_uri, review_url),
         )
+        tokens = re.findall(r"\w+", claim.text, flags=re.UNICODE)
+        alphanumeric_count = sum(character.isalnum() for character in claim.text)
+        if (
+            len(tokens) < _MIN_CLAIM_TOKENS
+            or alphanumeric_count < _MIN_CLAIM_ALPHANUMERIC_CHARACTERS
+        ):
+            raise ValueError("claim text is a DeSmog extraction fragment")
 
         organization = self._build_organization(graph, claim_uri)
         if not organization:

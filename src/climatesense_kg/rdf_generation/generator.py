@@ -528,9 +528,7 @@ class RDFGenerator:
 
             # Invariant claim properties only need to be emitted once.
             self.graph.add((claim_uri, RDF.type, self.SCHEMA.Claim))
-            self.graph.add(
-                (claim_uri, self.SCHEMA.text, Literal(claim.normalized_text))
-            )
+            self.graph.add((claim_uri, self.SCHEMA.text, Literal(claim.text)))
 
         # Headline
         if claim.headline:

@@ -16,7 +16,7 @@ import trafilatura  # pyright: ignore[reportMissingTypeStubs]
 
 logger = logging.getLogger(__name__)
 
-_URL_PATTERN = re.compile(r"http\S+")
+_URL_PATTERN = re.compile(r"https?://\S+", flags=re.IGNORECASE)
 _SURROGATE_PATTERN = re.compile(r"[\ud800-\udfff]")
 _REDIRECT_STATUS_CODES = {301, 302, 303, 307, 308}
 _MAX_REDIRECTS = 5
@@ -92,15 +92,14 @@ class TextExtractionResult:
     error_type: ExtractionErrorType | None = None
 
 
-def normalize_text(text: str) -> str:
-    """
-    Normalize text for consistent processing.
+def canonicalize_text(text: str) -> str:
+    """Canonicalize text without discarding identity-bearing content.
 
     Args:
         text: Raw text to normalize
 
     Returns:
-        str: Normalized text
+        str: Canonicalized text
     """
     # JSON may contain escaped, unpaired UTF-16 surrogates. Convert any valid
     # surrogate pair to its Unicode code point and replace lone surrogates.
@@ -109,14 +108,36 @@ def normalize_text(text: str) -> str:
             "utf-16", errors="replace"
         )
 
-    # Normalize HTML entities and special characters
+    # Normalize HTML entities and whitespace while preserving URLs and other
+    # content that can distinguish one claim from another.
     text = text.replace("&amp;", "&")
     text = text.replace("\xa0", " ")  # Normalize non-breaking spaces
-    text = _URL_PATTERN.sub("", text)  # Remove URLs
     text = html.unescape(text)  # Unescape HTML entities
     text = " ".join(text.split())  # Normalize whitespace
 
     return text
+
+
+def normalize_analysis_text(text: str) -> str:
+    """Normalize text for NLP analysis, where URLs carry little meaning."""
+
+    text = canonicalize_text(text)
+    text = _URL_PATTERN.sub("", text)
+    return " ".join(text.split())
+
+
+def validate_claim_text(text: str) -> str:
+    """Return canonical claim text or raise when it is not meaningful."""
+
+    canonical_text = canonicalize_text(text)
+    if not canonical_text:
+        raise ValueError("claim text is empty after canonicalization")
+    if _URL_PATTERN.fullmatch(canonical_text):
+        raise ValueError("claim text contains only a URL")
+    if not any(character.isalnum() for character in canonical_text):
+        raise ValueError("claim text does not contain meaningful content")
+
+    return canonical_text
 
 
 def normalize_organization_url(url: str | None) -> str | None:
@@ -511,8 +532,8 @@ def fetch_and_extract_text(url: str, timeout: float = 10) -> TextExtractionResul
                 downloaded
             )
             if main_text:
-                normalized_text: str = normalize_text(main_text)
-                return TextExtractionResult(success=True, content=normalized_text)
+                analysis_text = normalize_analysis_text(main_text)
+                return TextExtractionResult(success=True, content=analysis_text)
             else:
                 logger.warning(f"No text content extracted from URL: {sanitized_url}")
                 return TextExtractionResult(

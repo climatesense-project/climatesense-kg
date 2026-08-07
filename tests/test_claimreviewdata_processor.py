@@ -62,3 +62,44 @@ def test_broadcasts_single_review_across_multiple_claims() -> None:
         "first claim",
         "second claim",
     ]
+
+
+def test_skips_url_only_claim_text() -> None:
+    payload = [
+        {
+            "claim_text": ["https://social.example/post/1"],
+            "review_url": "https://example.test/review",
+            "reviews": [{"original_label": "False", "label": "not_credible"}],
+            "fact_checker": {
+                "name": "Example",
+                "website": "https://example.test",
+            },
+        }
+    ]
+    processor = ClaimReviewDataProcessor("claimreviewdata")
+
+    assert list(processor.process(json.dumps(payload).encode())) == []
+
+
+def test_skips_only_the_invalid_pair_in_a_multi_claim_record() -> None:
+    payload = [
+        {
+            "claim_text": ["https://social.example/post/1", "A meaningful claim"],
+            "review_url": "https://example.test/review",
+            "reviews": [
+                {"original_label": "False", "label": "not_credible"},
+                {"original_label": "True", "label": "credible"},
+            ],
+            "fact_checker": {
+                "name": "Example",
+                "website": "https://example.test",
+            },
+        }
+    ]
+    processor = ClaimReviewDataProcessor("claimreviewdata")
+
+    results = list(processor.process(json.dumps(payload).encode()))
+
+    assert [(result.claim.text, result.rating.label) for result in results] == [
+        ("A meaningful claim", "credible")
+    ]

@@ -83,9 +83,17 @@ class ClaimReviewDataProcessor(BaseProcessor):
 
         canonical_reviews: list[CanonicalClaimReview] = []
         for claim_text, source_review in claim_review_pairs:
-            claim = CanonicalClaim(
-                text=claim_text, appearances=item.get("appearances", [])
-            )
+            try:
+                claim = CanonicalClaim(
+                    text=claim_text, appearances=item.get("appearances", [])
+                )
+            except ValueError as exc:
+                self.logger.warning(
+                    "Skipping invalid claim text for %s: %s",
+                    item.get("review_url", "unknown"),
+                    exc,
+                )
+                continue
             rating = CanonicalRating(
                 label=source_review.get("label", ""),
                 original_label=source_review.get("original_label", ""),

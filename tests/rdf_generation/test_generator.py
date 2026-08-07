@@ -270,10 +270,10 @@ def test_generator_only_references_catalog_organization() -> None:
     assert list(graph.triples((organization_uri, None, None))) == []
 
 
-def test_generator_replaces_unpaired_surrogate_in_claim_text() -> None:
+def test_generator_emits_canonicalized_surrogate_in_claim_text() -> None:
     review = _build_review(None)
-    review.claim.text = (
-        "Valid mathematical character: \U0001d48d; truncated character: \ud835"
+    review.claim = CanonicalClaim(
+        text="Valid mathematical character: \U0001d48d; truncated character: \ud835"
     )
 
     graph, generator = _generate_graph(review)

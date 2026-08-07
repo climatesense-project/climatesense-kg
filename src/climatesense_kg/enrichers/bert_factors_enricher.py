@@ -78,20 +78,11 @@ class BertFactorsEnricher(Enricher):
             uri = item.uri
             if not uri:
                 continue
-            text = item.claim.normalized_text
+            text = item.claim.analysis_text
             missing_models = [
                 model for model in self.MODEL_KEYS if uri not in model_caches[model]
             ]
             if not missing_models:
-                continue
-            if not text:
-                self._cache_error_for_models(
-                    uri,
-                    missing_models,
-                    model_caches,
-                    error_type="missing_text",
-                    message="No normalized claim text available for enrichment",
-                )
                 continue
             for model in missing_models:
                 if uri not in seen_pending[model]:
@@ -294,18 +285,6 @@ class BertFactorsEnricher(Enricher):
             else:
                 models_to_compute.append(model)
 
-        if models_to_compute and not claim_review.claim.normalized_text:
-            self._cache_error_for_models(
-                claim_review.uri,
-                models_to_compute,
-                cached_models,
-                error_type="missing_text",
-                message="No normalized claim text available for enrichment",
-            )
-            for model in models_to_compute:
-                error_values[model] = self._empty_model_value(model)
-            models_to_compute = []
-
         if models_to_compute and not self.is_available():
             self.logger.warning(
                 "CIMPLE Factors API unavailable, caching failure for %s",
@@ -324,7 +303,7 @@ class BertFactorsEnricher(Enricher):
 
         if models_to_compute:
             success, errors = self._compute_models_for_text(
-                claim_review.claim.normalized_text or "",
+                claim_review.claim.analysis_text,
                 claim_review.uri,
                 models_to_compute,
                 cached_models,

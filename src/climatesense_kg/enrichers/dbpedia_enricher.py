@@ -69,10 +69,9 @@ class DBpediaEnricher(Enricher):
             review_entities: list[dict[str, Any]] = []
 
             # Extract entities from claim text
-            if claim_review.claim.normalized_text:
-                claim_entities = self._extract_entities(
-                    claim_review.claim.normalized_text
-                )
+            analysis_text = claim_review.claim.analysis_text
+            if analysis_text:
+                claim_entities = self._extract_entities(analysis_text)
 
             # Extract entities from review text if available
             if claim_review.review_text:

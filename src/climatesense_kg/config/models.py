@@ -7,7 +7,11 @@ import hashlib
 from typing import Any
 from urllib.parse import urlparse
 
-from ..utils.text_processing import normalize_organization_url, normalize_text
+from ..utils.text_processing import (
+    normalize_analysis_text,
+    normalize_organization_url,
+    validate_claim_text,
+)
 
 
 def _empty_str_list() -> list[str]:
@@ -127,17 +131,22 @@ class CanonicalClaim:
     climate_related: bool | None = None
     readability_score: float | None = None
 
-    @property
-    def normalized_text(self) -> str:
-        """Return a normalized version of the claim text."""
+    def __post_init__(self) -> None:
+        """Store one validated, identity-safe representation of claim text."""
 
-        return normalize_text(self.text)
+        self.text = validate_claim_text(self.text)
+
+    @property
+    def analysis_text(self) -> str:
+        """Return claim text normalized for NLP enrichment."""
+
+        return normalize_analysis_text(self.text)
 
     @property
     def uri(self) -> str:
         """Generate a unique URI for this claim."""
 
-        identifier = "claim" + self.normalized_text
+        identifier = "claim" + self.text
         hash_value = hashlib.sha224(identifier.encode()).hexdigest()
         return f"claim/{hash_value}"
 
@@ -181,7 +190,7 @@ class CanonicalClaimReview:
 
         identifier = (
             "claim-review"
-            + self.claim.normalized_text
+            + self.claim.text
             + (self.rating.label if self.rating else "")
             + review_url_normalized_for_id
             + (self.date_published or "")

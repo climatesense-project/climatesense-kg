@@ -290,34 +290,6 @@ class TestBertFactorsEnricherEnrichment:
         assert mock_cache.get_many.call_count == len(BertFactorsEnricher.MODEL_KEYS)
         mock_cache.set.assert_not_called()
 
-    @patch.object(BertFactorsEnricher, "is_available", return_value=True)
-    def test_enrich_missing_text_records_error(
-        self,
-        mock_available: Mock,
-        sample_claim_review: CanonicalClaimReview,
-        mock_cache: Mock,
-    ) -> None:
-        """Ensure items without claim text cache an error so they are not retried forever."""
-        sample_claim_review.claim.text = ""
-        enricher = BertFactorsEnricher()
-        enricher.cache = mock_cache
-
-        def empty_get_many(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
-            return {}
-
-        mock_cache.get_many.side_effect = empty_get_many
-
-        result = enricher.enrich([sample_claim_review])[0]
-
-        assert result.claim.emotion is None
-        assert result.claim.climate_related is None
-        assert mock_cache.set.call_count == len(BertFactorsEnricher.MODEL_KEYS)
-        for call in mock_cache.set.call_args_list:
-            assert call.args[1].startswith("enricher.bert_factors.")
-            payload = call.args[2]
-            assert payload["success"] is False
-            assert payload["error"]["type"] == "missing_text"
-
 
 class TestBertFactorsEnricherBatch:
     """Test batch enrichment."""

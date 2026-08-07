@@ -23,13 +23,13 @@ The pipeline uses SHA-224 hashing to generate deterministic URIs based on conten
 
 **Pattern**: `{base_uri}/claim-review/{sha224_hash}`
 
-**Hash Input**: `claim-review` + normalized_claim_text + rating_label + normalized_review_url + date_published
+**Hash Input**: `claim-review` + canonical_claim_text + rating_label + normalized_review_url + date_published
 
 **Example**: `http://data.climatesense-project.eu/claim-review/a1b2c3d4e5f6...`
 
 The hash incorporates:
 
-- Normalized claim text (processed by `normalize_text()`)
+- Canonical claim text (HTML entities and whitespace normalized, URLs preserved)
 - Rating label (if present)
 - Normalized review URL (hostname + path with trailing slash)
 - Date published (if present)
@@ -38,9 +38,11 @@ The hash incorporates:
 
 **Pattern**: `{base_uri}/claim/{sha224_hash}`
 
-**Hash Input**: `claim` + normalized_text
+**Hash Input**: `claim` + canonical_text
 
 **Example**: `http://data.climatesense-project.eu/claim/f1e2d3c4b5a6...`
+
+Claims are validated before URI generation. Invalid claims (e.g., empty or malformed text) are rejected, and the pipeline logs a warning.
 
 ### Organizations
 
