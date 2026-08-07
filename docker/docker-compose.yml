@@ -247,6 +247,9 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
+      args:
+        APP_UID: ${PIPELINE_UID:-1000}
+        APP_GID: ${PIPELINE_GID:-1000}
     container_name: climatesense-pipeline
     environment:
       GITHUB_TOKEN: ${GITHUB_TOKEN}

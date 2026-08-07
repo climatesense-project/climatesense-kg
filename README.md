@@ -126,6 +126,8 @@ just run config/minimal.yaml
    - `QLEVERUI_CSRF_TRUSTED_ORIGINS`: Trusted browser origins for QLever UI
    - `QLEVER_UI_BACKEND_URL`: Browser-visible QLever endpoint used by the UI
    - `CIMPLE_FACTORS_API_URL`: CIMPLE Factors API base URL (default `http://localhost:8000`)
+   - `PIPELINE_UID`: Host UID used for pipeline-generated files (default `1000`)
+   - `PIPELINE_GID`: Host GID used for pipeline-generated files (default `1000`)
    - `POSTGRES_HOST`: Cache database host (default `postgres`)
    - `POSTGRES_BIND_ADDRESS`: Host interface for PostgreSQL (default `127.0.0.1`)
    - `POSTGRES_PORT`: Cache database port (default `5432`)

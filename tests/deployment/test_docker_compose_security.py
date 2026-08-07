@@ -8,6 +8,7 @@ import yaml
 _REPOSITORY_ROOT = Path(__file__).parents[2]
 _COMPOSE_PATH = _REPOSITORY_ROOT / "docker" / "docker-compose.yml"
 _ENV_EXAMPLE_PATH = _REPOSITORY_ROOT / "docker" / ".env.example"
+_PIPELINE_DOCKERFILE_PATH = _REPOSITORY_ROOT / "docker" / "Dockerfile"
 
 
 def _compose_services() -> dict[str, dict[str, Any]]:
@@ -40,3 +41,17 @@ def test_database_passwords_have_no_defaults() -> None:
     env_example = _ENV_EXAMPLE_PATH.read_text().splitlines()
     assert "POSTGRES_PASSWORD=" in env_example
     assert "VIRTUOSO_PASSWORD=" in env_example
+
+
+def test_pipeline_runs_as_host_mapped_non_root_user() -> None:
+    pipeline = _compose_services()["pipeline"]
+    dockerfile = _PIPELINE_DOCKERFILE_PATH.read_text()
+    env_example = _ENV_EXAMPLE_PATH.read_text().splitlines()
+
+    assert pipeline["build"]["args"] == {
+        "APP_UID": "${PIPELINE_UID:-1000}",
+        "APP_GID": "${PIPELINE_GID:-1000}",
+    }
+    assert "USER app" in dockerfile
+    assert "PIPELINE_UID=1000" in env_example
+    assert "PIPELINE_GID=1000" in env_example
