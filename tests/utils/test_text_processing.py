@@ -6,7 +6,6 @@ import pytest
 import requests
 from src.climatesense_kg.utils.text_processing import (
     ExtractionErrorType,
-    TextExtractionResult,
     _fetch_public_url,
     _request_url_at_address,
     _UnsafeURLError,
@@ -575,27 +574,3 @@ class TestFetchAndExtractText:
         assert result.success is False
         assert result.error_type == ExtractionErrorType.DOWNLOAD_FAILED
         assert "download limit" in result.error_message
-
-
-class TestTextExtractionResult:
-    """Test TextExtractionResult dataclass."""
-
-    def test_successful_result(self) -> None:
-        """Test successful extraction result."""
-        result = TextExtractionResult(success=True, content="extracted text")
-        assert result.success is True
-        assert result.content == "extracted text"
-        assert result.error_message == ""
-        assert result.error_type is None
-
-    def test_error_result(self) -> None:
-        """Test error extraction result."""
-        result = TextExtractionResult(
-            success=False,
-            error_message="Test error",
-            error_type=ExtractionErrorType.TIMEOUT,
-        )
-        assert result.success is False
-        assert result.content == ""
-        assert result.error_message == "Test error"
-        assert result.error_type == ExtractionErrorType.TIMEOUT

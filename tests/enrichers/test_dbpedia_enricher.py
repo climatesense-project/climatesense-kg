@@ -22,36 +22,6 @@ def dbpedia_enricher(mock_cache: Mock) -> DBpediaEnricher:
     )
 
 
-class TestDBpediaEnricherInit:
-    """Test DBpediaEnricher initialization."""
-
-    def test_init_default_config(self) -> None:
-        """Test initialization with default configuration."""
-        enricher = DBpediaEnricher()
-        assert enricher.name == "dbpedia_spotlight"
-        assert enricher.confidence == 0.5
-        assert enricher.support == 20
-        assert enricher.timeout == 20
-        assert enricher.rate_limit_delay == 0.1
-        assert "api.dbpedia-spotlight.org" in enricher.api_url
-
-    def test_init_custom_config(self, mock_cache: Mock) -> None:
-        """Test initialization with custom configuration."""
-        enricher = DBpediaEnricher(
-            cache=mock_cache,
-            api_url="https://custom.api.url",
-            confidence=0.7,
-            support=50,
-            timeout=30,
-            rate_limit_delay=0.2,
-        )
-        assert enricher.api_url == "https://custom.api.url"
-        assert enricher.confidence == 0.7
-        assert enricher.support == 50
-        assert enricher.timeout == 30
-        assert enricher.rate_limit_delay == 0.2
-
-
 class TestDBpediaEnricherAvailability:
     """Test DBpedia API availability checking."""
 

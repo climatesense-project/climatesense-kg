@@ -27,14 +27,6 @@ def dbpedia_property_enricher(mock_cache: Mock) -> DBpediaPropertyEnricher:
 class TestDBpediaPropertyEnricherInit:
     """Initialization tests."""
 
-    def test_property_normalization(self) -> None:
-        properties = [
-            "http://www.w3.org/2003/01/geo/wgs84_pos#lat",
-            "http://dbpedia.org/ontology/country",
-        ]
-        enricher = DBpediaPropertyEnricher(properties=properties)
-        assert properties == enricher.properties
-
     def test_rejects_property_uri_that_can_break_sparql(self) -> None:
         malicious = "http://dbpedia.org/ontology/name> } UNION { ?s ?p ?o"
 

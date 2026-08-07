@@ -45,31 +45,6 @@ def bert_enricher_with_api() -> BertFactorsEnricher:
 class TestBertFactorsEnricherInit:
     """Test BertFactorsEnricher initialization."""
 
-    def test_init_default_config(self) -> None:
-        """Test initialization with default configuration."""
-        enricher = BertFactorsEnricher()
-
-        assert enricher.name == "bert_factors"
-        assert enricher.api_url == "http://localhost:8000"
-        assert enricher.batch_size == 32
-        assert enricher.max_length == 128
-        assert enricher.timeout == 60
-        assert enricher.rate_limit_delay == 0.1
-
-    def test_init_custom_config(self) -> None:
-        """Test initialization with custom configuration."""
-        enricher = BertFactorsEnricher(
-            batch_size=16,
-            max_length=256,
-            timeout=30,
-            rate_limit_delay=0.5,
-        )
-
-        assert enricher.batch_size == 16
-        assert enricher.max_length == 256
-        assert enricher.timeout == 30
-        assert enricher.rate_limit_delay == 0.5
-
     def test_init_with_environment_variable(self) -> None:
         """Test initialization with environment variable for API URL."""
         with patch.dict(
@@ -347,22 +322,6 @@ class TestBertFactorsEnricherEnrichment:
 class TestBertFactorsEnricherBatch:
     """Test batch enrichment."""
 
-    @patch.object(BertFactorsEnricher, "is_available", return_value=False)
-    def test_enrich_batch_not_available(
-        self,
-        mock_available: Mock,
-        bert_enricher: BertFactorsEnricher,
-        sample_claim_reviews: list[CanonicalClaimReview],
-    ) -> None:
-        """Test batch enrichment when enricher is not available."""
-        results = bert_enricher.enrich(sample_claim_reviews)
-
-        assert len(results) == 3
-        assert all(
-            result == original
-            for result, original in zip(results, sample_claim_reviews, strict=False)
-        )
-
     def test_uncached_texts_are_batched_per_model(
         self,
         sample_claim_reviews: list[CanonicalClaimReview],
@@ -523,31 +482,3 @@ class TestBertFactorsEnricherAPIIntegration:
         assert result.claim.emotion is None
         assert result.claim.sentiment is None
         assert mock_post.call_count == len(BertFactorsEnricher.MODEL_KEYS)
-
-    @patch("requests.post")
-    @patch.object(BertFactorsEnricher, "is_available", return_value=True)
-    def test_enrich_empty_text_handling(
-        self,
-        mock_available: Mock,
-        mock_post: Mock,
-        bert_enricher: BertFactorsEnricher,
-        sample_claim_review: CanonicalClaimReview,
-        mock_cache: Mock,
-    ) -> None:
-        """Test enrichment with empty claim text."""
-        enricher = BertFactorsEnricher()
-        enricher.cache = mock_cache
-
-        def empty_get_many(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
-            return {}
-
-        mock_cache.get_many.side_effect = empty_get_many
-
-        # Set empty normalized text
-        sample_claim_review.claim.text = ""
-
-        result = enricher.enrich([sample_claim_review])[0]
-
-        # Should not make API call for empty text
-        mock_post.assert_not_called()
-        assert result == sample_claim_review

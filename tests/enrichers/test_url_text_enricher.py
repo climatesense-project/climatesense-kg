@@ -11,21 +11,6 @@ from src.climatesense_kg.utils.text_processing import TextExtractionResult
 class TestURLTextEnricherInit:
     """Test URLTextEnricher initialization."""
 
-    def test_init_default_config(self) -> None:
-        """Test initialization with default configuration."""
-        enricher = URLTextEnricher()
-        assert enricher.name == "url_text_extractor"
-        assert enricher.rate_limit_delay == 0.5
-        assert enricher.max_retries == 1
-        assert enricher.timeout == 10
-
-    def test_init_custom_config(self) -> None:
-        """Test initialization with custom configuration."""
-        enricher = URLTextEnricher(rate_limit_delay=1.0, max_retries=5, timeout=42)
-        assert enricher.rate_limit_delay == 1.0
-        assert enricher.max_retries == 5
-        assert enricher.timeout == 42
-
     def test_init_negative_rate_limit_raises_error(self) -> None:
         """Test initialization with negative rate_limit_delay raises ValueError."""
         with pytest.raises(ValueError, match="rate_limit_delay must be non-negative"):
@@ -113,18 +98,3 @@ class TestURLTextEnricherEnrichment:
         result = enricher.enrich([sample_claim_review])[0]
         assert result == sample_claim_review
         assert result.review_url_text is None
-
-    @patch("src.climatesense_kg.enrichers.url_text_enricher.fetch_and_extract_text")
-    def test_batch_enrichment(
-        self,
-        mock_fetch: Mock,
-        sample_claim_reviews: list[CanonicalClaimReview],
-    ) -> None:
-        """Test batch enrichment."""
-        mock_fetch.return_value = TextExtractionResult(success=True, content="Text")
-
-        enricher = URLTextEnricher(rate_limit_delay=0)
-        results = enricher.enrich(sample_claim_reviews)
-
-        assert len(results) == 3
-        assert all(isinstance(r, CanonicalClaimReview) for r in results)

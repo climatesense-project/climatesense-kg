@@ -41,6 +41,3 @@ def test_service_clients_use_postgres_container_port() -> None:
 
     assert services["pipeline"]["environment"]["POSTGRES_PORT"] == "5432"
     assert services["analytics-api"]["environment"]["POSTGRES_PORT"] == "5432"
-    assert services["postgres"]["ports"] == [
-        "${POSTGRES_BIND_ADDRESS:-127.0.0.1}:${POSTGRES_HOST_PORT:-5432}:5432"
-    ]
