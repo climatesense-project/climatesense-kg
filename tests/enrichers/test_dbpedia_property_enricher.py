@@ -78,6 +78,23 @@ class TestDBpediaPropertyEnricherAvailability:
 class TestDBpediaPropertyEnricherProcessing:
     """Processing tests."""
 
+    def test_ignores_entities_owned_by_other_providers(
+        self,
+        dbpedia_property_enricher: DBpediaPropertyEnricher,
+        sample_claim_review: CanonicalClaimReview,
+    ) -> None:
+        sample_claim_review.claim.entities.append(
+            {
+                "uri": "http://www.wikidata.org/entity/Q90",
+                "source": "wikidata",
+            }
+        )
+
+        assert (
+            dbpedia_property_enricher._collect_entity_references(sample_claim_review)
+            == {}
+        )
+
     @patch("src.climatesense_kg.enrichers.dbpedia_property_enricher.time.sleep")
     @patch("src.climatesense_kg.enrichers.dbpedia_property_enricher.requests.get")
     def test_enrich_success(
@@ -89,7 +106,9 @@ class TestDBpediaPropertyEnricherProcessing:
         mock_cache: Mock,
     ) -> None:
         entity_uri = "http://dbpedia.org/resource/Paris"
-        sample_claim_review.claim.entities.append({"uri": entity_uri})
+        sample_claim_review.claim.entities.append(
+            {"uri": entity_uri, "source": "dbpedia_spotlight"}
+        )
 
         mock_cache.get_many.return_value = {}
 
@@ -166,7 +185,9 @@ class TestDBpediaPropertyEnricherProcessing:
         sample_claim_review: CanonicalClaimReview,
     ) -> None:
         entity_uri = "http://dbpedia.org/resource/Paris"
-        sample_claim_review.claim.entities.append({"uri": entity_uri})
+        sample_claim_review.claim.entities.append(
+            {"uri": entity_uri, "source": "dbpedia_spotlight"}
+        )
 
         cached_data = {
             "data": {
@@ -205,7 +226,9 @@ class TestDBpediaPropertyEnricherProcessing:
         mock_cache: Mock,
     ) -> None:
         entity_uri = "http://dbpedia.org/resource/Paris"
-        sample_claim_review.claim.entities.append({"uri": entity_uri})
+        sample_claim_review.claim.entities.append(
+            {"uri": entity_uri, "source": "dbpedia_spotlight"}
+        )
 
         mock_cache.get_many.return_value = {}
         mock_get.side_effect = requests.RequestException("boom")
@@ -228,7 +251,9 @@ class TestDBpediaPropertyEnricherProcessing:
         mock_cache: Mock,
     ) -> None:
         entity_uri = "http://dbpedia.org/resource/Paris"
-        sample_claim_review.claim.entities.append({"uri": entity_uri})
+        sample_claim_review.claim.entities.append(
+            {"uri": entity_uri, "source": "dbpedia_spotlight"}
+        )
 
         mock_cache.get_many.return_value = {}
         mock_cache.get.return_value = {
@@ -274,7 +299,9 @@ class TestDBpediaPropertyEnricherProcessing:
         mock_cache: Mock,
     ) -> None:
         entity_uri = "http://dbpedia.org/resource/Paris"
-        sample_claim_review.claim.entities.append({"uri": entity_uri})
+        sample_claim_review.claim.entities.append(
+            {"uri": entity_uri, "source": "dbpedia_spotlight"}
+        )
         mock_cache.get_many.return_value = {
             sample_claim_review.uri: {
                 "success": False,

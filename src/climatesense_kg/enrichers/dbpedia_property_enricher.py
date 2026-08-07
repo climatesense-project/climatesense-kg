@@ -11,6 +11,7 @@ from urllib.parse import urlsplit
 
 import requests
 
+from ..config.graphs import DBPEDIA_ENTITY_SOURCES
 from ..config.models import CanonicalClaimReview
 from .base import Enricher
 
@@ -166,13 +167,13 @@ class DBpediaPropertyEnricher(Enricher):
         # Claim-level entities
         for entity in claim_review.claim.entities:
             uri = entity.get("uri")
-            if uri:
+            if uri and entity.get("source") in DBPEDIA_ENTITY_SOURCES:
                 entity_map.setdefault(uri, []).append(entity)
 
         # Review-level entities
         for entity in claim_review.entities_in_review:
             uri = entity.get("uri")
-            if uri:
+            if uri and entity.get("source") in DBPEDIA_ENTITY_SOURCES:
                 entity_map.setdefault(uri, []).append(entity)
 
         return entity_map

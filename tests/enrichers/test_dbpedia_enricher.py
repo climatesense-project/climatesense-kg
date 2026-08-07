@@ -147,7 +147,13 @@ class TestDBpediaEnricherEnrichment:
         """Test enrichment with cache hit."""
         cached_data: dict[str, Any] = {
             "data": {
-                "claim_entities": [{"uri": "cached_entity", "surface_form": "cached"}],
+                "claim_entities": [
+                    {
+                        "uri": "cached_entity",
+                        "surface_form": "cached",
+                        "source": "dbpedia_spotlight",
+                    }
+                ],
                 "review_entities": [],
             }
         }
@@ -157,6 +163,7 @@ class TestDBpediaEnricherEnrichment:
 
         assert len(result.claim.entities) == 1
         assert result.claim.entities[0]["uri"] == "cached_entity"
+        assert result.claim.entities[0]["source"] == "dbpedia_spotlight"
 
         mock_cache.get_many.assert_called_once_with(
             [sample_claim_review.uri], "enricher.dbpedia_spotlight"

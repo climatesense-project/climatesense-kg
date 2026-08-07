@@ -133,13 +133,53 @@ class RDFGenerator:
                 continue
             successful_review_uris.append(claim_review.uri)
 
-        rdflib_format = self._normalize_format_name(output_format)
+        return self._serialize_graph(output_format), successful_review_uris
 
+    def _generate_entity_enrichment_with_results(
+        self,
+        claim_reviews: list[CanonicalClaimReview],
+        output_format: str,
+        entity_sources: frozenset[str],
+        property_keys: tuple[str, ...],
+    ) -> tuple[str, list[str]]:
+        """Generate entity-linking RDF and return contributing review URIs."""
+        if output_format.lower() not in self.SUPPORTED_FORMATS:
+            raise ValueError(
+                f"Unsupported format: {output_format}. "
+                f"Supported formats: {sorted(self.SUPPORTED_FORMATS)}"
+            )
+
+        self.graph = Graph()
+        self._bind_namespaces()
+        successful_review_uris: list[str] = []
+
+        for claim_review in claim_reviews:
+            if not self.has_entity_enrichment(claim_review, entity_sources):
+                continue
+            try:
+                self._generate_entity_enrichment_rdf(
+                    claim_review, entity_sources, property_keys
+                )
+            except Exception as exc:
+                self.logger.error(
+                    "Error generating entity enrichment RDF for claim review %s: %s",
+                    claim_review.uri,
+                    exc,
+                )
+                continue
+            successful_review_uris.append(claim_review.uri)
+
+        return self._serialize_graph(output_format), successful_review_uris
+
+    def _serialize_graph(self, output_format: str) -> str:
+        """Serialize the current graph using the public output format name."""
+        rdflib_format = self._normalize_format_name(output_format)
         try:
-            rdf_content = self.graph.serialize(format=rdflib_format)
-        except Exception as e:
-            raise ValueError(f"Failed to serialize RDF as {output_format}: {e}") from e
-        return rdf_content, successful_review_uris
+            return self.graph.serialize(format=rdflib_format)
+        except Exception as exc:
+            raise ValueError(
+                f"Failed to serialize RDF as {output_format}: {exc}"
+            ) from exc
 
     def save(
         self,
@@ -162,6 +202,34 @@ class RDFGenerator:
             claim_reviews, output_format
         )
 
+        self._save_rdf_content(rdf_content, output_path, output_format)
+        return successful_review_uris
+
+    def save_entity_enrichment(
+        self,
+        claim_reviews: list[CanonicalClaimReview],
+        output_path: str | Path,
+        output_format: str,
+        *,
+        entity_sources: frozenset[str],
+        property_keys: tuple[str, ...],
+    ) -> list[str]:
+        """Generate and save RDF owned by one entity enrichment graph."""
+        rdf_content, successful_review_uris = (
+            self._generate_entity_enrichment_with_results(
+                claim_reviews,
+                output_format,
+                entity_sources,
+                property_keys,
+            )
+        )
+        self._save_rdf_content(rdf_content, output_path, output_format)
+        return successful_review_uris
+
+    def _save_rdf_content(
+        self, rdf_content: str, output_path: str | Path, output_format: str
+    ) -> None:
+        """Atomically save serialized RDF content."""
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -199,7 +267,49 @@ class RDFGenerator:
         self.logger.info(
             f"RDF saved to {output_path} in {output_format} format with {len(self.graph)} triples"
         )
-        return successful_review_uris
+
+    @staticmethod
+    def has_entity_enrichment(
+        claim_review: CanonicalClaimReview, entity_sources: frozenset[str]
+    ) -> bool:
+        """Return whether a review contains an entity owned by the given sources."""
+        entities = [*claim_review.claim.entities, *claim_review.entities_in_review]
+        return any(entity.get("source") in entity_sources for entity in entities)
+
+    def _generate_entity_enrichment_rdf(
+        self,
+        claim_review: CanonicalClaimReview,
+        entity_sources: frozenset[str],
+        property_keys: tuple[str, ...],
+    ) -> None:
+        """Generate entity mention and property triples for one review."""
+        claim_uri = URIRef(self.get_full_uri(claim_review.claim.uri))
+        review_uri = URIRef(self.get_full_uri(claim_review.uri))
+        self._add_entity_mentions(
+            claim_uri, claim_review.claim.entities, entity_sources, property_keys
+        )
+        self._add_entity_mentions(
+            review_uri,
+            claim_review.entities_in_review,
+            entity_sources,
+            property_keys,
+        )
+
+    def _add_entity_mentions(
+        self,
+        subject_uri: URIRef,
+        entities: list[dict[str, Any]],
+        entity_sources: frozenset[str],
+        property_keys: tuple[str, ...],
+    ) -> None:
+        """Add provider-owned mention assertions and entity descriptions."""
+        for entity in entities:
+            if entity.get("source") not in entity_sources or not entity.get("uri"):
+                continue
+            entity_uri = URIRef(entity["uri"])
+            self.graph.add((subject_uri, self.SCHEMA.mentions, entity_uri))
+            for property_key in property_keys:
+                self._add_entity_properties(entity_uri, entity.get(property_key))
 
     def _normalize_format_name(self, format_name: str) -> str:
         """
@@ -402,18 +512,6 @@ class RDFGenerator:
                     )
                 )
 
-        # Entities in review
-        for entity in claim_review.entities_in_review:
-            if entity.get("uri"):
-                try:
-                    entity_uri = URIRef(entity["uri"])
-                    self.graph.add((review_uri, self.SCHEMA.mentions, entity_uri))
-                    self._add_entity_properties(
-                        entity_uri, entity.get("dbpedia_properties")
-                    )
-                except Exception:
-                    self.logger.warning(f"Invalid entity URI: {entity.get('uri')}")
-
     def _get_organization_uri(self, organization: CanonicalOrganization) -> URIRef:
         """Return the catalog-assigned organization URI."""
 
@@ -520,18 +618,6 @@ class RDFGenerator:
                     Literal(claim.readability_score),
                 )
             )
-
-        # Entities
-        for entity in claim.entities:
-            if entity.get("uri"):
-                try:
-                    entity_uri = URIRef(entity["uri"])
-                    self.graph.add((claim_uri, self.SCHEMA.mentions, entity_uri))
-                    self._add_entity_properties(
-                        entity_uri, entity.get("dbpedia_properties")
-                    )
-                except Exception:
-                    self.logger.warning(f"Invalid entity URI: {entity.get('uri')}")
 
         return claim_uri
 

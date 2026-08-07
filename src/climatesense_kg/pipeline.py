@@ -12,7 +12,12 @@ from dotenv import load_dotenv
 from .cache.interface import CacheInterface
 from .cache.postgres_cache import PostgresCache
 from .config import PipelineConfig
-from .config.graphs import GRAPH_CATALOG_PATH, GRAPH_CATALOG_SOURCE_NAME
+from .config.graphs import (
+    DBPEDIA_ENRICHER_SOURCE_NAME,
+    DBPEDIA_ENTITY_SOURCES,
+    GRAPH_CATALOG_PATH,
+    GRAPH_CATALOG_SOURCE_NAME,
+)
 from .config.models import CanonicalClaimReview
 from .config.organizations import (
     ORGANIZATION_CATALOG_PATH,
@@ -53,12 +58,19 @@ class EnrichmentResults(TypedDict):
 
 
 class GeneratedFileInfo(TypedDict):
-    source: str
+    graph_name: str
+    kind: str
     path: str
     items: int
     failed_items: int
     file_size: int
     review_uris: list[str]
+
+
+class ReviewOutputInfo(TypedDict):
+    source_name: str
+    source_path: str
+    required_graphs: list[str]
 
 
 class RDFGenerationResults(TypedDict):
@@ -70,6 +82,7 @@ class RDFGenerationResults(TypedDict):
     output_format: str
     total_file_size: int
     error: str | None
+    review_outputs: dict[str, ReviewOutputInfo]
 
 
 class DeploymentResults(TypedDict):
@@ -357,7 +370,7 @@ class Pipeline:
             # Step 4: Deployment
             deployment_success = True
             generated_files = rdf_stats.get("generated_files", [])
-            total_files = len(generated_files) + 1
+            total_files = len(generated_files) + 2
 
             if skip_deployment:
                 self.logger.info("Step 4: Deployment skipped (--skip-deployment)")
@@ -550,6 +563,7 @@ class Pipeline:
                 "output_format": self.config.output.format,
                 "total_file_size": 0,
                 "error": "No RDF generator available",
+                "review_outputs": {},
             }
 
         reviews_by_source: dict[str, list[CanonicalClaimReview]] = {}
@@ -560,18 +574,24 @@ class Pipeline:
             reviews_by_source[source_name].append(review)
 
         output_path_template = str(self.config.output.output_path)
-        if len(reviews_by_source) > 1 and "{SOURCE}" not in output_path_template:
+        has_dbpedia_entities = any(
+            self.rdf_generator.has_entity_enrichment(review, DBPEDIA_ENTITY_SOURCES)
+            for review in canonical_reviews
+        )
+        if (
+            len(reviews_by_source) > 1 or has_dbpedia_entities
+        ) and "{SOURCE}" not in output_path_template:
             raise ValueError(
-                "Multi-source RDF generation requires the {SOURCE} placeholder "
+                "Multi-graph RDF generation requires the {SOURCE} placeholder "
                 f"in output.output_path: {output_path_template}"
             )
 
         generated_files: list[GeneratedFileInfo] = []
         total_input_items = len(canonical_reviews)
-        total_successful_items = 0
-        total_failed_items = 0
         total_file_size = 0
         source_errors: list[str] = []
+        source_successful_reviews: list[CanonicalClaimReview] = []
+        source_output_by_uri: dict[str, tuple[str, str]] = {}
 
         for source_name, source_reviews in reviews_by_source.items():
             self.logger.info(
@@ -593,23 +613,11 @@ class Pipeline:
                     "Error generating RDF for source %s: %s", source_name, e
                 )
                 source_errors.append(f"{source_name}: {e}")
-                total_failed_items += len(source_reviews)
                 continue
 
             successful_uri_set = set(successful_review_uris)
             successful_items = len(successful_review_uris)
             failed_items = len(source_reviews) - successful_items
-            total_successful_items += successful_items
-            total_failed_items += failed_items
-
-            if mark_processed:
-                uri_tuples = [
-                    (review.uri, source_name, str(output_path))
-                    for review in source_reviews
-                    if review.uri and review.uri in successful_uri_set
-                ]
-                self._mark_uris_processed(uri_tuples)
-
             if failed_items:
                 self.logger.warning(
                     "RDF generation failed for %s/%s reviews from source %s",
@@ -621,7 +629,8 @@ class Pipeline:
             total_file_size += file_size
             generated_files.append(
                 {
-                    "source": source_name,
+                    "graph_name": source_name,
+                    "kind": "source",
                     "path": str(output_path),
                     "items": successful_items,
                     "failed_items": failed_items,
@@ -634,6 +643,96 @@ class Pipeline:
                 }
             )
 
+            for review in source_reviews:
+                if review.uri and review.uri in successful_uri_set:
+                    source_successful_reviews.append(review)
+                    source_output_by_uri[review.uri] = (
+                        source_name,
+                        str(output_path),
+                    )
+
+        dbpedia_reviews = [
+            review
+            for review in source_successful_reviews
+            if self.rdf_generator.has_entity_enrichment(review, DBPEDIA_ENTITY_SOURCES)
+        ]
+        dbpedia_successful_uris: set[str] = set()
+
+        if dbpedia_reviews:
+            graph_name = DBPEDIA_ENRICHER_SOURCE_NAME
+            output_path = Path(
+                self._process_dynamic_path(output_path_template, graph_name)
+            )
+            output_format = self.config.output.format
+            try:
+                successful_review_uris = self.rdf_generator.save_entity_enrichment(
+                    dbpedia_reviews,
+                    output_path,
+                    output_format,
+                    entity_sources=DBPEDIA_ENTITY_SOURCES,
+                    property_keys=("dbpedia_properties",),
+                )
+                file_size = output_path.stat().st_size if output_path.exists() else 0
+            except Exception as exc:
+                self.logger.error(
+                    "Error generating RDF for graph %s: %s", graph_name, exc
+                )
+                source_errors.append(f"{graph_name}: {exc}")
+            else:
+                dbpedia_successful_uris = set(successful_review_uris)
+                failed_items = len(dbpedia_reviews) - len(successful_review_uris)
+                if failed_items:
+                    self.logger.warning(
+                        "RDF generation failed for %s/%s reviews in graph %s",
+                        failed_items,
+                        len(dbpedia_reviews),
+                        graph_name,
+                    )
+                total_file_size += file_size
+                generated_files.append(
+                    {
+                        "graph_name": graph_name,
+                        "kind": "enrichment",
+                        "path": str(output_path),
+                        "items": len(successful_review_uris),
+                        "failed_items": failed_items,
+                        "file_size": file_size,
+                        "review_uris": successful_review_uris,
+                    }
+                )
+
+        dbpedia_required_uris = {review.uri for review in dbpedia_reviews}
+        review_outputs: dict[str, ReviewOutputInfo] = {}
+        for review in source_successful_reviews:
+            if review.uri in dbpedia_required_uris and (
+                review.uri not in dbpedia_successful_uris
+            ):
+                continue
+            source_name, source_path = source_output_by_uri[review.uri]
+            required_graphs = [source_name]
+            if review.uri in dbpedia_required_uris:
+                required_graphs.append(DBPEDIA_ENRICHER_SOURCE_NAME)
+            review_outputs[review.uri] = {
+                "source_name": source_name,
+                "source_path": source_path,
+                "required_graphs": required_graphs,
+            }
+
+        if mark_processed:
+            self._mark_uris_processed(
+                [
+                    (
+                        uri,
+                        output_info["source_name"],
+                        output_info["source_path"],
+                    )
+                    for uri, output_info in review_outputs.items()
+                ]
+            )
+
+        total_successful_items = len(review_outputs)
+        total_failed_items = total_input_items - total_successful_items
+
         return {
             "generated_files": generated_files,
             "total_files": len(generated_files),
@@ -643,6 +742,7 @@ class Pipeline:
             "output_format": self.config.output.format,
             "total_file_size": total_file_size,
             "error": "; ".join(source_errors) or None,
+            "review_outputs": review_outputs,
         }
 
     def _run_deployment(self, rdf_stats: RDFGenerationResults) -> DeploymentResults:
@@ -683,30 +783,38 @@ class Pipeline:
             }
 
         deployment_results: list[bool] = [catalog_success, organization_success]
+        successful_graphs: set[str] = set()
         for file_info in generated_files:
             output_path = Path(file_info["path"])
-            source_name = file_info["source"]
+            graph_name = file_info["graph_name"]
 
             self.logger.info(
-                f"Deploying RDF file: {output_path} for source: {source_name}"
+                f"Deploying RDF file: {output_path} to graph: {graph_name}"
             )
-            success = self.deployment_handler.deploy(output_path, source_name)
+            success = self.deployment_handler.deploy(output_path, graph_name)
             deployment_results.append(success)
 
             if success:
-                self._mark_uris_processed(
-                    [
-                        (uri, source_name, str(output_path))
-                        for uri in file_info["review_uris"]
-                    ]
-                )
+                successful_graphs.add(graph_name)
                 self.logger.info(
-                    f"RDF data deployed successfully: {output_path} (source: {source_name})"
+                    f"RDF data deployed successfully: {output_path} (graph: {graph_name})"
                 )
             else:
                 self.logger.error(
-                    f"RDF data deployment failed: {output_path} (source: {source_name})"
+                    f"RDF data deployment failed: {output_path} (graph: {graph_name})"
                 )
+
+        review_outputs = rdf_stats.get("review_outputs", {})
+        completed_outputs = [
+            (
+                uri,
+                output_info["source_name"],
+                output_info["source_path"],
+            )
+            for uri, output_info in review_outputs.items()
+            if set(output_info["required_graphs"]) <= successful_graphs
+        ]
+        self._mark_uris_processed(completed_outputs)
 
         return {
             "success": all(deployment_results),

@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from rdflib import Graph, Literal, Namespace, URIRef
 from rdflib.namespace import XSD
+from src.climatesense_kg.config.graphs import DBPEDIA_ENTITY_SOURCES
 from src.climatesense_kg.config.models import (
     CanonicalClaim,
     CanonicalClaimReview,
@@ -124,12 +125,13 @@ def test_generator_skips_normalized_rating_for_unknown_labels() -> None:
     assert triples == []
 
 
-def test_generator_adds_dbpedia_entity_properties() -> None:
+def test_generator_moves_dbpedia_entity_data_out_of_source_graph() -> None:
     review = _build_review(None)
     entity_uri = "http://dbpedia.org/resource/Paris"
     review.claim.entities.append(
         {
             "uri": entity_uri,
+            "source": "dbpedia_spotlight",
             "dbpedia_properties": {
                 "http://www.w3.org/2003/01/geo/wgs84_pos#lat": [
                     {
@@ -156,7 +158,57 @@ def test_generator_adds_dbpedia_entity_properties() -> None:
         }
     )
 
-    graph, _ = _generate_graph(review)
+    source_graph, _ = _generate_graph(review)
+
+    assert list(source_graph.triples((None, SCHEMA.mentions, None))) == []
+    assert list(source_graph.triples((URIRef(entity_uri), None, None))) == []
+
+
+def test_generator_adds_dbpedia_mentions_and_properties_to_enrichment_graph(
+    tmp_path: Path,
+) -> None:
+    review = _build_review(None)
+    entity_uri = "http://dbpedia.org/resource/Paris"
+    review.claim.entities.append(
+        {
+            "uri": entity_uri,
+            "source": "dbpedia_spotlight",
+            "dbpedia_properties": {
+                "http://www.w3.org/2003/01/geo/wgs84_pos#lat": [
+                    {
+                        "value": "48.8566",
+                        "type": "typed-literal",
+                        "datatype": str(XSD.float),
+                    }
+                ],
+                "http://www.w3.org/2003/01/geo/wgs84_pos#long": [
+                    {
+                        "value": "2.3522",
+                        "type": "typed-literal",
+                        "datatype": str(XSD.float),
+                    }
+                ],
+                "http://www.opengis.net/ont/geosparql#geometry": [
+                    {
+                        "value": "POINT(2.3522 48.8566)",
+                        "type": "literal",
+                        "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral",
+                    }
+                ],
+            },
+        }
+    )
+    output_path = tmp_path / "dbpedia-enricher.ttl"
+    generator = RDFGenerator(base_uri="http://data.cimple.eu")
+
+    review_uris = generator.save_entity_enrichment(
+        [review],
+        output_path,
+        "turtle",
+        entity_sources=DBPEDIA_ENTITY_SOURCES,
+        property_keys=("dbpedia_properties",),
+    )
+    graph = Graph().parse(output_path, format="turtle")
 
     subject = URIRef(entity_uri)
     lat_predicate = URIRef("http://www.w3.org/2003/01/geo/wgs84_pos#lat")
@@ -170,6 +222,9 @@ def test_generator_adds_dbpedia_entity_properties() -> None:
         datatype=URIRef("http://www.opengis.net/ont/geosparql#wktLiteral"),
     )
 
+    claim_uri = URIRef(generator.get_full_uri(review.claim.uri))
+    assert review_uris == [review.uri]
+    assert (claim_uri, SCHEMA.mentions, subject) in graph
     assert (subject, lat_predicate, expected_lat) in graph
     assert (subject, long_predicate, expected_long) in graph
     assert (subject, geometry_predicate, expected_geometry) in graph

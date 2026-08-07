@@ -5,7 +5,9 @@ from types import SimpleNamespace
 from unittest.mock import Mock, call
 
 import pytest
+from rdflib import Graph, URIRef
 from src.climatesense_kg.config.graphs import (
+    DBPEDIA_ENRICHER_SOURCE_NAME,
     GRAPH_CATALOG_PATH,
     GRAPH_CATALOG_SOURCE_NAME,
 )
@@ -16,6 +18,8 @@ from src.climatesense_kg.config.organizations import (
 )
 from src.climatesense_kg.pipeline import Pipeline
 from src.climatesense_kg.rdf_generation.generator import RDFGenerator
+
+SCHEMA_MENTIONS = URIRef("http://schema.org/mentions")
 
 
 def test_pipeline_fails_when_every_enabled_source_fails() -> None:
@@ -189,6 +193,121 @@ def test_rdf_generation_does_not_finalize_reviews_when_deployment_is_skipped(
     mock_cache.set_many.assert_not_called()
 
 
+def test_rdf_generation_writes_dbpedia_data_to_one_enrichment_graph(
+    tmp_path, sample_claim_reviews, mock_cache
+) -> None:
+    first, second = sample_claim_reviews[:2]
+    first.source_name = "source-a"
+    second.source_name = "source-b"
+    entity_uri = "http://dbpedia.org/resource/Climate_change"
+    entity = {
+        "uri": entity_uri,
+        "source": "dbpedia_spotlight",
+        "dbpedia_properties": {
+            "http://example.org/population": [{"value": "42", "type": "literal"}]
+        },
+    }
+    first.claim.entities.append(entity)
+    second.entities_in_review.append(entity)
+
+    pipeline = object.__new__(Pipeline)
+    pipeline.cache = mock_cache
+    pipeline.config = SimpleNamespace(
+        output=SimpleNamespace(format="turtle", output_path=tmp_path / "{SOURCE}.ttl")
+    )
+    pipeline.logger = getLogger("test.pipeline")
+    pipeline.rdf_generator = RDFGenerator(base_uri="https://example.org")
+    pipeline._run_datetime = None
+
+    stats = pipeline._run_rdf_generation(sample_claim_reviews[:2], mark_processed=False)
+
+    assert [file_info["graph_name"] for file_info in stats["generated_files"]] == [
+        "source-a",
+        "source-b",
+        DBPEDIA_ENRICHER_SOURCE_NAME,
+    ]
+    for source_name in ("source-a", "source-b"):
+        source_graph = Graph().parse(tmp_path / f"{source_name}.ttl", format="turtle")
+        assert list(source_graph.triples((None, SCHEMA_MENTIONS, None))) == []
+
+    enrichment_graph = Graph().parse(
+        tmp_path / f"{DBPEDIA_ENRICHER_SOURCE_NAME}.ttl", format="turtle"
+    )
+    assert len(list(enrichment_graph.triples((None, SCHEMA_MENTIONS, None)))) == 2
+    assert (
+        len(
+            list(
+                enrichment_graph.triples(
+                    (URIRef(entity_uri), URIRef("http://example.org/population"), None)
+                )
+            )
+        )
+        == 1
+    )
+    assert all(
+        set(output["required_graphs"])
+        == {output["source_name"], DBPEDIA_ENRICHER_SOURCE_NAME}
+        for output in stats["review_outputs"].values()
+    )
+
+
+def test_failed_enrichment_deployment_only_finalizes_source_only_reviews(
+    tmp_path, mock_cache
+) -> None:
+    source_path = tmp_path / "source-a.ttl"
+    enrichment_path = tmp_path / "dbpedia-enricher.ttl"
+    source_path.write_text("", encoding="utf-8")
+    enrichment_path.write_text("", encoding="utf-8")
+    dbpedia_uri = "https://example.org/review/dbpedia"
+    source_only_uri = "https://example.org/review/source-only"
+
+    pipeline = object.__new__(Pipeline)
+    pipeline.cache = mock_cache
+    pipeline.logger = getLogger("test.pipeline")
+    pipeline.deployment_handler = Mock()
+    pipeline.deployment_handler.deploy.side_effect = [True, True, True, False]
+    rdf_stats = {
+        "generated_files": [
+            {
+                "graph_name": "source-a",
+                "kind": "source",
+                "path": str(source_path),
+                "items": 2,
+                "failed_items": 0,
+                "file_size": 0,
+                "review_uris": [dbpedia_uri, source_only_uri],
+            },
+            {
+                "graph_name": DBPEDIA_ENRICHER_SOURCE_NAME,
+                "kind": "enrichment",
+                "path": str(enrichment_path),
+                "items": 1,
+                "failed_items": 0,
+                "file_size": 0,
+                "review_uris": [dbpedia_uri],
+            },
+        ],
+        "review_outputs": {
+            dbpedia_uri: {
+                "source_name": "source-a",
+                "source_path": str(source_path),
+                "required_graphs": ["source-a", DBPEDIA_ENRICHER_SOURCE_NAME],
+            },
+            source_only_uri: {
+                "source_name": "source-a",
+                "source_path": str(source_path),
+                "required_graphs": ["source-a"],
+            },
+        },
+    }
+
+    stats = pipeline._run_deployment(rdf_stats)
+
+    assert stats == {"success": False, "files_deployed": 3, "total_files": 4}
+    cached_entries = mock_cache.set_many.call_args.args[0]
+    assert [entry[0] for entry in cached_entries] == [source_only_uri]
+
+
 def test_rdf_generation_preserves_files_when_a_later_source_fails(
     tmp_path, sample_claim_reviews, mock_cache, monkeypatch
 ) -> None:
@@ -220,7 +339,8 @@ def test_rdf_generation_preserves_files_when_a_later_source_fails(
 
     expected_files = [
         {
-            "source": source_name,
+            "graph_name": source_name,
+            "kind": "source",
             "path": str(tmp_path / f"{source_name}.ttl"),
             "items": 1,
             "failed_items": 0,
@@ -266,7 +386,10 @@ def test_rdf_generation_rejects_shared_output_path_for_multiple_sources(
         output=SimpleNamespace(format="turtle", output_path=tmp_path / "combined.ttl")
     )
     pipeline.logger = getLogger("test.pipeline")
-    pipeline.rdf_generator = SimpleNamespace(save=Mock(return_value=[]))
+    pipeline.rdf_generator = SimpleNamespace(
+        save=Mock(return_value=[]),
+        has_entity_enrichment=Mock(return_value=False),
+    )
     pipeline._run_datetime = None
 
     with pytest.raises(ValueError, match=r"requires the \{SOURCE\} placeholder"):
@@ -290,7 +413,8 @@ def test_failed_deployment_does_not_finalize_reviews(tmp_path, mock_cache) -> No
     rdf_stats = {
         "generated_files": [
             {
-                "source": "source-a",
+                "graph_name": "source-a",
+                "kind": "source",
                 "path": str(rdf_path),
                 "items": 1,
                 "failed_items": 0,
@@ -360,7 +484,8 @@ def test_partial_deployment_reports_successful_file_count(tmp_path, mock_cache) 
         rdf_path.write_text("", encoding="utf-8")
         generated_files.append(
             {
-                "source": f"source-{index}",
+                "graph_name": f"source-{index}",
+                "kind": "source",
                 "path": str(rdf_path),
                 "items": 1,
                 "failed_items": 0,
