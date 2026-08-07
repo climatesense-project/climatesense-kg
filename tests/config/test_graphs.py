@@ -4,7 +4,10 @@ from rdflib import Graph, Namespace, URIRef
 from rdflib.namespace import DCTERMS, RDF
 
 from climatesense_kg.config import load_config
-from climatesense_kg.config.graphs import GRAPH_CATALOG_PATH
+from climatesense_kg.config.graphs import (
+    DBPEDIA_ENRICHER_SOURCE_NAME,
+    GRAPH_CATALOG_PATH,
+)
 
 DCAT = Namespace("http://www.w3.org/ns/dcat#")
 VOID = Namespace("http://rdfs.org/ns/void#")
@@ -17,6 +20,7 @@ def test_graph_catalog_describes_every_published_graph() -> None:
     daily_config = load_config("config/daily.yaml")
     expected_graphs = {
         *(GRAPH[source.name] for source in daily_config.data_sources if source.enabled),
+        GRAPH[DBPEDIA_ENRICHER_SOURCE_NAME],
         GRAPH.organizations,
         GRAPH.vocabularies,
     }

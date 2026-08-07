@@ -80,6 +80,14 @@ Examples:
         action="store_true",
         help="Enable DEBUG level logging",
     )
+    redeploy_parser.add_argument(
+        "--replace",
+        action="store_true",
+        help=(
+            "Replace generated named graphs from a full snapshot; requires exactly "
+            "one RDF file per graph"
+        ),
+    )
 
     return parser
 
@@ -109,7 +117,7 @@ def _print_rdf_generation_summary(rdf_data: "RDFGenerationResults") -> None:
         if file_info["failed_items"]:
             failure_summary = f", {file_info['failed_items']} failed"
         print(
-            f"  - {file_info['source']}: {file_info['path']} "
+            f"  - {file_info['graph_name']}: {file_info['path']} "
             f"({file_info['items']} items{failure_summary}, "
             f"{file_info['file_size']} bytes)"
         )
@@ -154,26 +162,28 @@ def _print_failure_summary(results: "PipelineResults") -> None:
         print(f"Error: {error}", file=sys.stderr)
 
 
-def _source_name_for_rdf_file(
-    rdf_file: Path, configured_source_names: set[str]
+def _graph_name_for_rdf_file(
+    rdf_file: Path, managed_graph_names: set[str]
 ) -> str | None:
-    """Match an RDF artifact to a configured source without splitting its name."""
-    matching_sources = [
-        source_name
-        for source_name in configured_source_names
-        if rdf_file.stem == source_name or rdf_file.stem.startswith(f"{source_name}_")
+    """Match an RDF artifact to a managed graph without splitting its name."""
+    matching_graphs = [
+        graph_name
+        for graph_name in managed_graph_names
+        if rdf_file.stem == graph_name or rdf_file.stem.startswith(f"{graph_name}_")
     ]
-    if matching_sources:
-        return max(matching_sources, key=len)
-    if len(configured_source_names) == 1:
-        return next(iter(configured_source_names))
+    if matching_graphs:
+        return max(matching_graphs, key=len)
     return None
 
 
 def run_redeploy(args: argparse.Namespace) -> int:
     """Redeploy existing RDF files to the configured backend."""
     from .config import load_config
-    from .config.graphs import GRAPH_CATALOG_PATH, GRAPH_CATALOG_SOURCE_NAME
+    from .config.graphs import (
+        ENRICHMENT_GRAPH_SOURCE_NAMES,
+        GRAPH_CATALOG_PATH,
+        GRAPH_CATALOG_SOURCE_NAME,
+    )
     from .deployment.factory import create_deployment_handler
     from .utils.logging import setup_logging
 
@@ -218,28 +228,52 @@ def run_redeploy(args: argparse.Namespace) -> int:
         print(f"No supported RDF files found in {rdf_dir}", file=sys.stderr)
         return 1
 
-    configured_source_names = {source.name for source in config.data_sources}
+    managed_graph_names = {
+        *(source.name for source in config.data_sources),
+        *ENRICHMENT_GRAPH_SOURCE_NAMES,
+    }
 
-    # Group files by their longest matching configured source name.
-    files_by_source: dict[str, list[Path]] = {}
+    # Group files by their longest matching managed graph name.
+    files_by_graph: dict[str, list[Path]] = {}
     for f in rdf_files:
-        source_name = _source_name_for_rdf_file(f, configured_source_names)
-        if source_name is None:
+        graph_name = _graph_name_for_rdf_file(f, managed_graph_names)
+        if graph_name is None:
             print(
-                f"Could not determine a configured source for RDF file: {f}",
+                f"Could not determine a managed graph for RDF file: {f}",
                 file=sys.stderr,
             )
             return 1
-        files_by_source.setdefault(source_name, []).append(f)
+        files_by_graph.setdefault(graph_name, []).append(f)
+
+    replace_generated = getattr(args, "replace", False)
+    if replace_generated:
+        multi_file_graphs = {
+            graph_name: files
+            for graph_name, files in files_by_graph.items()
+            if len(files) != 1
+        }
+        if multi_file_graphs:
+            graph_names = ", ".join(sorted(multi_file_graphs))
+            print(
+                "Replacement requires exactly one full-snapshot RDF file per graph; "
+                f"found multiple files for: {graph_names}",
+                file=sys.stderr,
+            )
+            return 1
 
     # Build the list of files to deploy
-    files_to_deploy = [
-        (source, f) for source, files in files_by_source.items() for f in files
-    ]
+    files_to_deploy = sorted(
+        ((graph, f) for graph, files in files_by_graph.items() for f in files),
+        key=lambda item: (
+            item[0] not in ENRICHMENT_GRAPH_SOURCE_NAMES,
+            item[0],
+            item[1],
+        ),
+    )
 
     print(
-        f"Found {len(files_to_deploy)} source file(s) to deploy "
-        f"across {len(files_by_source)} source(s), plus the graph and organization catalogs"
+        f"Found {len(files_to_deploy)} generated file(s) to deploy "
+        f"across {len(files_by_graph)} graph(s), plus the graph and organization catalogs"
     )
 
     graph_catalog_uri = config.deployment.graph_template.replace(
@@ -278,11 +312,11 @@ def run_redeploy(args: argparse.Namespace) -> int:
 
     success_count = 2
     failure_count = 0
-    for source_name, rdf_file in files_to_deploy:
-        logger.info(f"Deploying {rdf_file} (source: {source_name})")
-        graph_uri = config.deployment.graph_template.replace("{SOURCE}", source_name)
+    for graph_name, rdf_file in files_to_deploy:
+        logger.info(f"Deploying {rdf_file} (graph: {graph_name})")
+        graph_uri = config.deployment.graph_template.replace("{SOURCE}", graph_name)
         print(f"  Deploying {rdf_file} -> {graph_uri} ...", end=" ", flush=True)
-        ok = handler.deploy(rdf_file, source_name)
+        ok = handler.deploy(rdf_file, graph_name, replace=replace_generated)
         if ok:
             print("OK")
             success_count += 1

@@ -1,10 +1,20 @@
 PREFIX schema: <http://schema.org/>
+PREFIX graph: <http://data.climatesense-project.eu/graph/>
 
 SELECT ?entity (COUNT(?entity) AS ?count)
 WHERE {
-  ?claim a ?rdfType ;
-         schema:mentions ?entity .
-  VALUES ?rdfType { schema:Claim schema:ClaimReview }
+  {
+    SELECT DISTINCT ?claim ?rdfType
+    WHERE {
+      GRAPH ?sourceGraph {
+        ?claim a ?rdfType .
+      }
+      VALUES ?rdfType { schema:Claim schema:ClaimReview }
+    }
+  }
+  GRAPH graph:dbpedia-enricher {
+    ?claim schema:mentions ?entity .
+  }
 }
 GROUP BY ?entity
 ORDER BY DESC(?count)

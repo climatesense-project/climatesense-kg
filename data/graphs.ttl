@@ -17,6 +17,7 @@ graph:catalog
         graph:desmog,
         graph:climafacts,
         graph:climate-fever,
+        graph:dbpedia-enricher,
         graph:organizations,
         graph:vocabularies ;
     dcat:service <https://data.climatesense-project.eu/sparql> ;
@@ -85,6 +86,17 @@ graph:climate-fever
     dcterms:source <https://www.sustainablefinance.uzh.ch/en/research/climate-fever.html> ;
     void:sparqlEndpoint <https://data.climatesense-project.eu/sparql> .
 
+graph:dbpedia-enricher
+    a dcat:Dataset, void:Dataset ;
+    dcterms:identifier "dbpedia-enricher" ;
+    dcterms:title "DBpedia entity enrichment"@en ;
+    dcterms:description "Entity mentions identified by DBpedia Spotlight and properties retrieved from DBpedia."@en ;
+    dcterms:publisher <https://climatesense-project.eu/> ;
+    dcterms:source
+        <https://www.dbpedia-spotlight.org/>,
+        <https://dbpedia.org/sparql> ;
+    void:sparqlEndpoint <https://data.climatesense-project.eu/sparql> .
+
 graph:organizations
     a dcat:Dataset, void:Dataset ;
     dcterms:identifier "organizations" ;
@@ -117,6 +129,7 @@ graph:vocabularies
         graph:desmog,
         graph:climafacts,
         graph:climate-fever,
+        graph:dbpedia-enricher,
         graph:organizations,
         graph:vocabularies .
 
