@@ -37,6 +37,25 @@ def test_source_record_key_is_stable_and_distinguishes_claims() -> None:
     assert first.record_key != second_claim.record_key
 
 
+def test_native_source_identifier_is_the_stable_record_anchor() -> None:
+    first = SourceReference.from_observation(
+        source_name="native-source",
+        source_type="graphql",
+        native_id="record-42",
+        observed_url="https://example.test/old-path",
+        claim_text="Original claim text",
+    )
+    edited = SourceReference.from_observation(
+        source_name="native-source",
+        source_type="graphql",
+        native_id="record-42",
+        observed_url="https://example.test/new-path",
+        claim_text="Edited claim text",
+    )
+
+    assert edited.record_key == first.record_key
+
+
 def test_source_ratings_are_organization_scoped() -> None:
     rating = CanonicalRating(label="not_credible", original_label="False")
 

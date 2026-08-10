@@ -54,14 +54,19 @@ class SourceReference:
         anchor = native_id.strip() if native_id else observed_url.strip()
         if not anchor:
             raise ValueError("A native source identifier or observed URL is required")
-        record_key = _digest(
-            "source-review-record",
-            source_name,
-            source_type,
-            anchor,
-            claim_text,
-            discriminator,
-        )
+        if native_id:
+            record_key = _digest(
+                "source-review-record-native", source_name, source_type, anchor
+            )
+        else:
+            record_key = _digest(
+                "source-review-record",
+                source_name,
+                source_type,
+                anchor,
+                claim_text,
+                discriminator,
+            )
         return cls(
             source_name=source_name,
             source_type=source_type,
