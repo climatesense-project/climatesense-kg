@@ -6,6 +6,13 @@ CREATE TABLE source_review_records (
     observed_url TEXT NOT NULL,
     final_url TEXT,
     canonical_url TEXT,
+    claim_uri TEXT NOT NULL,
+    rating_fingerprint TEXT,
+    source_text TEXT,
+    extracted_text TEXT,
+    normalized_text_hash TEXT,
+    shingle_signature JSONB NOT NULL DEFAULT '[]'::jsonb,
+    word_count INTEGER NOT NULL DEFAULT 0 CHECK (word_count >= 0),
     payload_hash TEXT NOT NULL,
     document_id UUID,
     claim_review_id UUID,
@@ -44,7 +51,6 @@ CREATE TABLE claim_review_identities (
     document_id UUID NOT NULL REFERENCES review_documents(id) ON DELETE RESTRICT,
     organization_uri TEXT NOT NULL,
     claim_uri TEXT NOT NULL,
-    rating_fingerprint TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (document_id, claim_uri)
@@ -56,6 +62,12 @@ ALTER TABLE source_review_records
     ADD CONSTRAINT source_review_identity_fk
     FOREIGN KEY (claim_review_id)
     REFERENCES claim_review_identities(id) ON DELETE RESTRICT;
+
+CREATE INDEX source_review_records_document_variant
+    ON source_review_records (
+        document_id, word_count DESC, last_seen_at DESC, record_key
+    )
+    WHERE COALESCE(extracted_text, source_text) IS NOT NULL;
 
 CREATE INDEX claim_review_identity_candidates
     ON claim_review_identities (organization_uri, claim_uri);
@@ -69,11 +81,7 @@ CREATE TABLE identity_candidates (
         similarity >= 0 AND similarity <= 1
     ),
     evidence JSONB NOT NULL,
-    status TEXT NOT NULL DEFAULT 'pending' CHECK (
-        status IN ('pending', 'confirmed', 'rejected')
-    ),
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    decided_at TIMESTAMPTZ,
     PRIMARY KEY (source_record_key, candidate_review_id)
 );
 

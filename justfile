@@ -111,41 +111,41 @@ qlever-rebuild:
     COMPOSE_PROFILES=qlever docker compose -f docker/docker-compose.yml restart qlever
 
 # ============================================================================
-# Cache Commands
+# Semantic Stage State Commands
 # ============================================================================
 
-# Flush entire PostgreSQL cache
-cache-flush:
-    @echo "WARNING: This will delete ALL cache data in PostgreSQL!"
+# Flush semantic stage results without changing canonical identities
+stage-results-flush:
+    @echo "WARNING: This will delete ALL semantic stage results!"
     @read -p "Are you sure? (y/N) " confirm; \
     if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then \
-        cd docker && docker compose exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "TRUNCATE TABLE cache_entries;"' && \
-        echo "✅ PostgreSQL cache cleared successfully"; \
+        cd docker && docker compose exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "TRUNCATE TABLE stage_results;"' && \
+        echo "✅ Semantic stage results cleared successfully"; \
     else \
-        echo "❌ Cache flush cancelled"; \
+        echo "❌ Stage-result flush cancelled"; \
     fi
 
-# Delete cache entries for a specific step
-cache-delete STEP:
-    @echo "Deleting PostgreSQL cache for step: {{STEP}}"
-    @cd docker && COUNT=$(docker compose exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -t -c "SELECT COUNT(*) FROM cache_entries WHERE step = '\''{{STEP}}'\'';"' | tr -d ' '); \
+# Delete results for a specific semantic stage
+stage-results-delete STAGE:
+    @echo "Deleting PostgreSQL results for stage: {{STAGE}}"
+    @cd docker && COUNT=$(docker compose exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -t -c "SELECT COUNT(*) FROM stage_results WHERE stage_name = '\''{{STAGE}}'\'';"' | tr -d ' '); \
     if [ "$COUNT" -eq 0 ]; then \
-        echo "No cache entries found for step {{STEP}}"; \
+        echo "No results found for stage {{STAGE}}"; \
         exit 0; \
     fi; \
-    echo "Found $COUNT cache entries for step {{STEP}}"; \
+    echo "Found $COUNT results for stage {{STAGE}}"; \
     read -p "Are you sure you want to delete them? (y/N) " confirm; \
     if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then \
-        docker compose exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "DELETE FROM cache_entries WHERE step = '\''{{STEP}}'\'';"' && \
-        echo "✅ PostgreSQL cache deleted for {{STEP}}"; \
+        docker compose exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "DELETE FROM stage_results WHERE stage_name = '\''{{STAGE}}'\'';"' && \
+        echo "✅ PostgreSQL results deleted for {{STAGE}}"; \
     else \
-        echo "❌ Cache deletion cancelled"; \
+        echo "❌ Stage-result deletion cancelled"; \
     fi
 
-# List all cache steps
-cache-list:
-    @echo "=== Cached Steps ==="
-    @cd docker && docker compose exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT step, COUNT(*) as count FROM cache_entries GROUP BY step ORDER BY count DESC;"' || true
+# List all semantic stages
+stage-results-list:
+    @echo "=== Semantic Stage Results ==="
+    @cd docker && docker compose exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT stage_name, stage_version, success, COUNT(*) AS count FROM stage_results GROUP BY stage_name, stage_version, success ORDER BY stage_name, stage_version, success;"' || true
 
 # ============================================================================
 # Database Commands

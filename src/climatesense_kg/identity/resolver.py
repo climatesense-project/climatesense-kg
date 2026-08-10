@@ -11,7 +11,7 @@ from ..domain import (
     SourceReviewRecord,
 )
 from .fingerprints import fingerprint_document, shingle_containment
-from .models import IdentityAssignment, IdentityCandidate, RegisteredReview
+from .models import IdentityAssignment, IdentityCandidate
 from .registry import IdentityRegistry, IdentityTransaction
 
 
@@ -99,7 +99,6 @@ class IdentityResolver:
         documents = transaction.documents_by_evidence(
             organization.uri, urls, record.document.normalized_text_hash
         )
-        identity_candidates: list[IdentityCandidate] = []
         for document in documents:
             review = transaction.review_for_document_claim(
                 document.id, record.claim.uri
@@ -108,45 +107,18 @@ class IdentityResolver:
                 review = transaction.create_review(
                     uuid4(), document, organization, record
                 )
-                transaction.attach_source(record, document, review)
-                return transaction.assignment(review.id)
-            if self._ratings_compatible(review, record):
-                transaction.attach_source(record, document, review)
-                return transaction.assignment(review.id)
-            identity_candidates.append(
-                IdentityCandidate(
-                    candidate_review_id=review.id,
-                    similarity=1.0,
-                    evidence={
-                        "kind": "deterministic_evidence_rating_conflict",
-                        "same_organization": True,
-                        "same_claim": True,
-                        "url_match": bool(document.urls & urls),
-                        "content_hash_match": bool(
-                            record.document.normalized_text_hash
-                            and document.normalized_text_hash
-                            == record.document.normalized_text_hash
-                        ),
-                        "candidate_rating": review.rating_fingerprint,
-                        "source_rating": (
-                            record.rating.fingerprint if record.rating else None
-                        ),
-                    },
-                )
-            )
+            transaction.attach_source(record, document, review)
+            return transaction.assignment(review.id)
 
-        identity_candidates.extend(
-            self._find_fuzzy_candidates(transaction, record, organization)
+        identity_candidates = self._find_fuzzy_candidates(
+            transaction, record, organization
         )
         document = transaction.create_document(uuid4(), organization, record)
         review = transaction.create_review(uuid4(), document, organization, record)
         transaction.attach_source(record, document, review)
-        seen_candidates: set[tuple[str, str]] = set()
+        seen_candidates: set[str] = set()
         for candidate in identity_candidates:
-            candidate_key = (
-                str(candidate.candidate_review_id),
-                str(candidate.evidence.get("kind")),
-            )
+            candidate_key = str(candidate.candidate_review_id)
             if candidate_key in seen_candidates:
                 continue
             seen_candidates.add(candidate_key)
@@ -185,17 +157,6 @@ class IdentityResolver:
         return candidates
 
     @staticmethod
-    def _ratings_compatible(
-        registered: RegisteredReview, record: SourceReviewRecord
-    ) -> bool:
-        current = record.rating.fingerprint if record.rating else None
-        return (
-            registered.rating_fingerprint is None
-            or current is None
-            or registered.rating_fingerprint == current
-        )
-
-    @staticmethod
     def _to_canonical(
         record: SourceReviewRecord,
         organization: CanonicalOrganization,
@@ -224,25 +185,22 @@ class IdentityResolver:
             keywords=list(record.keywords),
             authors=list(record.authors),
             license_url=record.license_url,
+            description=record.document.description,
+            abstract=record.document.abstract,
+            observations={record.source.record_key: record},
         )
 
     @staticmethod
     def _merge(existing: CanonicalClaimReview, current: CanonicalClaimReview) -> None:
         existing.source_record_keys.update(current.source_record_keys)
         existing.source_names.update(current.source_names)
+        existing.observations.update(current.observations)
         existing.document.urls.update(current.document.urls)
-        if current.document.content and (
-            not existing.document.content
-            or len(current.document.content) > len(existing.document.content)
-        ):
-            existing.document.content = current.document.content
-            existing.document.normalized_text_hash = (
-                current.document.normalized_text_hash
-            )
-            existing.document.shingle_signature = list(
-                current.document.shingle_signature
-            )
-            existing.document.word_count = current.document.word_count
+        existing.document.preferred_url = current.document.preferred_url
+        existing.document.content = current.document.content
+        existing.document.normalized_text_hash = current.document.normalized_text_hash
+        existing.document.shingle_signature = list(current.document.shingle_signature)
+        existing.document.word_count = current.document.word_count
         for keyword in current.keywords:
             if keyword not in existing.keywords:
                 existing.keywords.append(keyword)

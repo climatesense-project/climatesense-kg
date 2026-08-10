@@ -7,7 +7,7 @@ from typing import Any, cast
 
 import requests
 
-from ..config.schemas import ProviderConfig
+from ..config.schemas import GraphQLProviderConfig
 from .base import BaseProvider
 
 
@@ -15,10 +15,10 @@ class GraphQLResponseError(RuntimeError):
     """Raised when a GraphQL response includes top-level errors."""
 
 
-class GraphQLProvider(BaseProvider):
+class GraphQLProvider(BaseProvider[GraphQLProviderConfig]):
     """Provider for fetching data from GraphQL APIs."""
 
-    def fetch(self, config: ProviderConfig) -> bytes:
+    def fetch(self, config: GraphQLProviderConfig) -> bytes:
         """Fetch data from GraphQL endpoint.
 
         Args:
@@ -152,7 +152,7 @@ class GraphQLProvider(BaseProvider):
 
         return None
 
-    def get_cache_key_fields(self, config: ProviderConfig) -> dict[str, Any]:
+    def get_cache_key_fields(self, config: GraphQLProviderConfig) -> dict[str, Any]:
         """Endpoint, query and variables affect cache."""
         return {
             "endpoint": config.endpoint,

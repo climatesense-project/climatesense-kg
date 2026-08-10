@@ -3,14 +3,14 @@
 from pathlib import Path
 from typing import Any
 
-from ..config.schemas import ProviderConfig
+from ..config.schemas import FileProviderConfig
 from .base import BaseProvider
 
 
-class FileProvider(BaseProvider):
+class FileProvider(BaseProvider[FileProviderConfig]):
     """Provider for reading data from local files."""
 
-    def fetch(self, config: ProviderConfig) -> bytes:
+    def fetch(self, config: FileProviderConfig) -> bytes:
         """Fetch data from local file.
 
         Args:
@@ -36,7 +36,7 @@ class FileProvider(BaseProvider):
         self.logger.info(f"Read {len(data)} bytes from {path}")
         return data
 
-    def get_cache_key_fields(self, config: ProviderConfig) -> dict[str, Any]:
+    def get_cache_key_fields(self, config: FileProviderConfig) -> dict[str, Any]:
         """File path and modification time affect cache."""
         file_path = config.file_path
         cache_fields = {"file_path": str(file_path) if file_path else None}
@@ -47,7 +47,7 @@ class FileProvider(BaseProvider):
         return cache_fields
 
     def get_cache_fallback_key_fields(
-        self, config: ProviderConfig
+        self, config: FileProviderConfig
     ) -> dict[str, Any] | None:
         """Use the configured path as a stable cache-only recovery key."""
         file_path = config.file_path

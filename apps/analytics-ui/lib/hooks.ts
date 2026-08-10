@@ -4,29 +4,33 @@ import { useEffect, useMemo, useState } from "react";
 
 import { fetchJson } from "./api-client";
 
-export type EnricherSuccessRate = {
-  step: string;
-  total_entries: number;
+export type StageSuccessRate = {
+  stage_name: string;
+  stage_version: string;
+  total_results: number;
   successful: number;
   failed: number;
   success_rate_percent: number;
 };
 
-export type EnricherErrorBreakdown = {
-  step: string;
+export type StageErrorBreakdown = {
+  stage_name: string;
+  stage_version: string;
   error_type: string | null;
   error_count: number;
 };
 
-export type EnricherDomainFailure = {
-  step: string;
+export type StageDomainFailure = {
+  stage_name: string;
+  stage_version: string;
   domain: string;
   failure_count: number;
 };
 
-export type EnricherRecentActivity = {
-  step: string;
-  recent_entries: number;
+export type StageRecentActivity = {
+  stage_name: string;
+  stage_version: string;
+  recent_results: number;
   earliest: string | null;
   latest: string | null;
   successful: number;
@@ -146,28 +150,28 @@ function useAnalyticsData<T>(
   return { data, error, loading };
 }
 
-export function useEnricherSuccess(
+export function useStageSuccess(
   params?: Record<string, string | number | undefined>
-): UseAnalyticsResult<EnricherSuccessRate[]> {
-  return useAnalyticsData<EnricherSuccessRate[]>("/metrics/enrichers/success-rate", params);
+): UseAnalyticsResult<StageSuccessRate[]> {
+  return useAnalyticsData<StageSuccessRate[]>("/metrics/stages/success-rate", params);
 }
 
-export function useEnricherErrors(
+export function useStageErrors(
   params?: Record<string, string | number | undefined>
-): UseAnalyticsResult<EnricherErrorBreakdown[]> {
-  return useAnalyticsData<EnricherErrorBreakdown[]>("/metrics/enrichers/error-types", params);
+): UseAnalyticsResult<StageErrorBreakdown[]> {
+  return useAnalyticsData<StageErrorBreakdown[]>("/metrics/stages/error-types", params);
 }
 
-export function useEnricherDomainFailures(
+export function useStageDomainFailures(
   params?: Record<string, string | number | undefined>
-): UseAnalyticsResult<EnricherDomainFailure[]> {
-  return useAnalyticsData<EnricherDomainFailure[]>("/metrics/enrichers/domain-failures", params);
+): UseAnalyticsResult<StageDomainFailure[]> {
+  return useAnalyticsData<StageDomainFailure[]>("/metrics/stages/domain-failures", params);
 }
 
-export function useEnricherActivity(
+export function useStageActivity(
   params?: Record<string, string | number | undefined>
-): UseAnalyticsResult<EnricherRecentActivity[]> {
-  return useAnalyticsData<EnricherRecentActivity[]>("/metrics/enrichers/recent-activity", params);
+): UseAnalyticsResult<StageRecentActivity[]> {
+  return useAnalyticsData<StageRecentActivity[]>("/metrics/stages/recent-activity", params);
 }
 
 export function useKgTripleStats(): UseAnalyticsResult<GraphTripleCount[]> {

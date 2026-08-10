@@ -8,7 +8,11 @@ from urllib.parse import urlparse
 
 from ..domain import SourceReviewRecord
 from ..persistence import StageResult, StageResultKey, StageResultStore
-from ..utils.text_processing import TextExtractionResult, fetch_and_extract_text
+from ..utils.text_processing import (
+    TextExtractionResult,
+    fetch_and_extract_text,
+    redact_url_credentials,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,49 +42,62 @@ class DocumentExtractor:
         self.timeout = timeout
         self.max_retries = max_retries
 
-    def extract(self, record: SourceReviewRecord) -> SourceReviewRecord:
+    def extract(
+        self, record: SourceReviewRecord, *, force: bool = False
+    ) -> SourceReviewRecord:
         """Fetch one HTTP document or restore the exact stage result."""
 
-        url = record.document.observed_url
-        if urlparse(url).scheme not in {"http", "https"}:
-            return record
+        return self.extract_many([record], force=force)[0]
 
-        key = self._key(record)
-        cached = self.store.get(key)
-        if cached is not None:
-            if cached.success:
+    def extract_many(
+        self, records: list[SourceReviewRecord], *, force: bool = False
+    ) -> list[SourceReviewRecord]:
+        """Restore state in bulk, then fetch only uncached HTTP documents."""
+
+        keyed_records = [
+            (record, self._key(record))
+            for record in records
+            if urlparse(record.document.observed_url).scheme in {"http", "https"}
+        ]
+        stored_results = (
+            {}
+            if force
+            else self.store.get_many([key for _record, key in keyed_records])
+        )
+        pending: list[tuple[SourceReviewRecord, StageResultKey]] = []
+        for record, key in keyed_records:
+            cached = stored_results.get(key)
+            if cached is None:
+                pending.append((record, key))
+            elif cached.success:
                 self._apply(record, cached.payload)
-            return record
 
-        result = self._fetch(url)
-        if result.success:
-            payload = {
-                "content": result.content,
-                "final_url": result.final_url,
-                "canonical_url": result.canonical_url,
-            }
-            self._apply(record, payload)
-            self.store.put(key, StageResult(success=True, payload=payload))
-        else:
-            self.store.put(
-                key,
-                StageResult(
+        new_results: dict[StageResultKey, StageResult] = {}
+        for record, key in pending:
+            url = record.document.observed_url
+            result = self._fetch(url)
+            if result.success:
+                payload = {
+                    "content": result.content,
+                    "final_url": result.final_url,
+                    "canonical_url": result.canonical_url,
+                }
+                self._apply(record, payload)
+                new_results[key] = StageResult(success=True, payload=payload)
+            else:
+                new_results[key] = StageResult(
                     success=False,
                     payload={
+                        "url": redact_url_credentials(url),
                         "error_type": (
                             result.error_type.value if result.error_type else "unknown"
                         ),
                         "error_message": result.error_message,
                     },
-                ),
-            )
-            logger.warning("Document extraction failed for %s", url)
-        return record
-
-    def extract_many(
-        self, records: list[SourceReviewRecord]
-    ) -> list[SourceReviewRecord]:
-        return [self.extract(record) for record in records]
+                )
+                logger.warning("Document extraction failed for %s", url)
+        self.store.put_many(new_results)
+        return records
 
     def _key(self, record: SourceReviewRecord) -> StageResultKey:
         return StageResultKey.build(

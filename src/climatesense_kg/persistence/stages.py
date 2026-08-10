@@ -67,7 +67,13 @@ class StageResultStore(Protocol):
 
     def get(self, key: StageResultKey) -> StageResult | None: ...
 
+    def get_many(
+        self, keys: list[StageResultKey]
+    ) -> dict[StageResultKey, StageResult]: ...
+
     def put(self, key: StageResultKey, result: StageResult) -> None: ...
+
+    def put_many(self, results: dict[StageResultKey, StageResult]) -> None: ...
 
 
 class InMemoryStageResultStore:
@@ -81,9 +87,17 @@ class InMemoryStageResultStore:
         with self._lock:
             return self._results.get(key)
 
+    def get_many(self, keys: list[StageResultKey]) -> dict[StageResultKey, StageResult]:
+        with self._lock:
+            return {key: self._results[key] for key in keys if key in self._results}
+
     def put(self, key: StageResultKey, result: StageResult) -> None:
         with self._lock:
             self._results[key] = result
+
+    def put_many(self, results: dict[StageResultKey, StageResult]) -> None:
+        with self._lock:
+            self._results.update(results)
 
 
 class PostgresStageResultStore:
@@ -93,35 +107,63 @@ class PostgresStageResultStore:
         self.pool = pool
 
     def get(self, key: StageResultKey) -> StageResult | None:
+        return self.get_many([key]).get(key)
+
+    def get_many(self, keys: list[StageResultKey]) -> dict[StageResultKey, StageResult]:
+        if not keys:
+            return {}
         with self.pool.connection() as connection:
             with connection.cursor(row_factory=dict_row) as cursor:
                 cursor.execute(
                     """
-                    SELECT success, payload
-                    FROM stage_results
-                    WHERE subject_key = %s
-                      AND stage_name = %s
-                      AND stage_version = %s
-                      AND input_hash = %s
-                      AND config_hash = %s
+                    WITH requested AS (
+                        SELECT *
+                        FROM UNNEST(
+                            %s::text[], %s::text[], %s::text[],
+                            %s::text[], %s::text[]
+                        ) AS keys(
+                            subject_key, stage_name, stage_version,
+                            input_hash, config_hash
+                        )
+                    )
+                    SELECT results.subject_key, results.stage_name,
+                           results.stage_version, results.input_hash,
+                           results.config_hash, results.success, results.payload
+                    FROM stage_results AS results
+                    JOIN requested USING (
+                        subject_key, stage_name, stage_version,
+                        input_hash, config_hash
+                    )
                     """,
                     (
-                        key.subject_key,
-                        key.stage_name,
-                        key.stage_version,
-                        key.input_hash,
-                        key.config_hash,
+                        [key.subject_key for key in keys],
+                        [key.stage_name for key in keys],
+                        [key.stage_version for key in keys],
+                        [key.input_hash for key in keys],
+                        [key.config_hash for key in keys],
                     ),
                 )
-                row = cursor.fetchone()
-        if row is None:
-            return None
-        return StageResult(success=row["success"], payload=row["payload"])
+                rows = cursor.fetchall()
+        return {
+            StageResultKey(
+                subject_key=row["subject_key"],
+                stage_name=row["stage_name"],
+                stage_version=row["stage_version"],
+                input_hash=row["input_hash"],
+                config_hash=row["config_hash"],
+            ): StageResult(success=row["success"], payload=row["payload"])
+            for row in rows
+        }
 
     def put(self, key: StageResultKey, result: StageResult) -> None:
+        self.put_many({key: result})
+
+    def put_many(self, results: dict[StageResultKey, StageResult]) -> None:
+        if not results:
+            return
         with self.pool.connection() as connection:
             with connection.cursor() as cursor:
-                cursor.execute(
+                cursor.executemany(
                     """
                     INSERT INTO stage_results (
                         subject_key, stage_name, stage_version,
@@ -136,13 +178,16 @@ class PostgresStageResultStore:
                         payload = EXCLUDED.payload,
                         updated_at = CURRENT_TIMESTAMP
                     """,
-                    (
-                        key.subject_key,
-                        key.stage_name,
-                        key.stage_version,
-                        key.input_hash,
-                        key.config_hash,
-                        result.success,
-                        json.dumps(result.payload),
-                    ),
+                    [
+                        (
+                            key.subject_key,
+                            key.stage_name,
+                            key.stage_version,
+                            key.input_hash,
+                            key.config_hash,
+                            result.success,
+                            json.dumps(result.payload),
+                        )
+                        for key, result in results.items()
+                    ],
                 )

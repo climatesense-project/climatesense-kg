@@ -88,6 +88,8 @@ class InMemoryIdentityRegistry:
         self._source_reviews: dict[str, UUID] = {}
         self._source_names: dict[str, str] = {}
         self._native_reviews: dict[tuple[str, str], UUID] = {}
+        self._source_documents: dict[str, SourceReviewRecord] = {}
+        self._document_source_keys: dict[UUID, set[str]] = {}
         self._candidates: dict[tuple[str, UUID], IdentityCandidate] = {}
 
     @contextmanager
@@ -135,7 +137,8 @@ class InMemoryIdentityRegistry:
             (
                 review
                 for review in self._reviews.values()
-                if review.document.id == document_id and review.claim_uri == claim_uri
+                if review.document.id == document_id
+                and self._review_matches_claim(review, claim_uri)
             ),
             None,
         )
@@ -148,7 +151,7 @@ class InMemoryIdentityRegistry:
                 review
                 for review in self._reviews.values()
                 if review.organization_uri == organization_uri
-                and review.claim_uri == claim_uri
+                and self._review_matches_claim(review, claim_uri)
             ),
             key=lambda review: str(review.id),
         )
@@ -192,7 +195,6 @@ class InMemoryIdentityRegistry:
             document=document,
             organization_uri=organization.uri,
             claim_uri=record.claim.uri,
-            rating_fingerprint=(record.rating.fingerprint if record.rating else None),
         )
         self._reviews[review_id] = review
         return review
@@ -209,6 +211,10 @@ class InMemoryIdentityRegistry:
             self._native_reviews[
                 (record.source.source_name, record.source.native_id)
             ] = review.id
+        self._source_documents[record.source.record_key] = record
+        self._document_source_keys.setdefault(document.id, set()).add(
+            record.source.record_key
+        )
         document.urls.update(
             url
             for url in (
@@ -219,11 +225,21 @@ class InMemoryIdentityRegistry:
             if url
         )
         document.preferred_url = record.document.preferred_url
-        if record.document.content:
-            document.content = record.document.content
-            document.normalized_text_hash = record.document.normalized_text_hash
-            document.shingles = frozenset(record.document.shingle_signature)
-            document.word_count = record.document.word_count
+        document_records = (
+            self._source_documents[key]
+            for key in self._document_source_keys[document.id]
+            if self._source_documents[key].document.content
+        )
+        selected = max(
+            document_records,
+            key=lambda source_record: source_record.document.word_count,
+            default=None,
+        )
+        if selected is not None:
+            document.content = selected.document.content
+            document.normalized_text_hash = selected.document.normalized_text_hash
+            document.shingles = frozenset(selected.document.shingle_signature)
+            document.word_count = selected.document.word_count
 
     def record_candidate(
         self, source_record_key: str, candidate: IdentityCandidate
@@ -241,6 +257,15 @@ class InMemoryIdentityRegistry:
             review=review,
             source_record_keys=record_keys,
             source_names={self._source_names[key] for key in record_keys},
+        )
+
+    def _review_matches_claim(self, review: RegisteredReview, claim_uri: str) -> bool:
+        if review.claim_uri == claim_uri:
+            return True
+        return any(
+            self._source_documents[key].claim.uri == claim_uri
+            for key, mapped_review_id in self._source_reviews.items()
+            if mapped_review_id == review.id
         )
 
     @property

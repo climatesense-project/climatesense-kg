@@ -1,190 +1,134 @@
-"""Base classes for data enrichment."""
+"""Versioned enrichment-stage base class."""
+
+from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import logging
 from typing import Any
 
-from ..cache.interface import CacheInterface
-from ..config.models import CanonicalClaimReview
-
-logger = logging.getLogger(__name__)
+from ..domain import CanonicalClaimReview
+from ..persistence import StageResult, StageResultKey, StageResultStore
 
 
 class Enricher(ABC):
-    """Abstract base class for data enrichers."""
+    """Apply one semantic transformation with explicit persistent state."""
 
     def __init__(
         self,
         name: str,
-        cache: CacheInterface | None = None,
-        **kwargs: Any,
-    ):
+        *,
+        version: str,
+        store: StageResultStore,
+        **config: Any,
+    ) -> None:
         self.name = name
-        self.config = kwargs
-        self.cache = cache
-        self.step_name = f"enricher.{name}"
+        self.stage_name = f"enrichment.{name}"
+        self.version = version
+        self.store = store
+        self.config = config
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
-    def required_cache_steps(self) -> list[str]:
-        """Return cache step names that must exist to consider an item processed."""
-        return [self.step_name]
-
-    def enrich(self, items: list[CanonicalClaimReview]) -> list[CanonicalClaimReview]:
-        """
-        Enrich a list of claim reviews.
-
-        Args:
-            items: Single claim review or list of claim reviews
-
-        Returns:
-            Enriched single item or list (matches input type)
-        """
-        uris = [item.uri for item in items if item.uri]
-        cached_data = {}
-        if self.cache and uris:
-            cached_data = self.cache.get_many(uris, self.step_name)
-
-        # Process all items
-        results: list[CanonicalClaimReview] = []
-        for i, item in enumerate(items):
-            try:
-                if item.uri and item.uri in cached_data:
-                    cached_payload = cached_data[item.uri]
-                    if self.should_retry_cached_data(cached_payload):
-                        enriched = self._process_item(item)
-                    else:
-                        enriched = self.apply_cached_data(item, cached_payload)
-                else:
-                    # Process item and cache result
-                    enriched = self._process_item(item)
-                results.append(enriched)
-
-                if (i + 1) % 100 == 0 or (i + 1) == len(items):
-                    self.logger.info(
-                        f"Enriched {i + 1}/{len(items)} items ({((i + 1) / len(items)) * 100:.1f}%)"
-                    )
-
-            except Exception as e:
-                self.logger.error(f"Error enriching claim review {item.uri}: {e}")
-                results.append(item)
-
-        return results
-
-    def should_retry_cached_data(self, cached_data: dict[str, Any]) -> bool:
-        """Return whether a cache entry represents retryable incomplete work."""
-        return False
-
-    def apply_cached_only(
-        self, items: list[CanonicalClaimReview]
+    def enrich(
+        self,
+        items: list[CanonicalClaimReview],
+        *,
+        cached_only: bool = False,
+        force: bool = False,
     ) -> list[CanonicalClaimReview]:
-        """Apply cached enrichment data without running the enricher."""
-        if not self.cache:
-            return items
+        """Apply stored or newly computed enrichment to canonical reviews."""
 
-        uris = [item.uri for item in items if item.uri]
-        cached_data = self.cache.get_many(uris, self.step_name) if uris else {}
+        keyed_items = [(item, self.result_key(item)) for item in items]
+        stored_results = (
+            {} if force else self.store.get_many([key for _item, key in keyed_items])
+        )
+        pending: list[tuple[CanonicalClaimReview, StageResultKey]] = []
+        for item, key in keyed_items:
+            stored = stored_results.get(key)
+            if stored is not None:
+                self._apply(item, stored.payload)
+            elif not cached_only:
+                pending.append((item, key))
 
-        results: list[CanonicalClaimReview] = []
+        if pending:
+            pending_items = [item for item, _key in pending]
+            try:
+                computed = self._compute_many(pending_items, force=force)
+                if len(computed) != len(pending):
+                    raise ValueError(
+                        f"{self.name} returned {len(computed)} results "
+                        f"for {len(pending)} inputs"
+                    )
+            except Exception as exc:
+                self.logger.error("%s batch failed: %s", self.name, exc)
+                computed = [
+                    StageResult(
+                        success=False,
+                        payload={"error_type": "stage_error", "error": str(exc)},
+                    )
+                    for _item, _key in pending
+                ]
+            new_results = {
+                key: result
+                for (_item, key), result in zip(pending, computed, strict=True)
+            }
+            self.store.put_many(new_results)
+            for (item, _key), result in zip(pending, computed, strict=True):
+                self._apply(item, result.payload)
+
+        if items:
+            self.logger.info(
+                "Applied %s to %d reviews (%d computed)",
+                self.name,
+                len(items),
+                len(pending),
+            )
+        return items
+
+    def _compute_many(
+        self,
+        items: list[CanonicalClaimReview],
+        *,
+        force: bool,
+    ) -> list[StageResult]:
+        """Compute results independently; batch stages can override this hook."""
+
+        results: list[StageResult] = []
         for item in items:
-            if item.uri and item.uri in cached_data:
-                results.append(self.apply_cached_data(item, cached_data[item.uri]))
-            else:
-                results.append(item)
-
+            try:
+                results.append(self._compute(item, force=force))
+            except Exception as exc:
+                self.logger.error("%s failed for %s: %s", self.name, item.uri, exc)
+                results.append(
+                    StageResult(
+                        success=False,
+                        payload={"error_type": "stage_error", "error": str(exc)},
+                    )
+                )
         return results
 
-    @abstractmethod
-    def _process_item(self, claim_review: CanonicalClaimReview) -> CanonicalClaimReview:
-        """
-        Process a single item and cache the result.
-
-        This is the only method enrichers need to implement.
-
-        Args:
-            claim_review: The claim review to process
-
-        Returns:
-            CanonicalClaimReview: The enriched claim review
-        """
-        pass
+    def result_key(self, item: CanonicalClaimReview) -> StageResultKey:
+        return StageResultKey.build(
+            subject_key=item.key,
+            stage_name=self.stage_name,
+            stage_version=self.version,
+            input_value=self._input_value(item),
+            config_value=self.config,
+        )
 
     @abstractmethod
     def is_available(self) -> bool:
-        """
-        Check if this enricher is available and properly configured.
-
-        Returns:
-            bool: True if enricher can be used, False otherwise
-        """
-        pass
+        """Return whether the external dependency is ready."""
 
     @abstractmethod
-    def apply_cached_data(
-        self, claim_review: CanonicalClaimReview, cached_data: dict[str, Any]
-    ) -> CanonicalClaimReview:
-        """
-        Apply cached enrichment data to a claim review.
+    def _input_value(self, item: CanonicalClaimReview) -> Any:
+        """Return only semantic input consumed by this stage."""
 
-        Args:
-            claim_review: Original claim review
-            cached_data: Cached enrichment data
+    @abstractmethod
+    def _compute(
+        self, item: CanonicalClaimReview, *, force: bool = False
+    ) -> StageResult:
+        """Compute one stage result without mutating the review."""
 
-        Returns:
-            Enriched claim review with cached data applied
-        """
-        pass
-
-    def get_cached(self, uri: str) -> dict[str, Any] | None:
-        """Get cached enrichment data for a URI."""
-        if not self.cache:
-            return None
-        return self.cache.get(uri, self.step_name)
-
-    def set_cached(self, uri: str, payload: dict[str, Any]) -> bool:
-        """Store enrichment data in cache."""
-        if not self.cache:
-            return False
-        return self.cache.set(uri, self.step_name, payload)
-
-    def cache_error(
-        self,
-        uri: str,
-        error_type: str,
-        message: str,
-        data: dict[str, Any] | None = None,
-    ) -> bool:
-        """
-        Cache an error for the given URI.
-
-        Args:
-            uri: URI to cache error for
-            error_type: Type of error
-            message: Error description
-            data: Optional enricher-specific data
-
-        Returns:
-            True if successfully cached, False otherwise
-        """
-        payload: dict[str, Any] = {
-            "success": False,
-            "error": {
-                "type": error_type,
-                "message": message,
-            },
-            "data": data or {},
-        }
-        return self.set_cached(uri, payload)
-
-    def cache_success(self, uri: str, data: dict[str, Any]) -> bool:
-        """
-        Cache successful enrichment data for the given URI.
-
-        Args:
-            uri: URI to cache data for
-            data: Enricher-specific data to cache
-
-        Returns:
-            True if successfully cached, False otherwise
-        """
-        payload: dict[str, Any] = {"success": True, "data": data}
-        return self.set_cached(uri, payload)
+    @abstractmethod
+    def _apply(self, item: CanonicalClaimReview, payload: dict[str, Any]) -> None:
+        """Apply a stored stage payload to the typed domain model."""

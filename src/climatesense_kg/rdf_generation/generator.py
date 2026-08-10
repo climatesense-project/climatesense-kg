@@ -12,14 +12,15 @@ from urllib.parse import quote
 from rdflib import Graph, Literal, Namespace, URIRef
 from rdflib.namespace import RDF, XSD
 
-from ..config.models import (
+from ..domain import (
     CanonicalClaim,
     CanonicalClaimReview,
     CanonicalOrganization,
     CanonicalPerson,
     CanonicalRating,
+    EntityMention,
+    EntityPropertyValue,
 )
-from ..utils.ratings import VALID_NORMALIZED_RATINGS
 from ..utils.text_processing import sanitize_url
 
 logger = logging.getLogger(__name__)
@@ -110,16 +111,15 @@ class RDFGenerator:
         self, claim_reviews: list[CanonicalClaimReview], output_format: str
     ) -> tuple[str, list[str]]:
         """Generate RDF and return its content and successfully generated review URIs."""
-        if output_format.lower() not in self.SUPPORTED_FORMATS:
-            raise ValueError(
-                f"Unsupported format: {output_format}. "
-                f"Supported formats: {sorted(self.SUPPORTED_FORMATS)}"
-            )
+        successful_review_uris = self._build_claim_review_graph(claim_reviews)
+        return self._serialize_graph(output_format), successful_review_uris
 
-        self.graph = Graph()
-        self._bind_namespaces()
+    def _build_claim_review_graph(
+        self, claim_reviews: list[CanonicalClaimReview]
+    ) -> list[str]:
+        """Build the core graph and return successfully projected review URIs."""
 
-        # Track URIs for deduplication within this generation
+        self._reset_graph()
         generated_uris: set[str] = set()
         successful_review_uris: list[str] = []
 
@@ -132,34 +132,35 @@ class RDFGenerator:
                 )
                 continue
             successful_review_uris.append(claim_review.uri)
-
-        return self._serialize_graph(output_format), successful_review_uris
+        return successful_review_uris
 
     def _generate_entity_enrichment_with_results(
         self,
         claim_reviews: list[CanonicalClaimReview],
         output_format: str,
         entity_sources: frozenset[str],
-        property_keys: tuple[str, ...],
     ) -> tuple[str, list[str]]:
         """Generate entity-linking RDF and return contributing review URIs."""
-        if output_format.lower() not in self.SUPPORTED_FORMATS:
-            raise ValueError(
-                f"Unsupported format: {output_format}. "
-                f"Supported formats: {sorted(self.SUPPORTED_FORMATS)}"
-            )
+        successful_review_uris = self._build_entity_enrichment_graph(
+            claim_reviews, entity_sources
+        )
+        return self._serialize_graph(output_format), successful_review_uris
 
-        self.graph = Graph()
-        self._bind_namespaces()
+    def _build_entity_enrichment_graph(
+        self,
+        claim_reviews: list[CanonicalClaimReview],
+        entity_sources: frozenset[str],
+    ) -> list[str]:
+        """Build one provider-owned entity graph."""
+
+        self._reset_graph()
         successful_review_uris: list[str] = []
 
         for claim_review in claim_reviews:
             if not self.has_entity_enrichment(claim_review, entity_sources):
                 continue
             try:
-                self._generate_entity_enrichment_rdf(
-                    claim_review, entity_sources, property_keys
-                )
+                self._generate_entity_enrichment_rdf(claim_review, entity_sources)
             except Exception as exc:
                 self.logger.error(
                     "Error generating entity enrichment RDF for claim review %s: %s",
@@ -168,12 +169,23 @@ class RDFGenerator:
                 )
                 continue
             successful_review_uris.append(claim_review.uri)
+        return successful_review_uris
 
-        return self._serialize_graph(output_format), successful_review_uris
+    def _reset_graph(self) -> None:
+        self.graph = Graph()
+        self._bind_namespaces()
+
+    def _validate_output_format(self, output_format: str) -> str:
+        if output_format.lower() not in self.SUPPORTED_FORMATS:
+            raise ValueError(
+                f"Unsupported format: {output_format}. "
+                f"Supported formats: {sorted(self.SUPPORTED_FORMATS)}"
+            )
+        return self._normalize_format_name(output_format)
 
     def _serialize_graph(self, output_format: str) -> str:
         """Serialize the current graph using the public output format name."""
-        rdflib_format = self._normalize_format_name(output_format)
+        rdflib_format = self._validate_output_format(output_format)
         try:
             return self.graph.serialize(format=rdflib_format)
         except Exception as exc:
@@ -198,11 +210,8 @@ class RDFGenerator:
         Returns:
             URIs of claim reviews that were successfully added to the RDF graph
         """
-        rdf_content, successful_review_uris = self._generate_with_results(
-            claim_reviews, output_format
-        )
-
-        self._save_rdf_content(rdf_content, output_path, output_format)
+        successful_review_uris = self._build_claim_review_graph(claim_reviews)
+        self._save_graph(output_path, output_format)
         return successful_review_uris
 
     def save_entity_enrichment(
@@ -212,26 +221,20 @@ class RDFGenerator:
         output_format: str,
         *,
         entity_sources: frozenset[str],
-        property_keys: tuple[str, ...],
     ) -> list[str]:
         """Generate and save RDF owned by one entity enrichment graph."""
-        rdf_content, successful_review_uris = (
-            self._generate_entity_enrichment_with_results(
-                claim_reviews,
-                output_format,
-                entity_sources,
-                property_keys,
-            )
+        successful_review_uris = self._build_entity_enrichment_graph(
+            claim_reviews,
+            entity_sources,
         )
-        self._save_rdf_content(rdf_content, output_path, output_format)
+        self._save_graph(output_path, output_format)
         return successful_review_uris
 
-    def _save_rdf_content(
-        self, rdf_content: str, output_path: str | Path, output_format: str
-    ) -> None:
-        """Atomically save serialized RDF content."""
+    def _save_graph(self, output_path: str | Path, output_format: str) -> None:
+        """Serialize the current graph directly into an atomic temporary file."""
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
+        rdflib_format = self._validate_output_format(output_format)
 
         lock_path = output_path.with_suffix(f"{output_path.suffix}.lock")
         with lock_path.open("a+b") as lock_file:
@@ -244,8 +247,7 @@ class RDFGenerator:
                     else 0o644
                 )
                 with tempfile.NamedTemporaryFile(
-                    mode="w",
-                    encoding="utf-8",
+                    mode="wb",
                     dir=output_path.parent,
                     prefix=f".{output_path.name}.",
                     suffix=".tmp",
@@ -253,9 +255,19 @@ class RDFGenerator:
                 ) as temp_file:
                     temp_path = Path(temp_file.name)
                     os.fchmod(temp_file.fileno(), output_mode)
-                    temp_file.write(rdf_content)
-                    temp_file.flush()
-                    os.fsync(temp_file.fileno())
+
+                try:
+                    self.graph.serialize(
+                        destination=temp_path,
+                        format=rdflib_format,
+                        encoding="utf-8",
+                    )
+                except Exception as exc:
+                    raise ValueError(
+                        f"Failed to serialize RDF as {output_format}: {exc}"
+                    ) from exc
+                with temp_path.open("rb") as serialized:
+                    os.fsync(serialized.fileno())
 
                 os.replace(temp_path, output_path)
                 temp_path = None
@@ -273,43 +285,42 @@ class RDFGenerator:
         claim_review: CanonicalClaimReview, entity_sources: frozenset[str]
     ) -> bool:
         """Return whether a review contains an entity owned by the given sources."""
-        entities = [*claim_review.claim.entities, *claim_review.entities_in_review]
-        return any(entity.get("source") in entity_sources for entity in entities)
+        entities = [
+            *claim_review.claim.analysis.entities,
+            *claim_review.analysis.entities,
+        ]
+        return any(entity.source in entity_sources for entity in entities)
 
     def _generate_entity_enrichment_rdf(
         self,
         claim_review: CanonicalClaimReview,
         entity_sources: frozenset[str],
-        property_keys: tuple[str, ...],
     ) -> None:
         """Generate entity mention and property triples for one review."""
         claim_uri = URIRef(self.get_full_uri(claim_review.claim.uri))
         review_uri = URIRef(self.get_full_uri(claim_review.uri))
         self._add_entity_mentions(
-            claim_uri, claim_review.claim.entities, entity_sources, property_keys
+            claim_uri, claim_review.claim.analysis.entities, entity_sources
         )
         self._add_entity_mentions(
             review_uri,
-            claim_review.entities_in_review,
+            claim_review.analysis.entities,
             entity_sources,
-            property_keys,
         )
 
     def _add_entity_mentions(
         self,
         subject_uri: URIRef,
-        entities: list[dict[str, Any]],
+        entities: list[EntityMention],
         entity_sources: frozenset[str],
-        property_keys: tuple[str, ...],
     ) -> None:
         """Add provider-owned mention assertions and entity descriptions."""
         for entity in entities:
-            if entity.get("source") not in entity_sources or not entity.get("uri"):
+            if entity.source not in entity_sources or not entity.uri:
                 continue
-            entity_uri = URIRef(entity["uri"])
+            entity_uri = URIRef(entity.uri)
             self.graph.add((subject_uri, self.SCHEMA.mentions, entity_uri))
-            for property_key in property_keys:
-                self._add_entity_properties(entity_uri, entity.get(property_key))
+            self._add_entity_properties(entity_uri, entity.properties)
 
     def _normalize_format_name(self, format_name: str) -> str:
         """
@@ -415,9 +426,9 @@ class RDFGenerator:
         for person_uri in person_uris:
             self.graph.add((review_uri, self.SCHEMA.author, person_uri))
 
-        # Review URL
-        if claim_review.review_url:
-            sanitized_url = sanitize_url(claim_review.review_url)
+        # Every known URL is an alias of this already-resolved review.
+        for review_url in sorted(claim_review.document.urls):
+            sanitized_url = sanitize_url(review_url)
             if sanitized_url:
                 self.graph.add((review_uri, self.SCHEMA.url, URIRef(sanitized_url)))
 
@@ -446,13 +457,9 @@ class RDFGenerator:
         if rating_uri:
             self.graph.add((review_uri, self.SCHEMA.reviewRating, rating_uri))
 
-            if (
-                claim_review.rating
-                and claim_review.rating.label
-                and self._is_valid_normalized_rating(claim_review.rating.label)
-            ):
+            if claim_review.rating and claim_review.rating.normalized_uri is not None:
                 normalized_rating_uri = URIRef(
-                    self.get_full_uri(f"rating/{claim_review.rating.label}")
+                    self.get_full_uri(claim_review.rating.normalized_uri)
                 )
                 self.graph.add(
                     (
@@ -478,16 +485,6 @@ class RDFGenerator:
         if claim_review.abstract:
             self.graph.add(
                 (review_uri, self.SCHEMA.abstract, Literal(claim_review.abstract))
-            )
-
-        # Review URL text if available
-        if claim_review.review_url_text:
-            self.graph.add(
-                (
-                    review_uri,
-                    self.SCHEMA.text,
-                    Literal(claim_review.review_url_text),
-                )
             )
 
         # Keywords
@@ -549,36 +546,37 @@ class RDFGenerator:
             self.graph.add((claim_uri, self.SCHEMA.keywords, Literal(keyword)))
 
         # Enrichment data
-        if claim.emotion and claim.emotion != "None":
+        analysis = claim.analysis
+        if analysis.emotion and analysis.emotion != "None":
             emotion_uri = URIRef(
-                f"{self.base_uri}/emotion/{self._encode_uri_segment(claim.emotion)}"
+                f"{self.base_uri}/emotion/{self._encode_uri_segment(analysis.emotion)}"
             )
             self.graph.add((claim_uri, self.CIMPLE.hasEmotion, emotion_uri))
 
-        if claim.sentiment:
+        if analysis.sentiment:
             sentiment_uri = URIRef(
-                f"{self.base_uri}/sentiment/{self._encode_uri_segment(claim.sentiment)}"
+                f"{self.base_uri}/sentiment/{self._encode_uri_segment(analysis.sentiment)}"
             )
             self.graph.add((claim_uri, self.CIMPLE.hasSentiment, sentiment_uri))
 
-        if claim.political_leaning:
+        if analysis.political_leaning:
             political_uri = URIRef(
                 f"{self.base_uri}/political-leaning/"
-                f"{self._encode_uri_segment(claim.political_leaning)}"
+                f"{self._encode_uri_segment(analysis.political_leaning)}"
             )
             self.graph.add((claim_uri, self.CIMPLE.hasPoliticalLeaning, political_uri))
 
-        if claim.climate_related is not None:
+        if analysis.climate_related is not None:
             self.graph.add(
                 (
                     claim_uri,
                     self.CLIMATESENSE.isClimateRelated,
-                    Literal(claim.climate_related, datatype=XSD.boolean),
+                    Literal(analysis.climate_related, datatype=XSD.boolean),
                 )
             )
 
         # Tropes
-        for trope in claim.tropes:
+        for trope in analysis.tropes:
             if not trope:
                 continue
             slug = self._encode_uri_segment(trope)
@@ -586,7 +584,7 @@ class RDFGenerator:
             self.graph.add((claim_uri, self.CIMPLE.hasTrope, trope_uri))
 
         # Persuasion techniques
-        for technique in claim.persuasion_techniques:
+        for technique in analysis.persuasion_techniques:
             if not technique:
                 continue
             slug = self._encode_uri_segment(technique)
@@ -596,24 +594,24 @@ class RDFGenerator:
             )
 
         # Conspiracies
-        for conspiracy in claim.conspiracies["mentioned"]:
+        for conspiracy in analysis.conspiracies["mentioned"]:
             conspiracy_uri = URIRef(
                 f"{self.base_uri}/conspiracy/{self._encode_uri_segment(conspiracy)}"
             )
             self.graph.add((claim_uri, self.CIMPLE.mentionsConspiracy, conspiracy_uri))
-        for conspiracy in claim.conspiracies["promoted"]:
+        for conspiracy in analysis.conspiracies["promoted"]:
             conspiracy_uri = URIRef(
                 f"{self.base_uri}/conspiracy/{self._encode_uri_segment(conspiracy)}"
             )
             self.graph.add((claim_uri, self.CIMPLE.promotesConspiracy, conspiracy_uri))
 
         # Readability score
-        if claim.readability_score is not None:
+        if analysis.readability_score is not None:
             self.graph.add(
                 (
                     claim_uri,
                     self.CIMPLE.readability_score,
-                    Literal(claim.readability_score),
+                    Literal(analysis.readability_score),
                 )
             )
 
@@ -623,14 +621,12 @@ class RDFGenerator:
         self,
         rating: CanonicalRating,
         generated_uris: set[str],
-        organization_uri: URIRef | None,
+        organization_uri: URIRef,
     ) -> URIRef:
         """Generate RDF for a rating."""
-        rating_uri = URIRef(self.get_full_uri(rating.uri))
+        rating_uri = URIRef(self.get_full_uri(rating.uri_for(str(organization_uri))))
 
-        # The rating identity is shared, but its organization context is not.
-        if organization_uri:
-            self.graph.add((rating_uri, self.SCHEMA.author, organization_uri))
+        self.graph.add((rating_uri, self.SCHEMA.author, organization_uri))
 
         if str(rating_uri) in generated_uris:
             return rating_uri
@@ -684,7 +680,7 @@ class RDFGenerator:
     def _add_entity_properties(
         self,
         entity_uri: URIRef,
-        properties: dict[str, list[dict[str, Any]]] | None,
+        properties: dict[str, list[EntityPropertyValue]] | None,
     ) -> None:
         """Add additional DBpedia properties for a referenced entity."""
         if not properties:
@@ -710,20 +706,19 @@ class RDFGenerator:
                     continue
                 self.graph.add((entity_uri, predicate, node))
 
-    def _convert_property_value(self, value: dict[str, Any]) -> URIRef | Literal | None:
-        """Convert a property value dictionary into an rdflib node."""
-        raw_value = value.get("value")
-        if raw_value is None:
-            return None
-
-        value_type = value.get("type", "literal")
+    def _convert_property_value(
+        self, value: EntityPropertyValue
+    ) -> URIRef | Literal | None:
+        """Convert a typed property value into an rdflib node."""
+        raw_value = value.value
+        value_type = value.value_type
 
         try:
             if value_type == "uri":
                 return URIRef(raw_value)
 
-            datatype = value.get("datatype")
-            lang = value.get("lang")
+            datatype = value.datatype
+            lang = value.language
 
             if datatype:
                 return Literal(raw_value, datatype=URIRef(datatype))
@@ -737,9 +732,6 @@ class RDFGenerator:
                 "Failed to convert DBpedia property value %s: %s", value, exc
             )
             return None
-
-    def _is_valid_normalized_rating(self, label: str) -> bool:
-        return label in VALID_NORMALIZED_RATINGS
 
     def _encode_uri_segment(self, value: str) -> str:
         """Convert a model label into one safe URI path segment."""

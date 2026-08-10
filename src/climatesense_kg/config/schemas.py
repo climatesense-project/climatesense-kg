@@ -6,15 +6,18 @@ from typing import Any, Literal
 
 
 @dataclass
-class ProviderConfig:
-    """Configuration for data providers."""
+class FileProviderConfig:
+    """Local-file provider configuration."""
 
-    provider_type: Literal["file", "github", "graphql", "xwiki", "http"]
+    provider_type: Literal["file"]
+    file_path: str | Path
 
-    # Common parameters
-    file_path: str | Path | None = None
 
-    # GitHub provider parameters
+@dataclass
+class GitHubProviderConfig:
+    """GitHub release-asset or repository-file configuration."""
+
+    provider_type: Literal["github"]
     repository: str = ""
     asset_pattern: str = "*.json"
     extract_file: str | None = None
@@ -25,30 +28,61 @@ class ProviderConfig:
     max_extract_size: str = "256MB"
     download_spool_threshold_bytes: int = 8 * 1024 * 1024
 
-    # GraphQL provider parameters
+    timeout: int = 30
+
+    def __post_init__(self) -> None:
+        if self.download_spool_threshold_bytes <= 0:
+            raise ValueError(
+                "GitHub download spool threshold must be greater than zero"
+            )
+
+
+@dataclass
+class GraphQLProviderConfig:
+    """Paginated GraphQL provider configuration."""
+
+    provider_type: Literal["graphql"]
     endpoint: str = ""
     query: str = ""
     variables: dict[str, Any] = field(default_factory=dict[str, Any])
     batch_size: int = 100
     max_retries: int = 3
 
-    # REST API provider parameters
-    base_url: str = ""
-    url: str = ""
-    tags: list[str] = field(default_factory=list[str])
-
-    # Common network parameters
     rate_limit_delay: float = 1.0
     timeout: int = 30
 
     def __post_init__(self) -> None:
-        """Validate provider-specific values that affect control flow."""
-        if self.provider_type == "graphql" and self.batch_size <= 0:
+        if self.batch_size <= 0:
             raise ValueError("GraphQL provider batch_size must be greater than zero")
-        if self.provider_type == "github" and self.download_spool_threshold_bytes <= 0:
-            raise ValueError(
-                "GitHub download spool threshold must be greater than zero"
-            )
+
+
+@dataclass
+class XWikiProviderConfig:
+    """XWiki fact-check API provider configuration."""
+
+    provider_type: Literal["xwiki"]
+    base_url: str = ""
+    tags: list[str] = field(default_factory=list[str])
+    rate_limit_delay: float = 1.0
+    timeout: int = 30
+
+
+@dataclass
+class HttpProviderConfig:
+    """Static HTTP download provider configuration."""
+
+    provider_type: Literal["http"]
+    url: str = ""
+    timeout: int = 30
+
+
+ProviderConfig = (
+    FileProviderConfig
+    | GitHubProviderConfig
+    | GraphQLProviderConfig
+    | XWikiProviderConfig
+    | HttpProviderConfig
+)
 
 
 @dataclass
@@ -71,10 +105,10 @@ class DataSourceConfig:
 
 
 @dataclass
-class UrlTextExtractionConfig:
-    """Configuration for URL text extraction."""
+class DocumentExtractionConfig:
+    """Configuration for pre-identity document extraction."""
 
-    enabled: bool = False
+    enabled: bool = True
     rate_limit_delay: float = 0.5
     timeout: int = 15
     max_retries: int = 2
@@ -126,9 +160,6 @@ class EnrichmentConfig:
         default_factory=DbpediaEntityPropertiesConfig
     )
     bert_factors: BertFactorsConfig = field(default_factory=BertFactorsConfig)
-    url_text_extraction: UrlTextExtractionConfig = field(
-        default_factory=UrlTextExtractionConfig
-    )
 
 
 @dataclass
@@ -172,6 +203,9 @@ class PipelineConfig:
     """Main pipeline configuration."""
 
     data_sources: list[DataSourceConfig] = field(default_factory=list[DataSourceConfig])
+    document_extraction: DocumentExtractionConfig = field(
+        default_factory=DocumentExtractionConfig
+    )
     enrichment: EnrichmentConfig = field(default_factory=EnrichmentConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)

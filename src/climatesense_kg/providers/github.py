@@ -12,7 +12,7 @@ import zipfile
 import requests
 from tqdm import tqdm
 
-from ..config.schemas import ProviderConfig
+from ..config.schemas import GitHubProviderConfig
 from ..utils.logging import parse_file_size
 from .base import BaseProvider
 
@@ -24,7 +24,7 @@ class GitHubAsset:
     size: int
 
 
-class GitHubProvider(BaseProvider):
+class GitHubProvider(BaseProvider[GitHubProviderConfig]):
     """Provider for fetching data from GitHub releases or repositories."""
 
     def __init__(self, name: str):
@@ -38,7 +38,7 @@ class GitHubProvider(BaseProvider):
         self.github_token = os.getenv("GITHUB_TOKEN")
         self.api_base = "https://api.github.com"
 
-    def fetch(self, config: ProviderConfig) -> bytes:
+    def fetch(self, config: GitHubProviderConfig) -> bytes:
         """Fetch data from GitHub based on configured mode."""
         repository = config.repository
         if not repository:
@@ -67,7 +67,7 @@ class GitHubProvider(BaseProvider):
 
         return self._fetch_latest_release_asset(config)
 
-    def _fetch_latest_release_asset(self, config: ProviderConfig) -> bytes:
+    def _fetch_latest_release_asset(self, config: GitHubProviderConfig) -> bytes:
         repository = config.repository
         asset_pattern = config.asset_pattern
         extract_file = config.extract_file
@@ -289,7 +289,7 @@ class GitHubProvider(BaseProvider):
                 chunks.append(chunk)
         return b"".join(chunks)
 
-    def get_cache_key_fields(self, config: ProviderConfig) -> dict[str, Any]:
+    def get_cache_key_fields(self, config: GitHubProviderConfig) -> dict[str, Any]:
         """Repository and asset pattern affect cache."""
         fields: dict[str, Any] = {
             "repository": config.repository,

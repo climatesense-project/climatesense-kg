@@ -7,7 +7,6 @@ import sys
 from typing import TYPE_CHECKING
 
 from . import __version__
-from .config.organizations import ORGANIZATION_CATALOG_PATH, ORGANIZATION_SOURCE_NAME
 
 if TYPE_CHECKING:
     from .pipeline import (
@@ -80,15 +79,6 @@ Examples:
         action="store_true",
         help="Enable DEBUG level logging",
     )
-    redeploy_parser.add_argument(
-        "--replace",
-        action="store_true",
-        help=(
-            "Replace generated named graphs from a full snapshot; requires exactly "
-            "one RDF file per graph"
-        ),
-    )
-
     return parser
 
 
@@ -182,8 +172,9 @@ def run_redeploy(args: argparse.Namespace) -> int:
     from .config.graphs import (
         ENRICHMENT_GRAPH_SOURCE_NAMES,
         GRAPH_CATALOG_PATH,
-        GRAPH_CATALOG_SOURCE_NAME,
     )
+    from .config.organizations import ORGANIZATION_CATALOG_PATH
+    from .deployment import ArtifactDeployer
     from .deployment.factory import create_deployment_handler
     from .utils.logging import setup_logging
 
@@ -245,21 +236,19 @@ def run_redeploy(args: argparse.Namespace) -> int:
             return 1
         files_by_graph.setdefault(graph_name, []).append(f)
 
-    replace_generated = getattr(args, "replace", False)
-    if replace_generated:
-        multi_file_graphs = {
-            graph_name: files
-            for graph_name, files in files_by_graph.items()
-            if len(files) != 1
-        }
-        if multi_file_graphs:
-            graph_names = ", ".join(sorted(multi_file_graphs))
-            print(
-                "Replacement requires exactly one full-snapshot RDF file per graph; "
-                f"found multiple files for: {graph_names}",
-                file=sys.stderr,
-            )
-            return 1
+    multi_file_graphs = {
+        graph_name: files
+        for graph_name, files in files_by_graph.items()
+        if len(files) != 1
+    }
+    if multi_file_graphs:
+        graph_names = ", ".join(sorted(multi_file_graphs))
+        print(
+            "Redeployment requires exactly one full-snapshot RDF file per graph; "
+            f"found multiple files for: {graph_names}",
+            file=sys.stderr,
+        )
+        return 1
 
     # Build the list of files to deploy
     files_to_deploy = sorted(
@@ -276,58 +265,23 @@ def run_redeploy(args: argparse.Namespace) -> int:
         f"across {len(files_by_graph)} graph(s), plus the graph and organization catalogs"
     )
 
-    graph_catalog_uri = config.deployment.graph_template.replace(
-        "{SOURCE}", GRAPH_CATALOG_SOURCE_NAME
+    report = ArtifactDeployer(handler).deploy_files(
+        [(rdf_file, graph_name) for graph_name, rdf_file in files_to_deploy]
     )
-    print(
-        f"  Replacing {GRAPH_CATALOG_PATH} -> {graph_catalog_uri} ...",
-        end=" ",
-        flush=True,
-    )
-    if not handler.deploy(
-        GRAPH_CATALOG_PATH,
-        GRAPH_CATALOG_SOURCE_NAME,
-        replace=True,
-    ):
-        print("FAILED")
-        return 1
-    print("OK")
-
-    organization_graph_uri = config.deployment.graph_template.replace(
-        "{SOURCE}", ORGANIZATION_SOURCE_NAME
-    )
-    print(
-        f"  Replacing {ORGANIZATION_CATALOG_PATH} -> {organization_graph_uri} ...",
-        end=" ",
-        flush=True,
-    )
-    if not handler.deploy(
-        ORGANIZATION_CATALOG_PATH,
-        ORGANIZATION_SOURCE_NAME,
-        replace=True,
-    ):
-        print("FAILED")
-        return 1
-    print("OK")
-
-    success_count = 2
-    failure_count = 0
-    for graph_name, rdf_file in files_to_deploy:
-        logger.info(f"Deploying {rdf_file} (graph: {graph_name})")
-        graph_uri = config.deployment.graph_template.replace("{SOURCE}", graph_name)
-        print(f"  Deploying {rdf_file} -> {graph_uri} ...", end=" ", flush=True)
-        ok = handler.deploy(rdf_file, graph_name, replace=replace_generated)
-        if ok:
-            print("OK")
-            success_count += 1
-        else:
-            print("FAILED")
-            failure_count += 1
+    for outcome in report.outcomes:
+        target = outcome.target
+        logger.info("Deployed %s (graph: %s)", target.path, target.graph_name)
+        graph_uri = config.deployment.graph_template.replace(
+            "{SOURCE}", target.graph_name
+        )
+        status = "OK" if outcome.success else "FAILED"
+        print(f"  Replacing {target.path} -> {graph_uri} ... {status}")
 
     print(
-        f"\nRedeployment complete: {success_count} succeeded, {failure_count} failed."
+        f"\nRedeployment complete: {report.files_deployed} succeeded, "
+        f"{report.total_files - report.files_deployed} failed."
     )
-    return 0 if failure_count == 0 else 1
+    return 0 if report.success else 1
 
 
 def run_pipeline(args: argparse.Namespace) -> int:
@@ -345,13 +299,13 @@ def run_pipeline(args: argparse.Namespace) -> int:
         config.logging.level = "DEBUG"
 
     try:
-        pipeline = Pipeline(config)
-        results = pipeline.run(
-            skip_download=getattr(args, "skip_download", False),
-            skip_enrichment=getattr(args, "skip_enrichment", False),
-            skip_deployment=getattr(args, "skip_deployment", False),
-            force_regenerate=getattr(args, "force_regenerate", False),
-        )
+        with Pipeline(config) as pipeline:
+            results = pipeline.run(
+                skip_download=getattr(args, "skip_download", False),
+                skip_enrichment=getattr(args, "skip_enrichment", False),
+                skip_deployment=getattr(args, "skip_deployment", False),
+                force_regenerate=getattr(args, "force_regenerate", False),
+            )
     except Exception as e:
         print(f"Pipeline execution failed: {e}", file=sys.stderr)
         return 1

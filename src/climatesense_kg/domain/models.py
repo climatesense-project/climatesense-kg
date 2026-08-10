@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import hashlib
 import json
 from typing import Any
@@ -318,7 +318,10 @@ class CanonicalClaimReview:
     keywords: list[str] = field(default_factory=list)
     authors: list[CanonicalPerson] = field(default_factory=list)
     license_url: str | None = None
+    description: str | None = None
+    abstract: str | None = None
     analysis: ReviewAnalysis = field(default_factory=ReviewAnalysis)
+    observations: dict[str, SourceReviewRecord] = field(default_factory=dict)
 
     @property
     def uri(self) -> str:
@@ -339,7 +342,84 @@ class CanonicalClaimReview:
         return self.document.content
 
     def source_graphs(self) -> list[str]:
+        if self.observations:
+            return sorted(
+                {record.source.source_name for record in self.observations.values()}
+            )
         return sorted(self.source_names)
+
+    def for_source(self, source_name: str) -> CanonicalClaimReview:
+        """Project source-owned metadata without changing canonical identity."""
+
+        observations = sorted(
+            (
+                record
+                for record in self.observations.values()
+                if record.source.source_name == source_name
+            ),
+            key=lambda record: record.source.record_key,
+        )
+        if not observations:
+            return self
+
+        selected = max(
+            observations,
+            key=lambda record: (
+                sum(
+                    value is not None
+                    for value in (
+                        record.date_published,
+                        record.language,
+                        record.rating,
+                        record.license_url,
+                        record.document.description,
+                        record.document.abstract,
+                    )
+                ),
+                len(record.keywords),
+                len(record.authors),
+                record.source.record_key,
+            ),
+        )
+        claim = replace(selected.claim, analysis=self.claim.analysis)
+        keywords = sorted(
+            {keyword for record in observations for keyword in record.keywords}
+        )
+        authors: list[CanonicalPerson] = []
+        for record in observations:
+            for author in record.authors:
+                if author not in authors:
+                    authors.append(author)
+
+        return replace(
+            self,
+            claim=claim,
+            date_published=selected.date_published,
+            language=selected.language,
+            rating=selected.rating,
+            keywords=keywords,
+            authors=authors,
+            license_url=selected.license_url,
+            description=max(
+                (
+                    record.document.description
+                    for record in observations
+                    if record.document.description
+                ),
+                key=len,
+                default=None,
+            ),
+            abstract=max(
+                (
+                    record.document.abstract
+                    for record in observations
+                    if record.document.abstract
+                ),
+                key=len,
+                default=None,
+            ),
+            observations={record.source.record_key: record for record in observations},
+        )
 
     def to_debug_dict(self) -> dict[str, Any]:
         """Return concise diagnostic data without serializing enrichment payloads."""

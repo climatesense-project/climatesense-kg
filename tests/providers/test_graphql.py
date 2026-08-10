@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from climatesense_kg.config.schemas import ProviderConfig
+from climatesense_kg.config.schemas import GraphQLProviderConfig
 from climatesense_kg.providers.graphql import GraphQLProvider, GraphQLResponseError
 
 
@@ -40,7 +40,7 @@ def test_fetch_rejects_unexpected_item_collection_shapes(
     response_data: object,
 ) -> None:
     provider = GraphQLProvider("graphql")
-    config = ProviderConfig(
+    config = GraphQLProviderConfig(
         provider_type="graphql",
         endpoint="https://example.test/graphql",
         query="query Test { items { id } }",

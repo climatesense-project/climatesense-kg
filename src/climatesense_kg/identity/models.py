@@ -29,7 +29,6 @@ class RegisteredReview:
     document: RegisteredDocument
     organization_uri: str
     claim_uri: str
-    rating_fingerprint: str | None
 
 
 @dataclass
@@ -43,7 +42,7 @@ class IdentityAssignment:
 
 @dataclass(frozen=True)
 class IdentityCandidate:
-    """Non-deterministic match that requires adjudication."""
+    """Non-deterministic match retained for offline duplicate audits."""
 
     candidate_review_id: UUID
     similarity: float

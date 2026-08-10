@@ -3,7 +3,7 @@
 from unittest.mock import Mock, patch
 
 import pytest
-from src.climatesense_kg.config.schemas import ProviderConfig
+from src.climatesense_kg.config.schemas import XWikiProviderConfig
 from src.climatesense_kg.providers.xwiki import XWikiProvider
 
 
@@ -85,7 +85,7 @@ class TestXWikiProvider:
 
     def test_complete_tag_failure_is_raised(self) -> None:
         provider = XWikiProvider("xwiki")
-        config = ProviderConfig(
+        config = XWikiProviderConfig(
             provider_type="xwiki",
             base_url="https://wiki.example",
             tags=["climate", "energy"],
@@ -104,7 +104,7 @@ class TestXWikiProvider:
 
     def test_complete_detail_failure_is_raised(self) -> None:
         provider = XWikiProvider("xwiki")
-        config = ProviderConfig(
+        config = XWikiProviderConfig(
             provider_type="xwiki",
             base_url="https://wiki.example",
             tags=["climate"],

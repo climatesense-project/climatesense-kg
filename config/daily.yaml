@@ -54,14 +54,15 @@ data_sources:
       timeout: 120
     cache_ttl_hours: 8760
 
+# Document extraction runs before identity resolution.
+document_extraction:
+  enabled: true
+  rate_limit_delay: 0
+  timeout: 15
+  max_retries: 2
+
 # Enrichment configuration
 enrichment:
-  url_text_extraction:
-    enabled: true
-    rate_limit_delay: 0
-    timeout: 15
-    max_retries: 2
-
   dbpedia_spotlight:
     enabled: true
     api_url: "https://api.dbpedia-spotlight.org/en/annotate"

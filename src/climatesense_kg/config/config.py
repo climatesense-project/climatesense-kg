@@ -3,14 +3,39 @@
 import json
 import logging
 from pathlib import Path
+from typing import Any
 
 from dacite import Config, from_dict
 import yaml
 
+from ..provider_registry import PROVIDER_REGISTRATIONS
 from .rdf_formats import RDF_FORMAT_EXTENSIONS
 from .schemas import PipelineConfig
 
 logger = logging.getLogger(__name__)
+
+
+def _build_provider_configs(config_data: dict[str, Any]) -> None:
+    """Resolve provider discriminators before constructing the full config."""
+
+    sources = config_data.get("data_sources")
+    if not isinstance(sources, list):
+        return
+    for source in sources:
+        if not isinstance(source, dict):
+            continue
+        provider = source.get("provider")
+        if not isinstance(provider, dict):
+            continue
+        provider_type = provider.get("provider_type")
+        registration = PROVIDER_REGISTRATIONS.get(provider_type)
+        if registration is None:
+            raise ValueError(f"Unknown provider_type: {provider_type!r}")
+        source["provider"] = from_dict(
+            data_class=registration.config_type,
+            data=provider,
+            config=Config(strict=True),
+        )
 
 
 def load_config(config_path: str | Path) -> PipelineConfig:
@@ -32,6 +57,7 @@ def load_config(config_path: str | Path) -> PipelineConfig:
         raise ValueError("Configuration root must be a mapping")
 
     try:
+        _build_provider_configs(config_data)
         dataclass: PipelineConfig = from_dict(
             data_class=PipelineConfig, data=config_data, config=Config(strict=True)
         )

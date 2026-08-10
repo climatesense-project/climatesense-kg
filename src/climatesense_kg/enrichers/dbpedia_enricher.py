@@ -1,213 +1,169 @@
-"""DBpedia Spotlight enrichment for entity extraction."""
+"""DBpedia Spotlight entity-extraction stage."""
 
-from dataclasses import asdict, dataclass
+from __future__ import annotations
+
+from dataclasses import asdict
 import json
 import time
 from typing import Any
 
 import requests
 
-from ..config.models import CanonicalClaimReview
+from ..domain import CanonicalClaimReview, EntityMention
+from ..persistence import StageResult, StageResultStore
 from .base import Enricher
 
 
-@dataclass
-class DBpediaSpotlightEntity:
-    """Represents an entity extracted from DBpedia Spotlight."""
-
-    uri: str
-    surface_form: str
-    types: list[str]
-    confidence: float
-    support: int
-    offset: int
-    source: str
-
-
 class DBpediaEnricher(Enricher):
-    """Enricher that uses DBpedia Spotlight for entity extraction."""
+    """Extract typed entity mentions from claim and review text."""
 
-    def __init__(self, **kwargs: Any):
-        super().__init__("dbpedia_spotlight", **kwargs)
-
-        self.api_url = kwargs.get(
-            "api_url", "https://api.dbpedia-spotlight.org/en/annotate"
+    def __init__(
+        self,
+        *,
+        store: StageResultStore,
+        api_url: str = "https://api.dbpedia-spotlight.org/en/annotate",
+        confidence: float = 0.5,
+        support: int = 20,
+        timeout: int = 20,
+        rate_limit_delay: float = 0.1,
+    ) -> None:
+        super().__init__(
+            "dbpedia_spotlight",
+            version="1",
+            store=store,
+            api_url=api_url,
+            confidence=confidence,
+            support=support,
+            timeout=timeout,
         )
-        self.confidence = kwargs.get("confidence", 0.5)
-        self.support = kwargs.get("support", 20)
-        self.timeout = kwargs.get("timeout", 20)
-        self.rate_limit_delay = kwargs.get(
-            "rate_limit_delay", 0.1
-        )  # seconds between requests
-
-        # Headers for API requests
+        self.api_url = api_url
+        self.confidence = confidence
+        self.support = support
+        self.timeout = timeout
+        self.rate_limit_delay = rate_limit_delay
         self.headers = {
             "accept": "application/json",
-            "User-Agent": "ClimateSense-Pipeline/1.0 (+https://github.com/climatesense-project)",
+            "User-Agent": "ClimateSense-Pipeline/2.0 (+https://github.com/climatesense-project)",
         }
 
     def is_available(self) -> bool:
-        """Check if DBpedia Spotlight API is available."""
         try:
-            payload = {"text": "test"}
             response = requests.post(
-                self.api_url, headers=self.headers, data=payload, timeout=5
+                self.api_url,
+                headers=self.headers,
+                data={"text": "test"},
+                timeout=5,
             )
             return response.status_code == 200
-        except Exception as e:
-            self.logger.warning(f"DBpedia Spotlight not available: {e}")
+        except Exception as exc:
+            self.logger.warning("DBpedia Spotlight unavailable: %s", exc)
             return False
 
-    def _process_item(self, claim_review: CanonicalClaimReview) -> CanonicalClaimReview:
-        """Process a single claim review with DBpedia entity extraction."""
-        if not claim_review.uri:
-            return claim_review
+    def _input_value(self, item: CanonicalClaimReview) -> Any:
+        return {
+            "claim_text": item.claim.analysis_text,
+            "review_text": item.review_text,
+        }
 
-        try:
-            # Perform enrichment
-            claim_entities: list[DBpediaSpotlightEntity] = []
-            review_entities: list[dict[str, Any]] = []
+    def _compute(
+        self, item: CanonicalClaimReview, *, force: bool = False
+    ) -> StageResult:
+        del force
+        claim_entities = self._extract_entities(item.claim.analysis_text)
+        review_entities = self._extract_entities(item.review_text or "")
+        return StageResult(
+            success=True,
+            payload={
+                "claim_entities": [asdict(entity) for entity in claim_entities],
+                "review_entities": [asdict(entity) for entity in review_entities],
+            },
+        )
 
-            # Extract entities from claim text
-            analysis_text = claim_review.claim.analysis_text
-            if analysis_text:
-                claim_entities = self._extract_entities(analysis_text)
+    def _apply(self, item: CanonicalClaimReview, payload: dict[str, Any]) -> None:
+        item.claim.analysis.entities = [
+            entity
+            for entity in item.claim.analysis.entities
+            if entity.source != "dbpedia_spotlight"
+        ]
+        item.analysis.entities = [
+            entity
+            for entity in item.analysis.entities
+            if entity.source != "dbpedia_spotlight"
+        ]
+        item.claim.analysis.entities.extend(
+            self._deserialize_entities(payload.get("claim_entities"))
+        )
+        item.analysis.entities.extend(
+            self._deserialize_entities(payload.get("review_entities"))
+        )
 
-            # Extract entities from review text if available
-            if claim_review.review_text:
-                review_text_entities = self._extract_entities(claim_review.review_text)
-                review_entities.extend([asdict(e) for e in review_text_entities])
-
-            # Extract entities from review URL text if available
-            if claim_review.review_url_text:
-                url_text_entities = self._extract_entities(claim_review.review_url_text)
-                review_entities.extend([asdict(e) for e in url_text_entities])
-
-            serialized_claim_entities = [asdict(e) for e in claim_entities]
-            claim_review.claim.entities.extend(serialized_claim_entities)
-            claim_review.entities_in_review.extend(review_entities)
-
-            # Cache the successful results
-            success_data = {
-                "claim_entities": serialized_claim_entities,
-                "review_entities": review_entities,
-            }
-            self.cache_success(claim_review.uri, success_data)
-
-        except Exception as e:
-            self.logger.error(f"DBpedia enrichment failed for {claim_review.uri}: {e}")
-
-            self.cache_error(
-                claim_review.uri,
-                error_type="api_error",
-                message=f"DBpedia Spotlight API error: {e!s}",
-                data={
-                    "claim_entities": [],
-                    "review_entities": [],
-                },
-            )
-
-        return claim_review
-
-    def apply_cached_data(
-        self, claim_review: CanonicalClaimReview, cached_data: dict[str, Any]
-    ) -> CanonicalClaimReview:
-        """Apply cached DBpedia enrichment data to a claim review."""
-        data = cached_data["data"]
-        if "claim_entities" in data:
-            claim_review.claim.entities.extend(data["claim_entities"])
-        if "review_entities" in data:
-            claim_review.entities_in_review.extend(data["review_entities"])
-        return claim_review
-
-    def _extract_entities(self, text: str) -> list[DBpediaSpotlightEntity]:
-        """
-        Extract entities from text using DBpedia Spotlight.
-
-        Args:
-            text: Text to analyze
-
-        Returns:
-            List[DBpediaSpotlightEntity]: List of extracted entities
-        """
-        if not text or len(text.strip()) < 10:  # Skip very short texts
+    def _extract_entities(self, text: str) -> list[EntityMention]:
+        if len(text.strip()) < 10:
             return []
-
         try:
-            payload = {
-                "text": text,
-                "confidence": str(self.confidence),
-                "support": str(self.support),
-            }
-
             response = requests.post(
-                self.api_url, headers=self.headers, data=payload, timeout=self.timeout
+                self.api_url,
+                headers=self.headers,
+                data={
+                    "text": text,
+                    "confidence": str(self.confidence),
+                    "support": str(self.support),
+                },
+                timeout=self.timeout,
             )
-
-            if response.status_code == 200:
-                data = response.json()
-                return self._parse_dbpedia_response(data)
-            else:
-                self.logger.warning(
-                    f"DBpedia API returned status {response.status_code}"
-                )
-                raise requests.RequestException(
-                    f"API returned status {response.status_code}"
-                )
-
-        except requests.RequestException as e:
-            self.logger.error(f"DBpedia Spotlight API request failed: {e}")
-            raise
-        except json.JSONDecodeError as e:
-            self.logger.error(f"Failed to decode JSON from DBpedia Spotlight: {e}")
-            raise
-        except Exception as e:
-            self.logger.error(f"Error extracting entities: {e}")
+            response.raise_for_status()
+            return self._parse_dbpedia_response(response.json())
+        except json.JSONDecodeError:
             raise
         finally:
             time.sleep(self.rate_limit_delay)
 
-    def _parse_dbpedia_response(
-        self, data: dict[str, Any]
-    ) -> list[DBpediaSpotlightEntity]:
-        """
-        Parse DBpedia Spotlight response into entity format.
-
-        Args:
-            data: Raw response from DBpedia Spotlight
-
-        Returns:
-            List[DBpediaSpotlightEntity]: Entity data
-        """
-        entities: list[DBpediaSpotlightEntity] = []
-
-        if "Resources" not in data:
+    def _parse_dbpedia_response(self, data: dict[str, Any]) -> list[EntityMention]:
+        entities: list[EntityMention] = []
+        resources = data.get("Resources", [])
+        if not isinstance(resources, list):
             return entities
-
-        resources = data["Resources"]
-
         for resource in resources:
             try:
-                entity = DBpediaSpotlightEntity(
-                    uri=resource.get("@URI", ""),
-                    surface_form=resource.get("@surfaceForm", ""),
-                    types=(
-                        resource.get("@types", "").split(",")
-                        if resource.get("@types")
-                        else []
-                    ),
-                    confidence=float(resource.get("@similarityScore", 0)),
-                    support=int(resource.get("@support", 0)),
-                    offset=int(resource.get("@offset", -1)),
-                    source="dbpedia_spotlight",
+                confidence = float(resource.get("@similarityScore", 0))
+                if confidence < self.confidence:
+                    continue
+                entities.append(
+                    EntityMention(
+                        uri=resource.get("@URI", ""),
+                        source="dbpedia_spotlight",
+                        surface_form=resource.get("@surfaceForm", ""),
+                        types=(
+                            resource.get("@types", "").split(",")
+                            if resource.get("@types")
+                            else []
+                        ),
+                        confidence=confidence,
+                        support=int(resource.get("@support", 0)),
+                        offset=int(resource.get("@offset", -1)),
+                    )
                 )
-
-                # Only include entities with minimum confidence
-                if entity.confidence >= self.confidence:
-                    entities.append(entity)
-
-            except (ValueError, KeyError) as e:
-                self.logger.warning(f"Error parsing DBpedia entity: {e}")
+            except (TypeError, ValueError):
                 continue
+        return entities
 
+    @staticmethod
+    def _deserialize_entities(value: Any) -> list[EntityMention]:
+        if not isinstance(value, list):
+            return []
+        entities: list[EntityMention] = []
+        for item in value:
+            if not isinstance(item, dict) or not item.get("uri"):
+                continue
+            entities.append(
+                EntityMention(
+                    uri=str(item["uri"]),
+                    source=str(item.get("source", "dbpedia_spotlight")),
+                    surface_form=str(item.get("surface_form", "")),
+                    types=[str(entity_type) for entity_type in item.get("types", [])],
+                    confidence=item.get("confidence"),
+                    support=item.get("support"),
+                    offset=item.get("offset"),
+                )
+            )
         return entities

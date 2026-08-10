@@ -101,6 +101,34 @@ def test_canonical_url_merges_content_variants() -> None:
     assert canonical_url in second.document.urls
 
 
+def test_resolved_document_selects_one_coherent_longest_variant() -> None:
+    resolver = IdentityResolver(InMemoryIdentityRegistry())
+    canonical_url = "https://factual.ro/canonical"
+    long_text = " ".join(f"word{index}" for index in range(80))
+
+    resolver.resolve(
+        _record(
+            "long",
+            url="https://factual.ro/long",
+            canonical_url=canonical_url,
+            text=long_text,
+        ),
+        ORGANIZATION,
+    )
+    resolved = resolver.resolve(
+        _record(
+            "short",
+            url="https://factual.ro/short",
+            canonical_url=canonical_url,
+            text="Short text variant",
+        ),
+        ORGANIZATION,
+    )
+
+    assert resolved.review_text == long_text
+    assert resolved.document.word_count == 80
+
+
 def test_existing_source_record_keeps_identity_after_content_edit() -> None:
     resolver = IdentityResolver(InMemoryIdentityRegistry())
     original = _record(
@@ -180,7 +208,7 @@ def test_cross_organization_similarity_does_not_create_candidate() -> None:
     assert not registry.candidates
 
 
-def test_rating_conflict_records_candidate_without_merging() -> None:
+def test_rating_change_does_not_change_deterministically_matched_identity() -> None:
     registry = InMemoryIdentityRegistry()
     resolver = IdentityResolver(registry)
     canonical_url = "https://factual.ro/conflicting-rating"
@@ -204,8 +232,6 @@ def test_rating_conflict_records_candidate_without_merging() -> None:
         ORGANIZATION,
     )
 
-    assert second.id != first.id
-    assert registry.candidates
-    _, candidate = registry.candidates[0]
-    assert candidate.candidate_review_id == first.id
-    assert candidate.evidence["kind"] == "deterministic_evidence_rating_conflict"
+    assert second.id == first.id
+    assert second.document.id == first.document.id
+    assert not registry.candidates

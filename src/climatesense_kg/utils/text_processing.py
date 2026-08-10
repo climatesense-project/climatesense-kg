@@ -249,7 +249,7 @@ def sanitize_url(url: str) -> str | None:
         parsed = urlparse(to_parse)
     except Exception as exc:  # pragma: no cover
         logger.warning(
-            "Failed to parse URL '%s': %s", _redact_url_credentials(candidate), exc
+            "Failed to parse URL '%s': %s", redact_url_credentials(candidate), exc
         )
         return None
 
@@ -314,7 +314,7 @@ def _quote_url_component(value: str, *, safe: str) -> str:
     return quote(normalized, safe=f"{safe}%")
 
 
-def _redact_url_credentials(url: str) -> str:
+def redact_url_credentials(url: str) -> str:
     """Remove URL userinfo before including a URL in diagnostics."""
     try:
         parsed = urlparse(url)
@@ -556,7 +556,12 @@ def fetch_and_extract_text(url: str, timeout: float = 10) -> TextExtractionResul
         try:
             response.raise_for_status()
             downloaded = _read_bounded_text_response(response)
-            final_url = sanitize_url(response.url) or sanitized_url
+            response_url = response.url
+            final_url = (
+                sanitize_url(response_url)
+                if isinstance(response_url, str)
+                else sanitized_url
+            ) or sanitized_url
         finally:
             response.close()
 

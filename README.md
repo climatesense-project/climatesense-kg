@@ -51,7 +51,7 @@
   - [Quick Start](#quick-start)
   - [Docker Setup](#docker-setup)
   - [Configuration](#configuration)
-  - [Querying the cache](#querying-the-cache)
+  - [Querying pipeline state](#querying-pipeline-state)
     - [Example SQL Queries](#example-sql-queries)
   - [Querying the Knowledge Graph](#querying-the-knowledge-graph)
     - [Example SPARQL Queries](#example-sparql-queries)
@@ -129,12 +129,12 @@ just run config/minimal.yaml
    - `CIMPLE_FACTORS_API_URL`: CIMPLE Factors API base URL (default `http://localhost:8000`)
    - `PIPELINE_UID`: Host UID used for pipeline-generated files (default `1000`)
    - `PIPELINE_GID`: Host GID used for pipeline-generated files (default `1000`)
-   - `POSTGRES_HOST`: Cache database host (default `postgres`)
+   - `POSTGRES_HOST`: Pipeline state database host (default `postgres`)
    - `POSTGRES_BIND_ADDRESS`: Host interface for PostgreSQL (default `127.0.0.1`)
-   - `POSTGRES_PORT`: Cache database port (default `5432`)
-   - `POSTGRES_DB`: Cache database name (default `climatesense_cache`)
-   - `POSTGRES_USER`: Cache database user (default `postgres`)
-   - `POSTGRES_PASSWORD`: Cache database password (required)
+   - `POSTGRES_PORT`: Pipeline state database port (default `5432`)
+   - `POSTGRES_DB`: Pipeline state database name (default `climatesense_cache`)
+   - `POSTGRES_USER`: Pipeline state database user (default `postgres`)
+   - `POSTGRES_PASSWORD`: Pipeline state database password (required)
    - `ANALYTICS_SPARQL_ENDPOINT`: Selected triplestore endpoint for analytics
    - `ANALYTICS_ALLOWED_ORIGINS`: Comma-separated origins permitted to call the analytics API (default `http://localhost:3000`)
    - `ANALYTICS_CACHE_TTL`: Analytics API cache TTL in seconds (default `60`)
@@ -175,18 +175,22 @@ The pipeline uses YAML-based configuration. Example config:
 data_sources:
   - name: "claimreview_sample"
     type: "claimreviewdata"
-    input_path: "samples/claimreviewdata-data"
+    provider:
+      provider_type: "file"
+      file_path: "samples/claimreviewdata-data.json"
   - name: "euroclimatecheck_sample"
     type: "euroclimatecheck"
-    input_path: "samples/euroclimatecheck-data"
+    provider:
+      provider_type: "file"
+      file_path: "samples/euroclimatecheck-data.json"
+
+document_extraction:
+  enabled: true
+  rate_limit_delay: 0.5
+  timeout: 15
+  max_retries: 2
 
 enrichment:
-  url_text_extraction:
-    enabled: true
-    rate_limit_delay: 0.5
-    timeout: 15
-    max_retries: 2
-
   dbpedia_spotlight:
     enabled: true
     api_url: "https://api.dbpedia-spotlight.org/en/annotate"
@@ -220,20 +224,25 @@ deployment:
 
 `data/graphs.ttl` is the curated catalog for the published named graphs.
 
-## Querying the cache
+The breaking v2 architecture and identity policy are documented in
+[`docs/architecture-v2.md`](docs/architecture-v2.md).
 
-You can use any PostgreSQL client to connect to the PostgreSQL cache database and run SQL queries.
+## Querying pipeline state
+
+PostgreSQL is authoritative for canonical identity and versioned semantic-stage
+results. Downloaded source artifacts remain in the filesystem cache.
 
 ### Example SQL Queries
 
 ```sql
--- Processing success rates by step
-SELECT step, COUNT(*) AS total, COUNT(*) FILTER (WHERE success) AS successes
-FROM cache_entries GROUP BY step;
+-- Processing success rates by stage and implementation version
+SELECT stage_name, stage_version, COUNT(*) AS total,
+       COUNT(*) FILTER (WHERE success) AS successes
+FROM stage_results GROUP BY stage_name, stage_version;
 
--- Error analysis by domain
-SELECT split_part(payload->'payload'->>'review_url', '/', 3) AS domain, COUNT(*) AS failures
-FROM cache_entries WHERE success = false GROUP BY domain;
+-- Highest-confidence identity candidates for offline auditing
+SELECT source_record_key, candidate_review_id, similarity, evidence
+FROM identity_candidates ORDER BY similarity DESC;
 ```
 
 ## Querying the Knowledge Graph
@@ -253,9 +262,10 @@ Once loaded into the selected triplestore, query the knowledge graph using SPARQ
 PREFIX schema: <http://schema.org/>
 SELECT ?claim ?text ?rating
 WHERE {
-  ?claim a schema:ClaimReview ;
-         schema:claimReviewed ?text ;
-         schema:reviewRating ?rating .
+  ?review a schema:ClaimReview ;
+          schema:itemReviewed ?claim ;
+          schema:reviewRating ?rating .
+  ?claim schema:text ?text .
 }
 LIMIT 10
 ```

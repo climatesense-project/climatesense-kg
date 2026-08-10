@@ -1,43 +1,246 @@
-"""Tests for pipeline orchestration."""
+"""Tests for the typed v2 pipeline orchestration."""
 
-from logging import getLogger
-from types import SimpleNamespace
+from pathlib import Path
 from unittest.mock import Mock, call
 
-import pytest
 from rdflib import Graph, URIRef
-from src.climatesense_kg.config.graphs import (
-    DBPEDIA_ENRICHER_SOURCE_NAME,
-    GRAPH_CATALOG_PATH,
-    GRAPH_CATALOG_SOURCE_NAME,
+from rdflib.namespace import RDF
+
+from climatesense_kg.config import PipelineConfig
+from climatesense_kg.config.schemas import (
+    DataSourceConfig,
+    FileProviderConfig,
+    OutputConfig,
 )
-from src.climatesense_kg.config.models import CanonicalOrganization
-from src.climatesense_kg.config.organizations import (
-    ORGANIZATION_CATALOG_PATH,
-    ORGANIZATION_SOURCE_NAME,
+from climatesense_kg.deployment import ArtifactDeployer
+from climatesense_kg.domain import (
+    CanonicalClaim,
+    CanonicalOrganization,
+    CanonicalRating,
+    OrganizationReference,
+    ReviewDocument,
+    SourceReference,
+    SourceReviewRecord,
 )
-from src.climatesense_kg.pipeline import Pipeline
-from src.climatesense_kg.rdf_generation.generator import RDFGenerator
+from climatesense_kg.identity import IdentityResolver, InMemoryIdentityRegistry
+from climatesense_kg.pipeline import Pipeline, PipelineDependencies
+from climatesense_kg.rdf_generation import RdfArtifact, RdfArtifactBuilder, RDFGenerator
+from climatesense_kg.stages import EnrichmentRunner
 
-SCHEMA_MENTIONS = URIRef("http://schema.org/mentions")
+BASE = "http://data.climatesense-project.eu"
 
 
-def test_pipeline_fails_when_every_enabled_source_fails() -> None:
-    """An empty aggregate caused by total source failure must not report success."""
-    sources = [
-        SimpleNamespace(name="source-a", enabled=True),
-        SimpleNamespace(name="source-b", enabled=True),
+def _config(tmp_path: Path, *source_names: str) -> PipelineConfig:
+    return PipelineConfig(
+        data_sources=[
+            DataSourceConfig(
+                name=name,
+                type="claimreviewdata",
+                provider=FileProviderConfig(provider_type="file", file_path="unused"),
+            )
+            for name in source_names
+        ],
+        output=OutputConfig(
+            format="turtle",
+            output_path=tmp_path / "{SOURCE}.ttl",
+            base_uri=BASE,
+        ),
+    )
+
+
+def _record(
+    name: str,
+    url: str,
+    text: str,
+    *,
+    source_name: str = "source-a",
+) -> SourceReviewRecord:
+    claim_text = "A reviewed claim"
+    return SourceReviewRecord(
+        source=SourceReference.from_observation(
+            source_name=source_name,
+            source_type="claimreviewdata",
+            observed_url=url,
+            claim_text=claim_text,
+            discriminator=name,
+        ),
+        claim=CanonicalClaim(text=claim_text),
+        organization=OrganizationReference(
+            name="Factual", website="https://factual.ro"
+        ),
+        document=ReviewDocument(observed_url=url, source_text=text),
+    )
+
+
+def _dependencies(
+    data_manager: Mock,
+    organization_catalog: Mock,
+    tmp_path: Path,
+    *,
+    deployment_handler: Mock | None = None,
+) -> PipelineDependencies:
+    return PipelineDependencies(
+        data_manager=data_manager,
+        organization_catalog=organization_catalog,
+        document_extractor=None,
+        identity_resolver=IdentityResolver(InMemoryIdentityRegistry()),
+        enrichment_runner=EnrichmentRunner([]),
+        rdf_artifact_builder=RdfArtifactBuilder(
+            RDFGenerator(BASE),
+            output_path_template=str(tmp_path / "{SOURCE}.ttl"),
+            output_format="turtle",
+            enrichment_graphs={},
+        ),
+        artifact_deployer=ArtifactDeployer(deployment_handler),
+    )
+
+
+def test_pipeline_resolves_duplicate_observations_before_rdf(tmp_path: Path) -> None:
+    article = " ".join(f"article-word-{index}" for index in range(80))
+    records = [
+        _record("first", "https://factual.ro/old", article),
+        _record("second", "https://factual.ro/new", article),
     ]
+    data_manager = Mock()
+    data_manager.get_data.return_value = records
+    catalog = Mock()
+    catalog.resolve.return_value = CanonicalOrganization(
+        uri=f"{BASE}/organization/factual",
+        name="Factual",
+        website="https://factual.ro",
+    )
+    pipeline = Pipeline(
+        _config(tmp_path, "source-a"),
+        _dependencies(data_manager, catalog, tmp_path),
+    )
 
-    pipeline = object.__new__(Pipeline)
-    pipeline.cache = None
-    pipeline.config = SimpleNamespace(data_sources=sources)
-    pipeline.data_manager = Mock()
-    pipeline.data_manager.get_data.side_effect = RuntimeError("source unavailable")
-    pipeline.logger = getLogger("test.pipeline")
-    pipeline._run_datetime = None
+    results = pipeline.run(skip_deployment=True)
 
-    results = pipeline.run()
+    assert results["success"] is True
+    assert results["total_processed"] == 1
+    graph = Graph().parse(tmp_path / "source-a.ttl", format="turtle")
+    reviews = set(graph.subjects(RDF.type, URIRef("http://schema.org/ClaimReview")))
+    assert len(reviews) == 1
+    review = next(iter(reviews))
+    assert set(graph.objects(review, URIRef("http://schema.org/url"))) == {
+        URIRef("https://factual.ro/old"),
+        URIRef("https://factual.ro/new"),
+    }
+
+
+def test_source_graphs_retain_source_owned_metadata(tmp_path: Path) -> None:
+    article = " ".join(f"article-word-{index}" for index in range(80))
+    first = _record(
+        "first",
+        "https://factual.ro/old",
+        article,
+        source_name="source-a",
+    )
+    first.date_published = "2026-01-01"
+    first.rating = CanonicalRating(label="not_credible", original_label="Fals")
+    second = _record(
+        "second",
+        "https://factual.ro/new",
+        article,
+        source_name="source-b",
+    )
+    second.date_published = "2026-02-02"
+    second.rating = CanonicalRating(label="credible", original_label="Adevărat")
+    records = {"source-a": [first], "source-b": [second]}
+    data_manager = Mock()
+    data_manager.get_data.side_effect = lambda source, **_kwargs: records[source.name]
+    catalog = Mock()
+    catalog.resolve.return_value = CanonicalOrganization(
+        uri=f"{BASE}/organization/factual",
+        name="Factual",
+        website="https://factual.ro",
+    )
+    pipeline = Pipeline(
+        _config(tmp_path, "source-a", "source-b"),
+        _dependencies(data_manager, catalog, tmp_path),
+    )
+
+    results = pipeline.run(skip_deployment=True)
+
+    assert results["success"] is True
+    dates_by_source = {}
+    ratings_by_source = {}
+    for source_name in records:
+        graph = Graph().parse(tmp_path / f"{source_name}.ttl", format="turtle")
+        review = next(graph.subjects(RDF.type, URIRef("http://schema.org/ClaimReview")))
+        dates_by_source[source_name] = str(
+            next(graph.objects(review, URIRef("http://schema.org/datePublished")))
+        )
+        rating = next(graph.objects(review, URIRef("http://schema.org/reviewRating")))
+        ratings_by_source[source_name] = str(
+            next(graph.objects(rating, URIRef("http://schema.org/name")))
+        )
+    assert dates_by_source == {
+        "source-a": "2026-01-01",
+        "source-b": "2026-02-02",
+    }
+    assert ratings_by_source == {
+        "source-a": "Fals",
+        "source-b": "Adevărat",
+    }
+
+
+def test_full_snapshot_does_not_republish_historical_source_membership(
+    tmp_path: Path,
+) -> None:
+    article = " ".join(f"article-word-{index}" for index in range(80))
+    active_records = {
+        "source-a": [
+            _record(
+                "first",
+                "https://factual.ro/old",
+                article,
+                source_name="source-a",
+            )
+        ],
+        "source-b": [
+            _record(
+                "second",
+                "https://factual.ro/new",
+                article,
+                source_name="source-b",
+            )
+        ],
+    }
+    data_manager = Mock()
+    data_manager.get_data.side_effect = lambda source, **_kwargs: active_records[
+        source.name
+    ]
+    catalog = Mock()
+    catalog.resolve.return_value = CanonicalOrganization(
+        uri=f"{BASE}/organization/factual",
+        name="Factual",
+        website="https://factual.ro",
+    )
+    pipeline = Pipeline(
+        _config(tmp_path, "source-a", "source-b"),
+        _dependencies(data_manager, catalog, tmp_path),
+    )
+
+    assert pipeline.run(skip_deployment=True)["success"] is True
+    active_records["source-b"] = []
+    assert pipeline.run(skip_deployment=True)["success"] is True
+
+    source_b_graph = Graph().parse(tmp_path / "source-b.ttl", format="turtle")
+    assert not set(
+        source_b_graph.subjects(RDF.type, URIRef("http://schema.org/ClaimReview"))
+    )
+
+
+def test_pipeline_reports_total_source_failure(tmp_path: Path) -> None:
+    data_manager = Mock()
+    data_manager.get_data.side_effect = RuntimeError("unavailable")
+    pipeline = Pipeline(
+        _config(tmp_path, "source-a", "source-b"),
+        _dependencies(data_manager, Mock(), tmp_path),
+    )
+
+    results = pipeline.run(skip_deployment=True)
 
     assert results["success"] is False
     assert results["error"] == (
@@ -52,482 +255,52 @@ def test_pipeline_fails_when_every_enabled_source_fails() -> None:
     }
 
 
-def test_pipeline_accepts_empty_ingestion_when_any_source_succeeds() -> None:
-    """A successful empty source must remain distinct from total source failure."""
-    sources = [
-        SimpleNamespace(name="healthy-source", enabled=True),
-        SimpleNamespace(name="failed-source", enabled=True),
-    ]
-
-    def get_data(source, *, skip_download=False):
-        if source.name == "failed-source":
-            raise RuntimeError("source unavailable")
-        return []
-
-    pipeline = object.__new__(Pipeline)
-    pipeline.cache = None
-    pipeline.config = SimpleNamespace(
-        data_sources=sources,
-        output=SimpleNamespace(format="turtle", output_path="unused/{SOURCE}.ttl"),
-    )
-    pipeline.data_manager = Mock()
-    pipeline.data_manager.get_data.side_effect = get_data
-    pipeline.logger = getLogger("test.pipeline")
-    pipeline.deployment_handler = None
-    pipeline.enrichers = []
-    pipeline.rdf_generator = RDFGenerator(base_uri="https://example.org")
-    pipeline._run_datetime = None
-
-    results = pipeline.run()
-
-    assert results["success"] is True
-    assert results["error"] is None
-    assert results["data_sources"] == {
-        "total_items": 0,
-        "sources_processed": 1,
-        "sources_failed": 1,
-        "successful_sources": ["healthy-source"],
-        "failed_sources": ["failed-source"],
-    }
-
-
-def test_empty_ingestion_still_replaces_curated_graphs(tmp_path) -> None:
-    pipeline = object.__new__(Pipeline)
-    pipeline.logger = getLogger("test.pipeline")
-    pipeline.cache = None
-    pipeline.deployment_handler = Mock()
-    pipeline.deployment_handler.deploy.return_value = True
-    pipeline.config = SimpleNamespace(
-        output=SimpleNamespace(format="turtle", output_path=tmp_path / "{SOURCE}.ttl"),
-    )
-    pipeline.enrichers = []
-    pipeline.rdf_generator = RDFGenerator(base_uri="https://example.org")
-    pipeline._run_datetime = None
-    pipeline._run_ingestion = Mock(
-        return_value={
-            "items": [],
-            "successful_sources": ["source-a"],
-            "failed_sources": [],
-        }
+def test_pipeline_discards_partial_records_from_failed_source(tmp_path: Path) -> None:
+    partial_record = _record(
+        "partial",
+        "https://factual.ro/partial",
+        "Partial source content",
     )
 
-    results = pipeline.run()
+    def fail_after_first_record():
+        yield partial_record
+        raise RuntimeError("truncated source payload")
 
-    assert results["success"] is True
-    assert results["deployment"] == {
-        "success": True,
-        "files_deployed": 2,
-        "total_files": 2,
-    }
-    assert pipeline.deployment_handler.deploy.call_args_list == [
-        call(
-            GRAPH_CATALOG_PATH,
-            GRAPH_CATALOG_SOURCE_NAME,
-            replace=True,
-        ),
-        call(
-            ORGANIZATION_CATALOG_PATH,
-            ORGANIZATION_SOURCE_NAME,
-            replace=True,
-        ),
-    ]
-
-
-def test_rdf_generation_only_marks_successful_reviews_processed(
-    tmp_path, sample_claim_reviews, mock_cache, monkeypatch
-) -> None:
-    """A review that fails RDF generation must remain eligible for retry."""
-    for review in sample_claim_reviews:
-        review.source_name = "test-source"
-
-    failed_review = sample_claim_reviews[1]
-    generator = RDFGenerator(base_uri="https://example.org")
-    generate_review = generator._generate_claim_review_rdf
-
-    def fail_one_review(claim_review, generated_uris) -> None:
-        if claim_review.uri == failed_review.uri:
-            raise ValueError("malformed review")
-        generate_review(claim_review, generated_uris)
-
-    monkeypatch.setattr(generator, "_generate_claim_review_rdf", fail_one_review)
-
-    pipeline = object.__new__(Pipeline)
-    pipeline.cache = mock_cache
-    pipeline.config = SimpleNamespace(
-        output=SimpleNamespace(format="turtle", output_path=tmp_path / "{SOURCE}.ttl")
+    data_manager = Mock()
+    data_manager.get_data.return_value = fail_after_first_record()
+    pipeline = Pipeline(
+        _config(tmp_path, "source-a"),
+        _dependencies(data_manager, Mock(), tmp_path),
     )
-    pipeline.logger = getLogger("test.pipeline")
-    pipeline.rdf_generator = generator
-    pipeline._run_datetime = None
-
-    stats = pipeline._run_rdf_generation(sample_claim_reviews)
-
-    cached_uris = {entry[0] for entry in mock_cache.set_many.call_args.args[0]}
-    assert cached_uris == {
-        review.uri for review in sample_claim_reviews if review is not failed_review
-    }
-    assert stats["successful_items"] == 2
-    assert stats["failed_items"] == 1
-    assert stats["generated_files"][0]["items"] == 2
-
-
-def test_rdf_generation_does_not_finalize_reviews_when_deployment_is_skipped(
-    tmp_path, sample_claim_reviews, mock_cache
-) -> None:
-    """Generated reviews must remain eligible for a later deployment run."""
-    for review in sample_claim_reviews:
-        review.source_name = "test-source"
-
-    pipeline = object.__new__(Pipeline)
-    pipeline.cache = mock_cache
-    pipeline.config = SimpleNamespace(
-        output=SimpleNamespace(format="turtle", output_path=tmp_path / "{SOURCE}.ttl")
-    )
-    pipeline.logger = getLogger("test.pipeline")
-    pipeline.rdf_generator = RDFGenerator(base_uri="https://example.org")
-    pipeline._run_datetime = None
-
-    stats = pipeline._run_rdf_generation(sample_claim_reviews, mark_processed=False)
-
-    assert stats["successful_items"] == len(sample_claim_reviews)
-    mock_cache.set_many.assert_not_called()
-
-
-def test_rdf_generation_writes_dbpedia_data_to_one_enrichment_graph(
-    tmp_path, sample_claim_reviews, mock_cache
-) -> None:
-    first, second = sample_claim_reviews[:2]
-    first.source_name = "source-a"
-    second.source_name = "source-b"
-    entity_uri = "http://dbpedia.org/resource/Climate_change"
-    entity = {
-        "uri": entity_uri,
-        "source": "dbpedia_spotlight",
-        "dbpedia_properties": {
-            "http://example.org/population": [{"value": "42", "type": "literal"}]
-        },
-    }
-    first.claim.entities.append(entity)
-    second.entities_in_review.append(entity)
-
-    pipeline = object.__new__(Pipeline)
-    pipeline.cache = mock_cache
-    pipeline.config = SimpleNamespace(
-        output=SimpleNamespace(format="turtle", output_path=tmp_path / "{SOURCE}.ttl")
-    )
-    pipeline.logger = getLogger("test.pipeline")
-    pipeline.rdf_generator = RDFGenerator(base_uri="https://example.org")
-    pipeline._run_datetime = None
-
-    stats = pipeline._run_rdf_generation(sample_claim_reviews[:2], mark_processed=False)
-
-    assert [file_info["graph_name"] for file_info in stats["generated_files"]] == [
-        "source-a",
-        "source-b",
-        DBPEDIA_ENRICHER_SOURCE_NAME,
-    ]
-    for source_name in ("source-a", "source-b"):
-        source_graph = Graph().parse(tmp_path / f"{source_name}.ttl", format="turtle")
-        assert list(source_graph.triples((None, SCHEMA_MENTIONS, None))) == []
-
-    enrichment_graph = Graph().parse(
-        tmp_path / f"{DBPEDIA_ENRICHER_SOURCE_NAME}.ttl", format="turtle"
-    )
-    assert len(list(enrichment_graph.triples((None, SCHEMA_MENTIONS, None)))) == 2
-    assert (
-        len(
-            list(
-                enrichment_graph.triples(
-                    (URIRef(entity_uri), URIRef("http://example.org/population"), None)
-                )
-            )
-        )
-        == 1
-    )
-    assert all(
-        set(output["required_graphs"])
-        == {output["source_name"], DBPEDIA_ENRICHER_SOURCE_NAME}
-        for output in stats["review_outputs"].values()
-    )
-
-
-def test_failed_enrichment_deployment_only_finalizes_source_only_reviews(
-    tmp_path, mock_cache
-) -> None:
-    source_path = tmp_path / "source-a.ttl"
-    enrichment_path = tmp_path / "dbpedia-enricher.ttl"
-    source_path.write_text("", encoding="utf-8")
-    enrichment_path.write_text("", encoding="utf-8")
-    dbpedia_uri = "https://example.org/review/dbpedia"
-    source_only_uri = "https://example.org/review/source-only"
-
-    pipeline = object.__new__(Pipeline)
-    pipeline.cache = mock_cache
-    pipeline.logger = getLogger("test.pipeline")
-    pipeline.deployment_handler = Mock()
-    pipeline.deployment_handler.deploy.side_effect = [True, True, True, False]
-    rdf_stats = {
-        "generated_files": [
-            {
-                "graph_name": "source-a",
-                "kind": "source",
-                "path": str(source_path),
-                "items": 2,
-                "failed_items": 0,
-                "file_size": 0,
-                "review_uris": [dbpedia_uri, source_only_uri],
-            },
-            {
-                "graph_name": DBPEDIA_ENRICHER_SOURCE_NAME,
-                "kind": "enrichment",
-                "path": str(enrichment_path),
-                "items": 1,
-                "failed_items": 0,
-                "file_size": 0,
-                "review_uris": [dbpedia_uri],
-            },
-        ],
-        "review_outputs": {
-            dbpedia_uri: {
-                "source_name": "source-a",
-                "source_path": str(source_path),
-                "required_graphs": ["source-a", DBPEDIA_ENRICHER_SOURCE_NAME],
-            },
-            source_only_uri: {
-                "source_name": "source-a",
-                "source_path": str(source_path),
-                "required_graphs": ["source-a"],
-            },
-        },
-    }
-
-    stats = pipeline._run_deployment(rdf_stats)
-
-    assert stats == {"success": False, "files_deployed": 3, "total_files": 4}
-    cached_entries = mock_cache.set_many.call_args.args[0]
-    assert [entry[0] for entry in cached_entries] == [source_only_uri]
-
-
-def test_rdf_generation_preserves_files_when_a_later_source_fails(
-    tmp_path, sample_claim_reviews, mock_cache, monkeypatch
-) -> None:
-    """A source failure must not discard files completed for earlier sources."""
-    sample_claim_reviews[0].source_name = "source-a"
-    sample_claim_reviews[1].source_name = "source-b"
-    sample_claim_reviews[2].source_name = "source-c"
-
-    generator = RDFGenerator(base_uri="https://example.org")
-    save = generator.save
-
-    def fail_second_source(claim_reviews, output_path, output_format):
-        if claim_reviews[0].source_name == "source-b":
-            raise ValueError("serialization failed")
-        return save(claim_reviews, output_path, output_format)
-
-    monkeypatch.setattr(generator, "save", fail_second_source)
-
-    pipeline = object.__new__(Pipeline)
-    pipeline.cache = mock_cache
-    pipeline.config = SimpleNamespace(
-        output=SimpleNamespace(format="turtle", output_path=tmp_path / "{SOURCE}.ttl")
-    )
-    pipeline.logger = getLogger("test.pipeline")
-    pipeline.rdf_generator = generator
-    pipeline._run_datetime = None
-
-    stats = pipeline._run_rdf_generation(sample_claim_reviews)
-
-    expected_files = [
-        {
-            "graph_name": source_name,
-            "kind": "source",
-            "path": str(tmp_path / f"{source_name}.ttl"),
-            "items": 1,
-            "failed_items": 0,
-            "file_size": (tmp_path / f"{source_name}.ttl").stat().st_size,
-            "review_uris": [
-                review.uri
-                for review in sample_claim_reviews
-                if review.source_name == source_name
-            ],
-        }
-        for source_name in ("source-a", "source-c")
-    ]
-    assert stats["generated_files"] == expected_files
-    assert stats["total_files"] == 2
-    assert stats["successful_items"] == 2
-    assert stats["failed_items"] == 1
-    assert stats["total_file_size"] == sum(
-        file_info["file_size"] for file_info in expected_files
-    )
-    assert stats["error"] == "source-b: serialization failed"
-
-    cached_uris = {
-        entry[0]
-        for call in mock_cache.set_many.call_args_list
-        for entry in call.args[0]
-    }
-    assert cached_uris == {
-        sample_claim_reviews[0].uri,
-        sample_claim_reviews[2].uri,
-    }
-
-
-def test_rdf_generation_rejects_shared_output_path_for_multiple_sources(
-    tmp_path, sample_claim_reviews, mock_cache
-) -> None:
-    """Multiple sources must not be allowed to overwrite one RDF output file."""
-    sample_claim_reviews[0].source_name = "source-a"
-    sample_claim_reviews[1].source_name = "source-b"
-
-    pipeline = object.__new__(Pipeline)
-    pipeline.cache = mock_cache
-    pipeline.config = SimpleNamespace(
-        output=SimpleNamespace(format="turtle", output_path=tmp_path / "combined.ttl")
-    )
-    pipeline.logger = getLogger("test.pipeline")
-    pipeline.rdf_generator = SimpleNamespace(
-        save=Mock(return_value=[]),
-        has_entity_enrichment=Mock(return_value=False),
-    )
-    pipeline._run_datetime = None
-
-    with pytest.raises(ValueError, match=r"requires the \{SOURCE\} placeholder"):
-        pipeline._run_rdf_generation(sample_claim_reviews[:2])
-
-    pipeline.rdf_generator.save.assert_not_called()
-    mock_cache.set_many.assert_not_called()
-    assert not (tmp_path / "combined.ttl").exists()
-
-
-def test_failed_deployment_does_not_finalize_reviews(tmp_path, mock_cache) -> None:
-    """Reviews must remain eligible for retry when their RDF file is not deployed."""
-    rdf_path = tmp_path / "source-a.ttl"
-    rdf_path.write_text("", encoding="utf-8")
-
-    pipeline = object.__new__(Pipeline)
-    pipeline.cache = mock_cache
-    pipeline.logger = getLogger("test.pipeline")
-    pipeline.deployment_handler = Mock()
-    pipeline.deployment_handler.deploy.side_effect = [True, True, False]
-    rdf_stats = {
-        "generated_files": [
-            {
-                "graph_name": "source-a",
-                "kind": "source",
-                "path": str(rdf_path),
-                "items": 1,
-                "failed_items": 0,
-                "file_size": 0,
-                "review_uris": ["https://example.org/review/1"],
-            }
-        ]
-    }
-
-    assert pipeline._run_deployment(rdf_stats) == {
-        "success": False,
-        "files_deployed": 2,
-        "total_files": 3,
-    }
-    mock_cache.set_many.assert_not_called()
-
-
-def test_pipeline_reports_rdf_generation_error_when_deployment_is_skipped() -> None:
-    """Skipping deployment must not mask a source-level RDF failure."""
-    review = SimpleNamespace(
-        organization=CanonicalOrganization(
-            name="Example", website="https://example.org"
-        ),
-        source_name="source-a",
-    )
-    rdf_stats = {
-        "generated_files": [],
-        "total_files": 0,
-        "input_items": 1,
-        "successful_items": 0,
-        "failed_items": 1,
-        "output_format": "turtle",
-        "total_file_size": 0,
-        "error": "source-a: serialization failed",
-    }
-
-    pipeline = object.__new__(Pipeline)
-    pipeline.logger = getLogger("test.pipeline")
-    pipeline.cache = None
-    pipeline.enrichers = []
-    pipeline.deployment_handler = None
-    pipeline.config = SimpleNamespace(output=SimpleNamespace(format="turtle"))
-    pipeline.organization_catalog = Mock()
-    pipeline.organization_catalog.resolve.return_value = "https://example.org/org"
-    pipeline._run_datetime = None
-    pipeline._run_ingestion = Mock(
-        return_value={
-            "items": [review],
-            "successful_sources": ["source-a"],
-            "failed_sources": [],
-        }
-    )
-    pipeline._run_enrichment = Mock(return_value=[review])
-    pipeline._run_rdf_generation = Mock(return_value=rdf_stats)
 
     results = pipeline.run(skip_deployment=True)
 
     assert results["success"] is False
-    assert results["error"] == "source-a: serialization failed"
+    data_sources = results["data_sources"]
+    assert data_sources is not None
+    assert data_sources["total_items"] == 0
+    assert not (tmp_path / "source-a.ttl").exists()
 
 
-def test_partial_deployment_reports_successful_file_count(tmp_path, mock_cache) -> None:
-    """A later failure must not erase the count of files already deployed."""
-    generated_files = []
-    for index in range(2):
-        rdf_path = tmp_path / f"source-{index}.ttl"
-        rdf_path.write_text("", encoding="utf-8")
-        generated_files.append(
-            {
-                "graph_name": f"source-{index}",
-                "kind": "source",
-                "path": str(rdf_path),
-                "items": 1,
-                "failed_items": 0,
-                "file_size": 0,
-                "review_uris": [f"https://example.org/review/{index}"],
-            }
-        )
-
-    pipeline = object.__new__(Pipeline)
-    pipeline.cache = mock_cache
-    pipeline.logger = getLogger("test.pipeline")
-    pipeline.deployment_handler = Mock()
-    pipeline.deployment_handler.deploy.side_effect = [True, True, True, False]
-
-    stats = pipeline._run_deployment({"generated_files": generated_files})
-
-    assert stats == {"success": False, "files_deployed": 3, "total_files": 4}
-
-
-def test_pipeline_rejects_unresolved_organizations() -> None:
-    review = SimpleNamespace(
-        organization=SimpleNamespace(name="Unknown", website="https://unknown.test"),
-        source_name="source-a",
-    )
-    pipeline = object.__new__(Pipeline)
-    pipeline.logger = getLogger("test.pipeline")
-    pipeline.cache = None
-    pipeline.enrichers = []
-    pipeline.deployment_handler = None
-    pipeline.config = SimpleNamespace(output=SimpleNamespace(format="turtle"))
-    pipeline.organization_catalog = Mock()
-    pipeline.organization_catalog.resolve.return_value = None
-    pipeline._run_datetime = None
-    pipeline._run_ingestion = Mock(
-        return_value={
-            "items": [review],
-            "successful_sources": ["source-a"],
-            "failed_sources": [],
-        }
+def test_deployment_replaces_every_full_snapshot_graph(tmp_path: Path) -> None:
+    handler = Mock()
+    handler.deploy.return_value = True
+    dependencies = _dependencies(Mock(), Mock(), tmp_path, deployment_handler=handler)
+    source_path = tmp_path / "source-a.ttl"
+    source_path.write_text("", encoding="utf-8")
+    artifact = RdfArtifact(
+        graph_name="source-a",
+        kind="source",
+        path=source_path,
+        items=0,
+        failed_items=0,
+        file_size=0,
+        review_uris=[],
     )
 
-    results = pipeline.run()
+    result = dependencies.artifact_deployer.deploy([artifact])
 
-    assert results["success"] is False
-    assert "Organizations are missing from the curated catalog" in results["error"]
+    assert result.success is True
+    assert handler.deploy.call_args_list[-1] == call(
+        source_path, "source-a", replace=True
+    )

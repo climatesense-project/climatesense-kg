@@ -19,7 +19,7 @@ goal.
 5. Downloaded source artifacts remain in the filesystem artifact store. They are not
    processing-state entries.
 6. Only deterministic identity matches are merged automatically. Similarity-only
-   matches are recorded for adjudication.
+   matches are recorded for offline duplicate audits.
 7. The RDF layer serializes resolved entities. It never discovers or merges identity.
 8. Normalized ratings are global concepts. Source rating scales are scoped to their
    fact-checking organization.
@@ -49,7 +49,9 @@ same document.
 A `CanonicalClaimReview` is the resolved assertion that an organization reviewed a
 claim and assigned a rating. It has an explicit UUID and may retain several document
 URL aliases. One document may contain several canonical claim reviews when it assesses
-several claims.
+several claims. It also retains the current run's source observations so each named
+source graph can project its own rating, date, language, authors, and descriptive
+metadata without attributing one feed's values to another feed.
 
 ## Pipeline
 
@@ -87,24 +89,25 @@ cache deletion.
 ### IdentityRegistry
 
 Stores canonical document and review UUIDs, source-record mappings, fingerprints, and
-adjudication candidates. Identity lookup and assignment occur in one transaction.
+duplicate candidates. Identity lookup and assignment occur in one transaction.
 
 ## Identity policy
 
 The resolver considers candidates from the same canonical organization. It applies
 the following rules in order:
 
-| Evidence                                          | Decision                                       |
-| ------------------------------------------------- | ---------------------------------------------- |
-| Existing source record key                        | Reuse its document and review identities       |
-| Same native source identifier                     | Reuse the mapped identities                    |
-| Same canonical or final URL and same exact claim  | Reuse the review identity                      |
-| Same normalized content hash and same exact claim | Reuse the review identity                      |
-| Body similarity at least 0.90                     | Record a candidate; do not merge automatically |
-| No candidate                                      | Assign new document and review UUIDs           |
+| Evidence                                          | Decision                                     |
+| ------------------------------------------------- | -------------------------------------------- |
+| Existing source record key                        | Reuse its document and review identities     |
+| Same native source identifier                     | Reuse the mapped identities                  |
+| Same canonical or final URL and same exact claim  | Reuse the review identity                    |
+| Same normalized content hash and same exact claim | Reuse the review identity                    |
+| Body similarity at least 0.90                     | Record for audit; do not merge automatically |
+| No candidate                                      | Assign new document and review UUIDs         |
 
 An exact-content match from another organization does not merge automatically.
-Conflicting ratings on an otherwise deterministic match are recorded for review.
+Rating differences do not split an otherwise deterministic match. Ratings are
+source-owned metadata and can differ between source graph projections.
 
 ## RDF contract
 
@@ -121,7 +124,8 @@ and can have multiple `schema:url` aliases:
 ```
 
 The extracted content variants and identity evidence remain in PostgreSQL. The RDF
-contains the selected document text and canonical semantic assertions.
+contains the selected document text, canonical identity links, and source-owned
+metadata in each source graph.
 
 ## Completion invariants
 
@@ -131,5 +135,7 @@ contains the selected document text and canonical semantic assertions.
 - One document with two claims produces two claim-review UUIDs.
 - Cross-organization similarity never causes an automatic merge.
 - Rating, date, URL, and content changes do not recalculate an entity IRI.
-- Every fuzzy candidate stores its score, evidence, and adjudication state.
+- Every fuzzy candidate stores its score and evidence for offline auditing.
+- A failed or incomplete source never replaces its published graph.
+- A successful empty source produces an empty full snapshot and clears stale members.
 - RDF generation and deployment contain no identity-resolution decisions.

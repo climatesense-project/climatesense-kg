@@ -16,13 +16,7 @@ from .processors import (
     EuroClimateCheckProcessor,
 )
 from .processors.base import BaseProcessor
-from .providers import (
-    FileProvider,
-    GitHubProvider,
-    GraphQLProvider,
-    HttpProvider,
-    XWikiProvider,
-)
+from .provider_registry import PROVIDER_REGISTRATIONS
 from .providers.base import BaseProvider
 from .utils.data_cache import DataCache
 
@@ -43,15 +37,6 @@ class DataManager:
         """
         self.cache = DataCache(Path(cache_dir), default_ttl_hours)
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
-
-        # Provider type mapping
-        self._providers: dict[str, type[BaseProvider]] = {
-            "file": FileProvider,
-            "github": GitHubProvider,
-            "graphql": GraphQLProvider,
-            "http": HttpProvider,
-            "xwiki": XWikiProvider,
-        }
 
         # Processor type mapping
         self._processors: dict[str, type[BaseProcessor]] = {
@@ -118,11 +103,10 @@ class DataManager:
             # 3. If cache miss, fetch from provider (unless skip_download is True)
             if raw_data is None:
                 if skip_download:
-                    self.logger.warning(
+                    raise RuntimeError(
                         f"No cached data found for {source_name} and --skip-download is enabled. "
-                        f"Skipping download - no data will be processed for this source."
+                        "The source cannot be ingested completely."
                     )
-                    return
                 else:
                     self.logger.info(
                         f"Cache miss for {source_name}, fetching from provider"
@@ -147,11 +131,10 @@ class DataManager:
     ) -> BaseProvider:
         """Create provider instance from config."""
         provider_type = provider_config.provider_type
-        if provider_type not in self._providers:
+        registration = PROVIDER_REGISTRATIONS.get(provider_type)
+        if registration is None:
             raise ValueError(f"Unknown provider type: {provider_type}")
-
-        provider_class = self._providers[provider_type]
-        return provider_class(source_name)
+        return registration.provider_type(source_name)
 
     def _create_processor(self, source_name: str, source_type: str) -> BaseProcessor:
         """Create processor instance from source type."""

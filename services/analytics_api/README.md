@@ -17,7 +17,7 @@ The Analytics API provides metrics and statistics about the knowledge graph and 
          ▼
 ┌─────────────────┐      ┌──────────────┐
 │  Analytics API  │─────▶│  PostgreSQL  │
-│    (FastAPI)    │      │   (cache)    │
+│    (FastAPI)    │      │ (v2 state)   │
 └────────┬────────┘      └──────────────┘
          │
          │                ┌───────────────┐
@@ -30,10 +30,10 @@ The Analytics API provides metrics and statistics about the knowledge graph and 
 
 ### Pipeline Metrics
 
-- `GET /metrics/enrichers/success-rate` - Enricher success rates
-- `GET /metrics/enrichers/error-types` - Error type breakdown
-- `GET /metrics/enrichers/domain-failures` - Domain-specific failures
-- `GET /metrics/enrichers/recent-activity` - Recent enricher activity
+- `GET /metrics/stages/success-rate` - Success rates by semantic stage version
+- `GET /metrics/stages/error-types` - Stage error type breakdown
+- `GET /metrics/stages/domain-failures` - Document extraction failures by domain
+- `GET /metrics/stages/recent-activity` - Recent semantic-stage activity
 
 ### Knowledge Graph Metrics
 
@@ -44,7 +44,7 @@ The Analytics API provides metrics and statistics about the knowledge graph and 
 - `GET /metrics/kg/entity-types` - Entity type counts
 - `GET /metrics/kg/claim-factors` - Claim factor distributions
 
-### Cache Management
+### Analytics result cache management
 
 - `GET /cache/status` - Cache status overview
 - `POST /cache/clear` - Clear cache data

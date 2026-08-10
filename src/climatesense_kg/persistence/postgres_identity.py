@@ -122,11 +122,19 @@ class PostgresIdentityTransaction:
         with self.connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT id
-                FROM claim_review_identities
-                WHERE document_id = %s AND claim_uri = %s
+                SELECT DISTINCT identities.id
+                FROM claim_review_identities AS identities
+                LEFT JOIN source_review_records AS sources
+                  ON sources.claim_review_id = identities.id
+                WHERE identities.document_id = %s
+                  AND (
+                    identities.claim_uri = %s
+                    OR sources.claim_uri = %s
+                  )
+                ORDER BY identities.id
+                LIMIT 1
                 """,
-                (document_id, claim_uri),
+                (document_id, claim_uri, claim_uri),
             )
             row = cursor.fetchone()
         return self.assignment(row[0]).review if row else None
@@ -137,12 +145,18 @@ class PostgresIdentityTransaction:
         with self.connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT id
-                FROM claim_review_identities
-                WHERE organization_uri = %s AND claim_uri = %s
-                ORDER BY id
+                SELECT DISTINCT identities.id
+                FROM claim_review_identities AS identities
+                LEFT JOIN source_review_records AS sources
+                  ON sources.claim_review_id = identities.id
+                WHERE identities.organization_uri = %s
+                  AND (
+                    identities.claim_uri = %s
+                    OR sources.claim_uri = %s
+                  )
+                ORDER BY identities.id
                 """,
-                (organization_uri, claim_uri),
+                (organization_uri, claim_uri, claim_uri),
             )
             review_ids = [row[0] for row in cursor.fetchall()]
         return [self.assignment(review_id).review for review_id in review_ids]
@@ -187,16 +201,15 @@ class PostgresIdentityTransaction:
             cursor.execute(
                 """
                 INSERT INTO claim_review_identities (
-                    id, document_id, organization_uri, claim_uri, rating_fingerprint
+                    id, document_id, organization_uri, claim_uri
                 )
-                VALUES (%s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s)
                 """,
                 (
                     review_id,
                     document.id,
                     organization.uri,
                     record.claim.uri,
-                    record.rating.fingerprint if record.rating else None,
                 ),
             )
         return RegisteredReview(
@@ -204,7 +217,6 @@ class PostgresIdentityTransaction:
             document=document,
             organization_uri=organization.uri,
             claim_uri=record.claim.uri,
-            rating_fingerprint=record.rating.fingerprint if record.rating else None,
         )
 
     def attach_source(
@@ -218,14 +230,27 @@ class PostgresIdentityTransaction:
                 """
                 INSERT INTO source_review_records (
                     record_key, source_name, source_type, native_id,
-                    observed_url, final_url, canonical_url, payload_hash,
+                    observed_url, final_url, canonical_url,
+                    claim_uri, rating_fingerprint,
+                    source_text, extracted_text, normalized_text_hash,
+                    shingle_signature, word_count, payload_hash,
                     document_id, claim_review_id
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (
+                    %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s
+                )
                 ON CONFLICT (record_key) DO UPDATE SET
                     observed_url = EXCLUDED.observed_url,
                     final_url = EXCLUDED.final_url,
                     canonical_url = EXCLUDED.canonical_url,
+                    claim_uri = EXCLUDED.claim_uri,
+                    rating_fingerprint = EXCLUDED.rating_fingerprint,
+                    source_text = EXCLUDED.source_text,
+                    extracted_text = EXCLUDED.extracted_text,
+                    normalized_text_hash = EXCLUDED.normalized_text_hash,
+                    shingle_signature = EXCLUDED.shingle_signature,
+                    word_count = EXCLUDED.word_count,
                     payload_hash = EXCLUDED.payload_hash,
                     document_id = EXCLUDED.document_id,
                     claim_review_id = EXCLUDED.claim_review_id,
@@ -239,6 +264,13 @@ class PostgresIdentityTransaction:
                     record.document.observed_url,
                     record.document.final_url,
                     record.document.canonical_url,
+                    record.claim.uri,
+                    record.rating.fingerprint if record.rating else None,
+                    record.document.source_text,
+                    record.document.extracted_text,
+                    record.document.normalized_text_hash,
+                    json.dumps(record.document.shingle_signature),
+                    record.document.word_count,
                     record.payload_hash,
                     document.id,
                     review.id,
@@ -246,29 +278,46 @@ class PostgresIdentityTransaction:
             )
             cursor.execute(
                 """
-                UPDATE review_documents
+                WITH selected AS (
+                    SELECT
+                        COALESCE(extracted_text, source_text) AS content,
+                        normalized_text_hash,
+                        shingle_signature,
+                        word_count
+                    FROM source_review_records
+                    WHERE document_id = %s
+                      AND COALESCE(extracted_text, source_text) IS NOT NULL
+                    ORDER BY word_count DESC, last_seen_at DESC, record_key
+                    LIMIT 1
+                )
+                UPDATE review_documents AS document
                 SET preferred_url = %s,
-                    final_url = COALESCE(%s, final_url),
-                    canonical_url = COALESCE(%s, canonical_url),
-                    extracted_text = COALESCE(%s, extracted_text),
-                    normalized_text_hash = COALESCE(%s, normalized_text_hash),
-                    shingle_signature = CASE
-                        WHEN %s > 0 THEN %s
-                        ELSE shingle_signature
-                    END,
-                    word_count = GREATEST(%s, word_count),
+                    final_url = COALESCE(%s, document.final_url),
+                    canonical_url = COALESCE(%s, document.canonical_url),
+                    extracted_text = COALESCE(
+                        (SELECT content FROM selected),
+                        document.extracted_text
+                    ),
+                    normalized_text_hash = COALESCE(
+                        (SELECT normalized_text_hash FROM selected),
+                        document.normalized_text_hash
+                    ),
+                    shingle_signature = COALESCE(
+                        (SELECT shingle_signature FROM selected),
+                        document.shingle_signature
+                    ),
+                    word_count = COALESCE(
+                        (SELECT word_count FROM selected),
+                        document.word_count
+                    ),
                     updated_at = CURRENT_TIMESTAMP
-                WHERE id = %s
+                WHERE document.id = %s
                 """,
                 (
+                    document.id,
                     record.document.preferred_url,
                     record.document.final_url,
                     record.document.canonical_url,
-                    record.document.content,
-                    record.document.normalized_text_hash,
-                    record.document.word_count,
-                    json.dumps(record.document.shingle_signature),
-                    record.document.word_count,
                     document.id,
                 ),
             )
@@ -299,7 +348,7 @@ class PostgresIdentityTransaction:
         with self.connection.cursor(row_factory=dict_row) as cursor:
             cursor.execute(
                 """
-                SELECT id, document_id, organization_uri, claim_uri, rating_fingerprint
+                SELECT id, document_id, organization_uri, claim_uri
                 FROM claim_review_identities
                 WHERE id = %s
                 """,
@@ -322,7 +371,6 @@ class PostgresIdentityTransaction:
             document=self._document(row["document_id"]),
             organization_uri=row["organization_uri"],
             claim_uri=row["claim_uri"],
-            rating_fingerprint=row["rating_fingerprint"],
         )
         return IdentityAssignment(
             review=review,

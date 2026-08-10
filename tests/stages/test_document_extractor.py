@@ -65,3 +65,21 @@ def test_non_http_source_document_is_not_fetched(fetch: Mock) -> None:
 
     assert result is record
     fetch.assert_not_called()
+
+
+@patch("climatesense_kg.stages.document_extractor.fetch_and_extract_text")
+def test_failure_state_retains_url_for_operational_diagnostics(fetch: Mock) -> None:
+    fetch.return_value = TextExtractionResult(
+        success=False,
+        error_message="Timed out",
+    )
+    record = _record()
+    store = InMemoryStageResultStore()
+    extractor = DocumentExtractor(store, rate_limit_delay=0)
+
+    extractor.extract(record)
+
+    result = store.get(extractor._key(record))
+    assert result is not None
+    assert result.success is False
+    assert result.payload["url"] == record.document.observed_url

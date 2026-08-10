@@ -32,9 +32,7 @@ def test_redeploy_preserves_underscored_source_name(tmp_path: Path) -> None:
     )
     handler = Mock()
     handler.deploy.return_value = True
-    args = Namespace(
-        config="config.yaml", debug=False, rdf_dir=str(tmp_path), replace=False
-    )
+    args = Namespace(config="config.yaml", debug=False, rdf_dir=str(tmp_path))
 
     with (
         patch("src.climatesense_kg.config.load_config", return_value=config),
@@ -58,11 +56,11 @@ def test_redeploy_preserves_underscored_source_name(tmp_path: Path) -> None:
             ORGANIZATION_SOURCE_NAME,
             replace=True,
         ),
-        call(rdf_file, "climate_feedback", replace=False),
+        call(rdf_file, "climate_feedback", replace=True),
     ]
 
 
-def test_redeploy_routes_enrichment_artifact_and_can_replace_graph(
+def test_redeploy_routes_enrichment_artifact_as_full_snapshot(
     tmp_path: Path,
 ) -> None:
     rdf_file = tmp_path / "dbpedia-enricher_2026-08-07_120000.ttl"
@@ -76,9 +74,7 @@ def test_redeploy_routes_enrichment_artifact_and_can_replace_graph(
     )
     handler = Mock()
     handler.deploy.return_value = True
-    args = Namespace(
-        config="config.yaml", debug=False, rdf_dir=str(tmp_path), replace=True
-    )
+    args = Namespace(config="config.yaml", debug=False, rdf_dir=str(tmp_path))
 
     with (
         patch("src.climatesense_kg.config.load_config", return_value=config),
@@ -96,7 +92,7 @@ def test_redeploy_routes_enrichment_artifact_and_can_replace_graph(
     )
 
 
-def test_redeploy_rejects_replacing_multiple_files_for_one_graph(
+def test_redeploy_rejects_multiple_snapshots_for_one_graph(
     tmp_path: Path,
 ) -> None:
     for timestamp in ("120000", "130000"):
@@ -111,9 +107,7 @@ def test_redeploy_rejects_replacing_multiple_files_for_one_graph(
         data_sources=[SimpleNamespace(name="claimreviewdata")],
     )
     handler = Mock()
-    args = Namespace(
-        config="config.yaml", debug=False, rdf_dir=str(tmp_path), replace=True
-    )
+    args = Namespace(config="config.yaml", debug=False, rdf_dir=str(tmp_path))
 
     with (
         patch("src.climatesense_kg.config.load_config", return_value=config),
