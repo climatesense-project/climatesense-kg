@@ -55,6 +55,7 @@
     - [Example SQL Queries](#example-sql-queries)
   - [Querying the Knowledge Graph](#querying-the-knowledge-graph)
     - [Example SPARQL Queries](#example-sparql-queries)
+  - [Auditing near-duplicate claim reviews](#auditing-near-duplicate-claim-reviews)
   - [Development](#development)
     - [Setup](#setup)
     - [Common Tasks](#common-tasks)
@@ -272,6 +273,27 @@ WHERE {
 }
 LIMIT 10
 ```
+
+## Auditing near-duplicate claim reviews
+
+Use the read-only audit script on one generated N-Triples snapshot to find review
+bodies that are nearly identical but have distinct claim-review resources. Candidate
+pairs are limited to reviews attached to the same exact claim, so the comparison does
+not require an all-pairs scan of the knowledge graph.
+
+```bash
+uv run python scripts/audit_similar_claim_reviews.py \
+  data/rdf/2026-08-07/claimreviewdata_2026-08-07_171335.nt \
+  --output output/similar-claim-reviews.csv
+```
+
+The default score is the containment overlap of normalized five-word shingles. A
+score of `0.9` means at least 90% of the smaller review's shingles also occur in the
+larger review. This catches extraction differences such as an added heading or a
+boilerplate paragraph while remaining easy to inspect. Reviews shorter than 50 words
+are excluded by default. Use the CSV as a manual review queue; a match can represent
+a duplicate source record, a migrated URL, or legitimate syndication and should not
+be deleted automatically.
 
 ## Development
 
