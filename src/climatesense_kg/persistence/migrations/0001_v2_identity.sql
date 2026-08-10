@@ -31,7 +31,7 @@ CREATE TABLE review_documents (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE UNIQUE INDEX review_documents_org_canonical_url_unique
+CREATE INDEX review_documents_org_canonical_url
     ON review_documents (organization_uri, canonical_url)
     WHERE canonical_url IS NOT NULL;
 
