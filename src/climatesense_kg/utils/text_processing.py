@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from enum import Enum
 import html
+from html.parser import HTMLParser
 from ipaddress import ip_address
 import logging
 import re
@@ -90,6 +91,36 @@ class TextExtractionResult:
     content: str = ""
     error_message: str = ""
     error_type: ExtractionErrorType | None = None
+    final_url: str | None = None
+    canonical_url: str | None = None
+
+
+class _CanonicalLinkParser(HTMLParser):
+    """Capture the first HTML canonical link without constructing a DOM."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.href: str | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if self.href is not None or tag.casefold() != "link":
+            return
+        values = {name.casefold(): value for name, value in attrs}
+        relations = (values.get("rel") or "").casefold().split()
+        href = values.get("href")
+        if "canonical" in relations and href:
+            self.href = href.strip()
+
+
+def _extract_canonical_url(document: str, final_url: str) -> str | None:
+    parser = _CanonicalLinkParser()
+    try:
+        parser.feed(document)
+    except Exception:
+        return None
+    if not parser.href:
+        return None
+    return sanitize_url(urljoin(final_url, parser.href))
 
 
 def canonicalize_text(text: str) -> str:
@@ -404,6 +435,7 @@ def _fetch_public_url(
 
         location = response.headers.get("Location")
         if response.status_code not in _REDIRECT_STATUS_CODES or not location:
+            response.url = current_url
             return response
 
         if redirect_count == _MAX_REDIRECTS:
@@ -524,16 +556,23 @@ def fetch_and_extract_text(url: str, timeout: float = 10) -> TextExtractionResul
         try:
             response.raise_for_status()
             downloaded = _read_bounded_text_response(response)
+            final_url = sanitize_url(response.url) or sanitized_url
         finally:
             response.close()
 
         if downloaded:
+            canonical_url = _extract_canonical_url(downloaded, final_url)
             main_text: str | None = trafilatura.extract(  # pyright: ignore[reportUnknownMemberType]
                 downloaded
             )
             if main_text:
                 analysis_text = normalize_analysis_text(main_text)
-                return TextExtractionResult(success=True, content=analysis_text)
+                return TextExtractionResult(
+                    success=True,
+                    content=analysis_text,
+                    final_url=final_url,
+                    canonical_url=canonical_url,
+                )
             else:
                 logger.warning(f"No text content extracted from URL: {sanitized_url}")
                 return TextExtractionResult(

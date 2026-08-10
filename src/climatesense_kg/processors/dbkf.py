@@ -7,19 +7,15 @@ from urllib.parse import urlparse
 
 from dateutil import parser
 
-from ..config.models import (
-    CanonicalClaim,
-    CanonicalClaimReview,
-    CanonicalOrganization,
-)
+from ..domain import CanonicalClaim, OrganizationReference, SourceReviewRecord
 from .base import BaseProcessor
 
 
 class DbkfProcessor(BaseProcessor):
     """Processor for DBKF data."""
 
-    def process(self, raw_data: bytes) -> Iterator[CanonicalClaimReview]:
-        """Process DBKF raw data into CanonicalClaimReview objects."""
+    def process(self, raw_data: bytes) -> Iterator[SourceReviewRecord]:
+        """Process DBKF raw data into source observations."""
         try:
             data = json.loads(raw_data.decode("utf-8"))
             if not isinstance(data, list):
@@ -49,8 +45,8 @@ class DbkfProcessor(BaseProcessor):
         except Exception as e:
             self.logger.error(f"Error processing DBKF data: {e}")
 
-    def _normalize_item(self, item: dict[str, Any]) -> CanonicalClaimReview:
-        """Convert DBKF item to CanonicalClaimReview."""
+    def _normalize_item(self, item: dict[str, Any]) -> SourceReviewRecord:
+        """Convert a DBKF item to a source observation."""
         item_reviewed = item.get("itemReviewed", {})
         claim_text = item_reviewed.get("text", "")
 
@@ -65,7 +61,7 @@ class DbkfProcessor(BaseProcessor):
         organization_url = self._extract_website_from_url(item.get("externalUrl", ""))
         if not organization_url:
             raise ValueError("DBKF item requires an external organization URL")
-        organization = CanonicalOrganization(
+        organization = OrganizationReference(
             name=publisher.get("name", ""),
             website=organization_url,
             language=self._get_primary_language(item.get("language", [])),
@@ -75,15 +71,15 @@ class DbkfProcessor(BaseProcessor):
         review_body = item.get("reviewBody", "")
         review_text = f"{headline}\n{review_body}".strip()
 
-        return CanonicalClaimReview(
+        return self._source_record(
+            source_type="dbkf",
             claim=claim,
             organization=organization,
             review_url=item.get("externalUrl", ""),
+            native_id=str(item["id"]),
             date_published=self._convert_date(item.get("dateCreated", "")),
             language=self._get_primary_language(item.get("language", [])),
             review_text=review_text if review_text else None,
-            source_type="dbkf",
-            source_name=self.name,
         )
 
     def _extract_website_from_url(self, url: str) -> str | None:

@@ -31,7 +31,7 @@ def test_emits_valid_title_and_absolute_review_url() -> None:
 
     assert len(results) == 1
     assert results[0].claim.text == "A valid claim"
-    assert results[0].review_url == "https://example.test/review"
+    assert results[0].document.observed_url == "https://example.test/review"
     assert results[0].organization.website == "https://example.org"
 
 

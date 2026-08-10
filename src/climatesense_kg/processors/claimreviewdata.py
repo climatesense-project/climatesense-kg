@@ -4,11 +4,11 @@ from collections.abc import Iterator
 import json
 from typing import Any
 
-from ..config.models import (
+from ..domain import (
     CanonicalClaim,
-    CanonicalClaimReview,
-    CanonicalOrganization,
     CanonicalRating,
+    OrganizationReference,
+    SourceReviewRecord,
 )
 from .base import BaseProcessor
 
@@ -16,8 +16,8 @@ from .base import BaseProcessor
 class ClaimReviewDataProcessor(BaseProcessor):
     """Processor for ClaimReviewData JSON data."""
 
-    def process(self, raw_data: bytes) -> Iterator[CanonicalClaimReview]:
-        """Process ClaimReviewData raw data into CanonicalClaimReview objects."""
+    def process(self, raw_data: bytes) -> Iterator[SourceReviewRecord]:
+        """Process ClaimReviewData raw data into source observations."""
         try:
             data = json.loads(raw_data.decode("utf-8"))
             if not isinstance(data, list):
@@ -56,7 +56,7 @@ class ClaimReviewDataProcessor(BaseProcessor):
         except Exception as e:
             self.logger.error(f"Error processing ClaimReviewData data: {e}")
 
-    def _normalize_item(self, item: dict[str, Any]) -> list[CanonicalClaimReview]:
+    def _normalize_item(self, item: dict[str, Any]) -> list[SourceReviewRecord]:
         """Convert every unambiguous claim/rating pair in one source item."""
         claim_texts: list[str] = item["claim_text"]
         reviews: list[dict[str, Any]] = item["reviews"]
@@ -75,14 +75,14 @@ class ClaimReviewDataProcessor(BaseProcessor):
             )
 
         fact_checker = item.get("fact_checker", {})
-        organization = CanonicalOrganization(
+        organization = OrganizationReference(
             name=fact_checker.get("name", ""),
             website=fact_checker.get("website", ""),
             language=fact_checker.get("language", ""),
         )
 
-        canonical_reviews: list[CanonicalClaimReview] = []
-        for claim_text, source_review in claim_review_pairs:
+        source_records: list[SourceReviewRecord] = []
+        for index, (claim_text, source_review) in enumerate(claim_review_pairs):
             try:
                 claim = CanonicalClaim(
                     text=claim_text, appearances=item.get("appearances", [])
@@ -102,20 +102,20 @@ class ClaimReviewDataProcessor(BaseProcessor):
             date_published = item.get("date_published") or source_review.get(
                 "date_published"
             )
-            canonical_reviews.append(
-                CanonicalClaimReview(
+            source_records.append(
+                self._source_record(
+                    source_type="claimreviewdata",
                     claim=claim,
                     organization=organization,
                     review_url=item.get("review_url", ""),
+                    discriminator=str(index),
                     date_published=str(date_published) if date_published else None,
                     language=item.get("language") or fact_checker.get("language"),
                     rating=rating,
-                    source_type="claimreviewdata",
-                    source_name=self.name,
                 )
             )
 
-        return canonical_reviews
+        return source_records
 
     def _validate_item(self, item: Any) -> tuple[bool, list[str]]:
         """Validate a ClaimReviewData item and return validation errors.

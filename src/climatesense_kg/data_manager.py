@@ -4,8 +4,8 @@ from collections.abc import Iterator
 import logging
 from pathlib import Path
 
-from .config.models import CanonicalClaimReview
 from .config.schemas import DataSourceConfig, ProviderConfig
+from .domain import SourceReviewRecord
 from .processors import (
     ClaimReviewDataProcessor,
     ClimafactsProcessor,
@@ -66,7 +66,7 @@ class DataManager:
 
     def get_data(
         self, source_config: DataSourceConfig, skip_download: bool = False
-    ) -> Iterator[CanonicalClaimReview]:
+    ) -> Iterator[SourceReviewRecord]:
         """Get processed data for a source, using cache when possible.
 
         Args:
@@ -74,7 +74,7 @@ class DataManager:
             skip_download: Skip data downloads and use only cached data
 
         Yields:
-            CanonicalClaimReview objects
+            SourceReviewRecord objects
         """
         source_name = source_config.name
         source_type = source_config.type

@@ -8,17 +8,17 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
-from ..config.models import (
+from ..domain import (
     CanonicalClaim,
-    CanonicalClaimReview,
-    CanonicalOrganization,
     CanonicalRating,
+    OrganizationReference,
+    SourceReviewRecord,
 )
 from ..utils.text_processing import sanitize_url
 from .base import BaseProcessor
 
 _REVIEW_URN_PREFIX = "urn:climate-fever:review:"
-_DATASET_ORGANIZATION = CanonicalOrganization(
+_DATASET_ORGANIZATION = OrganizationReference(
     name="CLIMATE-FEVER Dataset",
     website="https://www.sustainablefinance.uzh.ch/en/research/climate-fever.html",
     language="en",
@@ -67,7 +67,7 @@ class ClimateFeverItem(BaseModel):
 class ClimateFeverProcessor(BaseProcessor):
     """Processor for the CLIMATE-FEVER JSONL dataset."""
 
-    def process(self, raw_data: bytes) -> Iterator[CanonicalClaimReview]:
+    def process(self, raw_data: bytes) -> Iterator[SourceReviewRecord]:
         try:
             text_stream = raw_data.decode("utf-8")
         except UnicodeDecodeError as exc:
@@ -103,7 +103,7 @@ class ClimateFeverProcessor(BaseProcessor):
                     exc,
                 )
 
-    def _normalize_item(self, item: ClimateFeverItem) -> CanonicalClaimReview:
+    def _normalize_item(self, item: ClimateFeverItem) -> SourceReviewRecord:
         claim_id = str(item.claim_id)
         review_url = self._build_review_url(claim_id)
 
@@ -115,15 +115,15 @@ class ClimateFeverProcessor(BaseProcessor):
         rating = self._build_rating(item.claim_label)
         review_text = self._build_review_text(item.evidences)
 
-        return CanonicalClaimReview(
+        return self._source_record(
+            source_type="climate-fever",
             claim=claim,
             review_url=review_url,
             organization=_DATASET_ORGANIZATION,
+            native_id=claim_id,
             language="en",
             rating=rating,
             review_text=review_text if review_text else None,
-            source_type="climate-fever",
-            source_name=self.name,
         )
 
     def _build_review_url(self, claim_id: str) -> str:

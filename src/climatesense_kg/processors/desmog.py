@@ -10,11 +10,7 @@ from rdflib import Graph, Literal, URIRef
 from rdflib.namespace import RDF, RDFS, Namespace
 from rdflib.term import Node
 
-from ..config.models import (
-    CanonicalClaim,
-    CanonicalClaimReview,
-    CanonicalOrganization,
-)
+from ..domain import CanonicalClaim, OrganizationReference, SourceReviewRecord
 from ..utils.text_processing import sanitize_url
 from .base import BaseProcessor
 
@@ -26,8 +22,8 @@ _MIN_CLAIM_TOKENS = 2
 class DesmogProcessor(BaseProcessor):
     """Processor for DeSmog claims stored as RDF Turtle."""
 
-    def process(self, raw_data: bytes) -> Iterator[CanonicalClaimReview]:
-        """Parse RDF content and yield canonical claim reviews."""
+    def process(self, raw_data: bytes) -> Iterator[SourceReviewRecord]:
+        """Parse RDF content and yield source observations."""
         graph = Graph()
 
         try:
@@ -54,8 +50,8 @@ class DesmogProcessor(BaseProcessor):
 
     def _build_claim_review(
         self, graph: Graph, claim_uri: URIRef
-    ) -> CanonicalClaimReview:
-        """Convert a schema:Claim node into a canonical review."""
+    ) -> SourceReviewRecord:
+        """Convert a schema:Claim node into a source observation."""
         claim_text = self._literal_to_str(graph.value(claim_uri, SCHEMA.abstract))
         if not claim_text:
             raise ValueError("claim missing schema:abstract")
@@ -88,22 +84,19 @@ class DesmogProcessor(BaseProcessor):
                 graph.value(archived_ref, SCHEMA.datePublished)
             )
 
-        review = CanonicalClaimReview(
+        return self._source_record(
+            source_type="desmog",
             claim=claim,
             review_url=review_url,
             organization=organization,
+            native_id=str(claim_uri),
             date_published=date_published,
             language=self._literal_to_str(graph.value(claim_uri, SCHEMA.inLanguage)),
             rating=None,
-            source_type="desmog",
-            source_name=self.name,
+            review_text=self._literal_to_str(
+                graph.value(claim_uri, SCHEMA.description)
+            ),
         )
-
-        review.review_text = self._literal_to_str(
-            graph.value(claim_uri, SCHEMA.description)
-        )
-
-        return review
 
     def _extract_appearances(
         self, graph: Graph, claim_uri: URIRef, review_url: str
@@ -144,7 +137,7 @@ class DesmogProcessor(BaseProcessor):
 
     def _build_organization(
         self, graph: Graph, claim_uri: URIRef
-    ) -> CanonicalOrganization | None:
+    ) -> OrganizationReference | None:
         publisher = graph.value(claim_uri, SCHEMA.publisher)
         if publisher is None:
             return None
@@ -163,7 +156,7 @@ class DesmogProcessor(BaseProcessor):
         if not publisher_name or not publisher_url:
             return None
 
-        return CanonicalOrganization(name=publisher_name, website=publisher_url)
+        return OrganizationReference(name=publisher_name, website=publisher_url)
 
     def _get_resource_label(self, graph: Graph, resource: Node) -> str | None:
         if isinstance(resource, Literal):
