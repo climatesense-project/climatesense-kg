@@ -7,16 +7,22 @@ from .fingerprints import (
     shingle_containment,
 )
 from .models import IdentityAssignment, IdentityCandidate, RegisteredDocument
-from .registry import IdentityRegistry, IdentityTransaction, InMemoryIdentityRegistry
+from .planner import IdentityPlanner
+from .registry import (
+    IdentityRegistry,
+    IdentityRepositoryBatch,
+    InMemoryIdentityRegistry,
+)
 from .resolver import IdentityResolver
 
 __all__ = [
     "DocumentFingerprint",
     "IdentityAssignment",
     "IdentityCandidate",
+    "IdentityPlanner",
     "IdentityRegistry",
+    "IdentityRepositoryBatch",
     "IdentityResolver",
-    "IdentityTransaction",
     "InMemoryIdentityRegistry",
     "RegisteredDocument",
     "fingerprint_document",

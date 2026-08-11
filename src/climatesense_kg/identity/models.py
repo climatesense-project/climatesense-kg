@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
 
+from ..domain import CanonicalOrganization, SourceReviewRecord
+
 
 @dataclass
 class RegisteredDocument:
@@ -47,3 +49,46 @@ class IdentityCandidate:
     candidate_review_id: UUID
     similarity: float
     evidence: dict[str, Any]
+
+
+IdentityBatchRecord = tuple[SourceReviewRecord, CanonicalOrganization]
+
+
+@dataclass
+class IdentityBatchEvidence:
+    """Existing identity state relevant to one bounded input batch."""
+
+    assignments_by_source_key: dict[str, IdentityAssignment]
+    assignments_by_native_key: dict[tuple[str, str], IdentityAssignment]
+    documents: dict[UUID, RegisteredDocument]
+    reviews: dict[UUID, RegisteredReview]
+    assignments: dict[UUID, IdentityAssignment]
+    review_claims: dict[UUID, set[str]]
+
+
+@dataclass(frozen=True)
+class PlannedSourceAssignment:
+    """One source observation attached to its planned canonical identity."""
+
+    record: SourceReviewRecord
+    assignment: IdentityAssignment
+
+
+@dataclass(frozen=True)
+class PlannedIdentityCandidate:
+    """A fuzzy identity candidate associated with its source observation."""
+
+    source_record_key: str
+    candidate: IdentityCandidate
+
+
+@dataclass
+class IdentityBatchPlan:
+    """Pure identity decisions ready for one atomic repository commit."""
+
+    results: list[IdentityAssignment]
+    documents: dict[UUID, RegisteredDocument]
+    new_document_ids: set[UUID]
+    new_reviews: dict[UUID, RegisteredReview]
+    sources: list[PlannedSourceAssignment]
+    candidates: list[PlannedIdentityCandidate]

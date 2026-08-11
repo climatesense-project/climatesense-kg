@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import time
-from uuid import uuid4
 
 from ..domain import (
     CanonicalClaimReview,
@@ -13,9 +12,10 @@ from ..domain import (
     SourceReviewRecord,
 )
 from ..utils.progress import format_duration
-from .fingerprints import fingerprint_document, shingle_containment
-from .models import IdentityAssignment, IdentityCandidate
-from .registry import IdentityRegistry, IdentityTransaction
+from .fingerprints import fingerprint_document
+from .models import IdentityAssignment, IdentityBatchRecord
+from .planner import IdentityPlanner
+from .registry import IdentityRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -32,17 +32,15 @@ class IdentityResolver:
         batch_size: int = 500,
         progress_interval_seconds: float = 10.0,
     ) -> None:
-        if not 0 <= similarity_threshold <= 1:
-            raise ValueError("Similarity threshold must be between zero and one")
-        if minimum_similarity_words < 1:
-            raise ValueError("Minimum similarity words must be positive")
         if batch_size <= 0:
             raise ValueError("Identity batch size must be positive")
         if progress_interval_seconds < 0:
             raise ValueError("Identity progress interval must be non-negative")
         self.registry = registry
-        self.similarity_threshold = similarity_threshold
-        self.minimum_similarity_words = minimum_similarity_words
+        self.planner = IdentityPlanner(
+            similarity_threshold=similarity_threshold,
+            minimum_similarity_words=minimum_similarity_words,
+        )
         self.batch_size = batch_size
         self.progress_interval_seconds = progress_interval_seconds
 
@@ -53,14 +51,11 @@ class IdentityResolver:
     ) -> CanonicalClaimReview:
         """Resolve one source observation and return its canonical domain entity."""
 
-        fingerprint_document(record.document)
-        with self.registry.transaction() as transaction:
-            transaction.lock_scope(organization.uri)
-            return self._resolve_in_transaction(transaction, record, organization)
+        return self.resolve_many([(record, organization)])[0]
 
     def resolve_many(
         self,
-        records: list[tuple[SourceReviewRecord, CanonicalOrganization]],
+        records: list[IdentityBatchRecord],
     ) -> list[CanonicalClaimReview]:
         """Resolve and merge repeated canonical identities within one pipeline batch."""
 
@@ -102,127 +97,23 @@ class IdentityResolver:
             batch = records[start : start + self.batch_size]
             for record, _organization in batch:
                 fingerprint_document(record.document)
-            with self.registry.transaction() as transaction:
-                for organization_uri in sorted(
-                    {organization.uri for _record, organization in batch}
-                ):
-                    transaction.lock_scope(organization_uri)
-                transaction.prepare(batch)
-                for record, organization in batch:
-                    current = self._resolve_in_transaction(
-                        transaction, record, organization
-                    )
-                    existing = resolved.get(current.key)
-                    if existing is None:
-                        resolved[current.key] = current
-                    else:
-                        self._merge(existing, current)
+            organization_uris = {organization.uri for _record, organization in batch}
+            with self.registry.batch(organization_uris) as repository_batch:
+                evidence = repository_batch.load_evidence(batch)
+                plan = self.planner.plan(batch, evidence)
+                assignments = repository_batch.commit(plan)
+            for (record, organization), assignment in zip(
+                batch, assignments, strict=True
+            ):
+                current = self._to_canonical(record, organization, assignment)
+                existing = resolved.get(current.key)
+                if existing is None:
+                    resolved[current.key] = current
+                else:
+                    self._merge(existing, current)
             batches += 1
             log_progress(min(start + len(batch), total), batches)
         return list(resolved.values())
-
-    def _resolve_in_transaction(
-        self,
-        transaction: IdentityTransaction,
-        record: SourceReviewRecord,
-        organization: CanonicalOrganization,
-    ) -> CanonicalClaimReview:
-        assignment = transaction.assignment_for_source(record.source.record_key)
-        if assignment is not None:
-            transaction.attach_source(
-                record, assignment.review.document, assignment.review
-            )
-            assignment = transaction.assignment(assignment.review.id)
-            return self._to_canonical(record, organization, assignment)
-
-        if record.source.native_id:
-            assignment = transaction.assignment_for_native_id(
-                record.source.source_name, record.source.native_id
-            )
-            if assignment is not None:
-                transaction.attach_source(
-                    record, assignment.review.document, assignment.review
-                )
-                assignment = transaction.assignment(assignment.review.id)
-                return self._to_canonical(record, organization, assignment)
-
-        assignment = self._resolve_new_source(transaction, record, organization)
-        return self._to_canonical(record, organization, assignment)
-
-    def _resolve_new_source(
-        self,
-        transaction: IdentityTransaction,
-        record: SourceReviewRecord,
-        organization: CanonicalOrganization,
-    ) -> IdentityAssignment:
-        urls = {
-            url
-            for url in (
-                record.document.observed_url,
-                record.document.final_url,
-                record.document.canonical_url,
-            )
-            if url
-        }
-        documents = transaction.documents_by_evidence(
-            organization.uri, urls, record.document.normalized_text_hash
-        )
-        for document in documents:
-            review = transaction.review_for_document_claim(
-                document.id, record.claim.uri
-            )
-            if review is None:
-                review = transaction.create_review(
-                    uuid4(), document, organization, record
-                )
-            transaction.attach_source(record, document, review)
-            return transaction.assignment(review.id)
-
-        identity_candidates = self._find_fuzzy_candidates(
-            transaction, record, organization
-        )
-        document = transaction.create_document(uuid4(), organization, record)
-        review = transaction.create_review(uuid4(), document, organization, record)
-        transaction.attach_source(record, document, review)
-        seen_candidates: set[str] = set()
-        for candidate in identity_candidates:
-            candidate_key = str(candidate.candidate_review_id)
-            if candidate_key in seen_candidates:
-                continue
-            seen_candidates.add(candidate_key)
-            transaction.record_candidate(record.source.record_key, candidate)
-        return transaction.assignment(review.id)
-
-    def _find_fuzzy_candidates(
-        self,
-        transaction: IdentityTransaction,
-        record: SourceReviewRecord,
-        organization: CanonicalOrganization,
-    ) -> list[IdentityCandidate]:
-        if record.document.word_count < self.minimum_similarity_words:
-            return []
-        record_shingles = frozenset(record.document.shingle_signature)
-        candidates: list[IdentityCandidate] = []
-        for review in transaction.reviews_for_claim(organization.uri, record.claim.uri):
-            if review.document.word_count < self.minimum_similarity_words:
-                continue
-            similarity = shingle_containment(record_shingles, review.document.shingles)
-            if similarity < self.similarity_threshold:
-                continue
-            candidates.append(
-                IdentityCandidate(
-                    candidate_review_id=review.id,
-                    similarity=similarity,
-                    evidence={
-                        "kind": "body_similarity",
-                        "same_organization": True,
-                        "same_claim": True,
-                        "left_word_count": record.document.word_count,
-                        "right_word_count": review.document.word_count,
-                    },
-                )
-            )
-        return candidates
 
     @staticmethod
     def _to_canonical(

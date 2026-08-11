@@ -1,4 +1,4 @@
-"""PostgreSQL identity registry."""
+"""PostgreSQL persistence for batch identity resolution."""
 
 from __future__ import annotations
 
@@ -13,679 +13,607 @@ from psycopg import Connection
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
-from ..domain import CanonicalOrganization, SourceReviewRecord
-from ..identity import (
+from ..identity.models import (
     IdentityAssignment,
-    IdentityCandidate,
-    IdentityTransaction,
+    IdentityBatchEvidence,
+    IdentityBatchPlan,
+    IdentityBatchRecord,
+    PlannedSourceAssignment,
     RegisteredDocument,
+    RegisteredReview,
 )
-from ..identity.models import RegisteredReview
+from ..identity.registry import IdentityRepositoryBatch
 
 
 class PostgresIdentityRegistry:
-    """Resolve identity atomically against PostgreSQL."""
+    """Provide atomic, organization-locked identity repository batches."""
 
     def __init__(self, pool: ConnectionPool) -> None:
         self.pool = pool
 
     @contextmanager
-    def transaction(self) -> Iterator[IdentityTransaction]:
+    def batch(self, organization_uris: set[str]) -> Iterator[IdentityRepositoryBatch]:
         with self.pool.connection() as connection:
             with connection.transaction():
-                yield PostgresIdentityTransaction(connection)
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT pg_advisory_xact_lock(hashtextextended(uri, 0))
+                        FROM (
+                            SELECT unnest(%s::text[]) AS uri
+                            ORDER BY uri
+                        ) AS scopes
+                        """,
+                        (sorted(organization_uris),),
+                    )
+                yield PostgresIdentityBatch(connection)
 
 
-class PostgresIdentityTransaction:
-    """Identity operations bound to one PostgreSQL transaction."""
+class PostgresIdentityBatch:
+    """Set-based identity reads and writes within one PostgreSQL transaction."""
 
     def __init__(self, connection: Connection[Any]) -> None:
         self.connection = connection
-        self._prepared_source_keys: set[str] = set()
-        self._prepared_native_keys: set[tuple[str, str]] = set()
-        self._review_by_source_key: dict[str, UUID] = {}
-        self._review_by_native_key: dict[tuple[str, str], UUID] = {}
-        self._assignments: dict[UUID, IdentityAssignment] = {}
-        self._documents: dict[UUID, RegisteredDocument] = {}
-        self._prepared_evidence_keys: set[tuple[str, frozenset[str], str | None]] = (
-            set()
+
+    def load_evidence(
+        self, records: list[IdentityBatchRecord]
+    ) -> IdentityBatchEvidence:
+        """Load all existing state that can affect decisions for the batch."""
+
+        if not records:
+            return self._empty_evidence()
+
+        source_keys = sorted({record.source.record_key for record, _ in records})
+        native_keys = sorted(
+            {
+                (record.source.source_name, record.source.native_id)
+                for record, _ in records
+                if record.source.native_id is not None
+            }
         )
+        source_names = [key[0] for key in native_keys]
+        native_ids = [key[1] for key in native_keys]
 
-    def prepare(
-        self,
-        records: list[tuple[SourceReviewRecord, CanonicalOrganization]],
-    ) -> None:
-        """Prefetch assignments and exact document evidence for one batch."""
-
-        source_records = [record for record, _organization in records]
-        source_keys = {record.source.record_key for record in source_records}
-        native_keys = {
-            (record.source.source_name, record.source.native_id)
-            for record in source_records
-            if record.source.native_id is not None
+        direct_rows = self._direct_assignments(source_keys, source_names, native_ids)
+        direct_review_ids = {
+            row["claim_review_id"]
+            for row in direct_rows
+            if row["claim_review_id"] is not None
         }
-        self._prepared_source_keys.update(source_keys)
-        self._prepared_native_keys.update(native_keys)
-        source_names = {source_name for source_name, _native_id in native_keys}
-        native_ids = {native_id for _source_name, native_id in native_keys}
-        if source_keys:
-            with self.connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    SELECT record_key, source_name, native_id, claim_review_id
-                    FROM source_review_records
-                    WHERE claim_review_id IS NOT NULL
-                      AND (
-                        record_key = ANY(%s::text[])
-                        OR (
-                            native_id IS NOT NULL
-                            AND source_name = ANY(%s::text[])
-                            AND native_id = ANY(%s::text[])
-                        )
-                      )
-                    """,
-                    (
-                        sorted(source_keys),
-                        sorted(source_names),
-                        sorted(native_ids),
-                    ),
-                )
-                for record_key, source_name, native_id, review_id in cursor.fetchall():
-                    self._review_by_source_key[record_key] = review_id
-                    if native_id is not None:
-                        self._review_by_native_key[(source_name, native_id)] = review_id
 
-        evidence_records = [
-            (record, organization)
-            for record, organization in records
-            if record.source.record_key not in self._review_by_source_key
-            and (
-                record.source.native_id is None
-                or (
-                    record.source.source_name,
-                    record.source.native_id,
-                )
-                not in self._review_by_native_key
-            )
-        ]
-        evidence_source_records = [record for record, _organization in evidence_records]
-        organization_uris = {
-            organization.uri for _record, organization in evidence_records
-        }
-        urls = {
-            url
-            for record in evidence_source_records
-            for url in (
-                record.document.observed_url,
-                record.document.final_url,
-                record.document.canonical_url,
-            )
-            if url
-        }
-        text_hashes = {
-            record.document.normalized_text_hash
-            for record in evidence_source_records
-            if record.document.normalized_text_hash is not None
-        }
-        self._prepared_evidence_keys.update(
-            (
-                organization.uri,
-                frozenset(
-                    url
-                    for url in (
-                        record.document.observed_url,
-                        record.document.final_url,
-                        record.document.canonical_url,
-                    )
-                    if url
-                ),
-                record.document.normalized_text_hash,
-            )
-            for record, organization in evidence_records
-        )
-        if organization_uris and urls:
-            self._prepare_evidence_documents(
-                organization_uris,
-                urls,
-                text_hashes,
-            )
-
-    def _prepare_evidence_documents(
-        self,
-        organization_uris: set[str],
-        urls: set[str],
-        text_hashes: set[str],
-    ) -> None:
-        urls_by_document: dict[UUID, set[str]] = defaultdict(set)
-        rows_by_document: dict[UUID, dict[str, Any]] = {}
-        with self.connection.cursor(row_factory=dict_row) as cursor:
-            cursor.execute(
-                """
-                SELECT d.id, d.organization_uri, d.preferred_url,
-                       d.final_url, d.canonical_url, d.extracted_text,
-                       d.normalized_text_hash, d.shingle_signature, d.word_count,
-                       s.observed_url AS source_observed_url,
-                       s.final_url AS source_final_url,
-                       s.canonical_url AS source_canonical_url
-                FROM review_documents AS d
-                LEFT JOIN source_review_records AS s ON s.document_id = d.id
-                WHERE d.organization_uri = ANY(%s::text[])
-                  AND (
-                    d.normalized_text_hash = ANY(%s::text[])
-                    OR d.preferred_url = ANY(%s::text[])
-                    OR d.final_url = ANY(%s::text[])
-                    OR d.canonical_url = ANY(%s::text[])
-                    OR s.observed_url = ANY(%s::text[])
-                    OR s.final_url = ANY(%s::text[])
-                    OR s.canonical_url = ANY(%s::text[])
-                  )
-                """,
-                (
-                    sorted(organization_uris),
-                    sorted(text_hashes),
-                    *(sorted(urls) for _index in range(6)),
-                ),
-            )
-            for row in cursor.fetchall():
-                document_id = row["id"]
-                rows_by_document[document_id] = row
-                urls_by_document[document_id].update(
-                    url
-                    for url in (
-                        row["preferred_url"],
-                        row["final_url"],
-                        row["canonical_url"],
-                        row["source_observed_url"],
-                        row["source_final_url"],
-                        row["source_canonical_url"],
-                    )
-                    if url
-                )
-        for document_id, row in rows_by_document.items():
-            cached = self._documents.get(document_id)
-            if cached is not None:
-                cached.urls.update(urls_by_document[document_id])
-                continue
-            self._documents[document_id] = RegisteredDocument(
-                id=document_id,
-                organization_uri=row["organization_uri"],
-                urls=urls_by_document[document_id],
-                preferred_url=row["preferred_url"],
-                content=row["extracted_text"],
-                normalized_text_hash=row["normalized_text_hash"],
-                shingles=frozenset(row["shingle_signature"]),
-                word_count=row["word_count"],
-            )
-
-    def lock_scope(self, organization_uri: str) -> None:
-        with self.connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
-                (organization_uri,),
-            )
-
-    def assignment_for_source(self, record_key: str) -> IdentityAssignment | None:
-        if record_key in self._prepared_source_keys:
-            review_id = self._review_by_source_key.get(record_key)
-            return self.assignment(review_id) if review_id is not None else None
-        with self.connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT claim_review_id FROM source_review_records WHERE record_key = %s",
-                (record_key,),
-            )
-            row = cursor.fetchone()
-        if row is None or row[0] is None:
-            return None
-        return self.assignment(row[0])
-
-    def assignment_for_native_id(
-        self, source_name: str, native_id: str
-    ) -> IdentityAssignment | None:
-        native_key = (source_name, native_id)
-        if native_key in self._prepared_native_keys:
-            review_id = self._review_by_native_key.get(native_key)
-            return self.assignment(review_id) if review_id is not None else None
-        with self.connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT claim_review_id
-                FROM source_review_records
-                WHERE source_name = %s AND native_id = %s
-                """,
-                (source_name, native_id),
-            )
-            row = cursor.fetchone()
-        if row is None or row[0] is None:
-            return None
-        return self.assignment(row[0])
-
-    def documents_by_evidence(
-        self,
-        organization_uri: str,
-        urls: set[str],
-        normalized_text_hash: str | None,
-    ) -> list[RegisteredDocument]:
-        evidence_key = (
-            organization_uri,
-            frozenset(urls),
-            normalized_text_hash,
-        )
-        if evidence_key in self._prepared_evidence_keys:
-            return sorted(
-                (
-                    document
-                    for document in self._documents.values()
-                    if document.organization_uri == organization_uri
-                    and (
-                        bool(document.urls & urls)
-                        or (
-                            normalized_text_hash is not None
-                            and document.normalized_text_hash == normalized_text_hash
-                        )
-                    )
-                ),
-                key=lambda document: str(document.id),
-            )
-        url_list = sorted(urls)
-        with self.connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT DISTINCT d.id
-                FROM review_documents AS d
-                LEFT JOIN source_review_records AS s ON s.document_id = d.id
-                WHERE d.organization_uri = %s
-                  AND (
-                    d.normalized_text_hash = %s
-                    OR d.preferred_url = ANY(%s)
-                    OR d.final_url = ANY(%s)
-                    OR d.canonical_url = ANY(%s)
-                    OR s.observed_url = ANY(%s)
-                    OR s.final_url = ANY(%s)
-                    OR s.canonical_url = ANY(%s)
-                  )
-                ORDER BY d.id
-                """,
-                (
-                    organization_uri,
-                    normalized_text_hash,
-                    url_list,
-                    url_list,
-                    url_list,
-                    url_list,
-                    url_list,
-                    url_list,
-                ),
-            )
-            document_ids = [row[0] for row in cursor.fetchall()]
-        return [self._document(document_id) for document_id in document_ids]
-
-    def review_for_document_claim(
-        self, document_id: UUID, claim_uri: str
-    ) -> RegisteredReview | None:
-        with self.connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT DISTINCT identities.id
-                FROM claim_review_identities AS identities
-                LEFT JOIN source_review_records AS sources
-                  ON sources.claim_review_id = identities.id
-                WHERE identities.document_id = %s
-                  AND (
-                    identities.claim_uri = %s
-                    OR sources.claim_uri = %s
-                  )
-                ORDER BY identities.id
-                LIMIT 1
-                """,
-                (document_id, claim_uri, claim_uri),
-            )
-            row = cursor.fetchone()
-        return self.assignment(row[0]).review if row else None
-
-    def reviews_for_claim(
-        self, organization_uri: str, claim_uri: str
-    ) -> list[RegisteredReview]:
-        with self.connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT DISTINCT identities.id
-                FROM claim_review_identities AS identities
-                LEFT JOIN source_review_records AS sources
-                  ON sources.claim_review_id = identities.id
-                WHERE identities.organization_uri = %s
-                  AND (
-                    identities.claim_uri = %s
-                    OR sources.claim_uri = %s
-                  )
-                ORDER BY identities.id
-                """,
-                (organization_uri, claim_uri, claim_uri),
-            )
-            review_ids = [row[0] for row in cursor.fetchall()]
-        return [self.assignment(review_id).review for review_id in review_ids]
-
-    def create_document(
-        self,
-        document_id: UUID,
-        organization: CanonicalOrganization,
-        record: SourceReviewRecord,
-    ) -> RegisteredDocument:
-        with self.connection.cursor() as cursor:
-            cursor.execute(
-                """
-                INSERT INTO review_documents (
-                    id, organization_uri, preferred_url, final_url, canonical_url,
-                    extracted_text, normalized_text_hash, shingle_signature, word_count
-                )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """,
-                (
-                    document_id,
-                    organization.uri,
-                    record.document.preferred_url,
-                    record.document.final_url,
-                    record.document.canonical_url,
-                    record.document.content,
-                    record.document.normalized_text_hash,
-                    json.dumps(record.document.shingle_signature),
-                    record.document.word_count,
-                ),
-            )
-        document = RegisteredDocument(
-            id=document_id,
-            organization_uri=organization.uri,
-            urls={
+        organization_uris = sorted({organization.uri for _, organization in records})
+        urls = sorted(
+            {
                 url
+                for record, _ in records
                 for url in (
                     record.document.observed_url,
                     record.document.final_url,
                     record.document.canonical_url,
                 )
                 if url
+            }
+        )
+        text_hashes = sorted(
+            {
+                record.document.normalized_text_hash
+                for record, _ in records
+                if record.document.normalized_text_hash is not None
+            }
+        )
+        exact_document_ids = self._exact_document_ids(
+            organization_uris, urls, text_hashes
+        )
+
+        claim_pairs = sorted(
+            {(organization.uri, record.claim.uri) for record, organization in records}
+        )
+        fuzzy_review_ids = self._claim_review_ids(
+            [pair[0] for pair in claim_pairs],
+            [pair[1] for pair in claim_pairs],
+        )
+        review_rows = self._review_rows(
+            direct_review_ids | fuzzy_review_ids,
+            exact_document_ids,
+        )
+        document_ids = exact_document_ids | {row["document_id"] for row in review_rows}
+        document_rows = self._document_rows(document_ids)
+        source_rows = self._source_rows(document_ids)
+
+        documents = self._build_documents(document_rows, source_rows)
+        reviews = {
+            row["id"]: RegisteredReview(
+                id=row["id"],
+                document=documents[row["document_id"]],
+                organization_uri=row["organization_uri"],
+                claim_uri=row["claim_uri"],
+            )
+            for row in review_rows
+        }
+        assignments = {
+            review_id: IdentityAssignment(review=review)
+            for review_id, review in reviews.items()
+        }
+        review_claims = {
+            review_id: {review.claim_uri} for review_id, review in reviews.items()
+        }
+        for row in source_rows:
+            review_id = row["claim_review_id"]
+            assignment = assignments.get(review_id)
+            if assignment is None:
+                continue
+            assignment.source_record_keys.add(row["record_key"])
+            assignment.source_names.add(row["source_name"])
+            review_claims[review_id].add(row["claim_uri"])
+
+        return IdentityBatchEvidence(
+            assignments_by_source_key={
+                row["record_key"]: assignments[row["claim_review_id"]]
+                for row in direct_rows
+                if row["claim_review_id"] in assignments
             },
-            preferred_url=record.document.preferred_url,
-            content=record.document.content,
-            normalized_text_hash=record.document.normalized_text_hash,
-            shingles=frozenset(record.document.shingle_signature),
-            word_count=record.document.word_count,
+            assignments_by_native_key={
+                (row["source_name"], row["native_id"]): assignments[
+                    row["claim_review_id"]
+                ]
+                for row in direct_rows
+                if row["native_id"] is not None
+                and row["claim_review_id"] in assignments
+            },
+            documents=documents,
+            reviews=reviews,
+            assignments=assignments,
+            review_claims=review_claims,
         )
-        self._documents[document_id] = document
-        return document
 
-    def create_review(
+    def commit(self, plan: IdentityBatchPlan) -> list[IdentityAssignment]:
+        """Persist a complete identity plan using bulk statements."""
+
+        document_urls = self._document_url_metadata(plan)
+        new_documents = [
+            plan.documents[document_id]
+            for document_id in sorted(plan.new_document_ids, key=str)
+        ]
+        with self.connection.cursor(row_factory=dict_row) as cursor:
+            if new_documents:
+                cursor.executemany(
+                    """
+                    INSERT INTO review_documents (
+                        id, organization_uri, preferred_url, final_url,
+                        canonical_url, extracted_text, normalized_text_hash,
+                        shingle_signature, word_count
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    [
+                        (
+                            document.id,
+                            document.organization_uri,
+                            document.preferred_url,
+                            document_urls[document.id][0],
+                            document_urls[document.id][1],
+                            document.content,
+                            document.normalized_text_hash,
+                            json.dumps(sorted(document.shingles)),
+                            document.word_count,
+                        )
+                        for document in new_documents
+                    ],
+                )
+
+            if plan.new_reviews:
+                cursor.executemany(
+                    """
+                    INSERT INTO claim_review_identities (
+                        id, document_id, organization_uri, claim_uri
+                    )
+                    VALUES (%s, %s, %s, %s)
+                    """,
+                    [
+                        (
+                            review.id,
+                            review.document.id,
+                            review.organization_uri,
+                            review.claim_uri,
+                        )
+                        for review in sorted(
+                            plan.new_reviews.values(), key=lambda item: str(item.id)
+                        )
+                    ],
+                )
+
+            if plan.sources:
+                cursor.executemany(
+                    """
+                    INSERT INTO source_review_records (
+                        record_key, source_name, source_type, native_id,
+                        observed_url, final_url, canonical_url,
+                        claim_uri, rating_fingerprint,
+                        source_text, extracted_text, normalized_text_hash,
+                        shingle_signature, word_count, payload_hash,
+                        document_id, claim_review_id
+                    )
+                    VALUES (
+                        %s, %s, %s, %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    )
+                    ON CONFLICT (record_key) DO UPDATE SET
+                        observed_url = EXCLUDED.observed_url,
+                        final_url = EXCLUDED.final_url,
+                        canonical_url = EXCLUDED.canonical_url,
+                        claim_uri = EXCLUDED.claim_uri,
+                        rating_fingerprint = EXCLUDED.rating_fingerprint,
+                        source_text = EXCLUDED.source_text,
+                        extracted_text = EXCLUDED.extracted_text,
+                        normalized_text_hash = EXCLUDED.normalized_text_hash,
+                        shingle_signature = EXCLUDED.shingle_signature,
+                        word_count = EXCLUDED.word_count,
+                        payload_hash = EXCLUDED.payload_hash,
+                        document_id = EXCLUDED.document_id,
+                        claim_review_id = EXCLUDED.claim_review_id,
+                        last_seen_at = CURRENT_TIMESTAMP
+                    """,
+                    [self._source_parameters(source) for source in plan.sources],
+                )
+
+            if plan.documents:
+                ordered_documents = list(plan.documents.values())
+                cursor.execute(
+                    """
+                    WITH preferred (
+                        document_id, preferred_url, final_url, canonical_url
+                    ) AS (
+                        SELECT * FROM unnest(
+                            %s::uuid[], %s::text[], %s::text[], %s::text[]
+                        )
+                    ),
+                    selected AS (
+                        SELECT DISTINCT ON (source.document_id)
+                               source.document_id,
+                               COALESCE(
+                                   source.extracted_text, source.source_text
+                               ) AS content,
+                               source.normalized_text_hash,
+                               source.shingle_signature,
+                               source.word_count
+                        FROM source_review_records AS source
+                        WHERE source.document_id = ANY(%s::uuid[])
+                          AND COALESCE(
+                              source.extracted_text, source.source_text
+                          ) IS NOT NULL
+                        ORDER BY source.document_id,
+                                 source.word_count DESC,
+                                 source.last_seen_at DESC,
+                                 source.record_key
+                    )
+                    UPDATE review_documents AS document
+                    SET preferred_url = preferred.preferred_url,
+                        final_url = COALESCE(
+                            preferred.final_url, document.final_url
+                        ),
+                        canonical_url = COALESCE(
+                            preferred.canonical_url, document.canonical_url
+                        ),
+                        extracted_text = CASE
+                            WHEN selected.document_id IS NULL
+                            THEN document.extracted_text
+                            ELSE selected.content
+                        END,
+                        normalized_text_hash = CASE
+                            WHEN selected.document_id IS NULL
+                            THEN document.normalized_text_hash
+                            ELSE selected.normalized_text_hash
+                        END,
+                        shingle_signature = CASE
+                            WHEN selected.document_id IS NULL
+                            THEN document.shingle_signature
+                            ELSE selected.shingle_signature
+                        END,
+                        word_count = CASE
+                            WHEN selected.document_id IS NULL
+                            THEN document.word_count
+                            ELSE selected.word_count
+                        END,
+                        updated_at = CURRENT_TIMESTAMP
+                    FROM preferred
+                    LEFT JOIN selected
+                      ON selected.document_id = preferred.document_id
+                    WHERE document.id = preferred.document_id
+                    RETURNING document.id, document.preferred_url,
+                              document.final_url, document.canonical_url,
+                              document.extracted_text,
+                              document.normalized_text_hash,
+                              document.shingle_signature,
+                              document.word_count
+                    """,
+                    (
+                        [document.id for document in ordered_documents],
+                        [document.preferred_url for document in ordered_documents],
+                        [
+                            document_urls[document.id][0]
+                            for document in ordered_documents
+                        ],
+                        [
+                            document_urls[document.id][1]
+                            for document in ordered_documents
+                        ],
+                        [document.id for document in ordered_documents],
+                    ),
+                )
+                for row in cursor.fetchall():
+                    document = plan.documents[row["id"]]
+                    document.urls.update(
+                        url
+                        for url in (
+                            row["preferred_url"],
+                            row["final_url"],
+                            row["canonical_url"],
+                        )
+                        if url
+                    )
+                    document.preferred_url = row["preferred_url"]
+                    document.content = row["extracted_text"]
+                    document.normalized_text_hash = row["normalized_text_hash"]
+                    document.shingles = frozenset(row["shingle_signature"])
+                    document.word_count = row["word_count"]
+
+            if plan.candidates:
+                cursor.executemany(
+                    """
+                    INSERT INTO identity_candidates (
+                        source_record_key, candidate_review_id,
+                        similarity, evidence
+                    )
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (
+                        source_record_key, candidate_review_id
+                    ) DO UPDATE SET
+                        similarity = EXCLUDED.similarity,
+                        evidence = EXCLUDED.evidence
+                    """,
+                    [
+                        (
+                            planned.source_record_key,
+                            planned.candidate.candidate_review_id,
+                            planned.candidate.similarity,
+                            json.dumps(planned.candidate.evidence),
+                        )
+                        for planned in plan.candidates
+                    ],
+                )
+        return plan.results
+
+    def _direct_assignments(
         self,
-        review_id: UUID,
-        document: RegisteredDocument,
-        organization: CanonicalOrganization,
-        record: SourceReviewRecord,
-    ) -> RegisteredReview:
-        with self.connection.cursor() as cursor:
+        source_keys: list[str],
+        source_names: list[str],
+        native_ids: list[str],
+    ) -> list[dict[str, Any]]:
+        with self.connection.cursor(row_factory=dict_row) as cursor:
             cursor.execute(
                 """
-                INSERT INTO claim_review_identities (
-                    id, document_id, organization_uri, claim_uri
+                WITH requested_native(source_name, native_id) AS (
+                    SELECT * FROM unnest(%s::text[], %s::text[])
                 )
-                VALUES (%s, %s, %s, %s)
+                SELECT source.record_key, source.source_name,
+                       source.native_id, source.claim_review_id
+                FROM source_review_records AS source
+                WHERE source.record_key = ANY(%s::text[])
+                UNION
+                SELECT source.record_key, source.source_name,
+                       source.native_id, source.claim_review_id
+                FROM requested_native AS requested
+                JOIN source_review_records AS source
+                  ON source.source_name = requested.source_name
+                 AND source.native_id = requested.native_id
                 """,
-                (
-                    review_id,
-                    document.id,
-                    organization.uri,
-                    record.claim.uri,
-                ),
+                (source_names, native_ids, source_keys),
             )
-        review = RegisteredReview(
-            id=review_id,
-            document=document,
-            organization_uri=organization.uri,
-            claim_uri=record.claim.uri,
-        )
-        self._assignments[review_id] = IdentityAssignment(review=review)
-        return review
+            return list(cursor.fetchall())
 
-    def attach_source(
+    def _exact_document_ids(
         self,
-        record: SourceReviewRecord,
-        document: RegisteredDocument,
-        review: RegisteredReview,
-    ) -> None:
+        organization_uris: list[str],
+        urls: list[str],
+        text_hashes: list[str],
+    ) -> set[UUID]:
+        if not urls and not text_hashes:
+            return set()
         with self.connection.cursor() as cursor:
             cursor.execute(
                 """
-                INSERT INTO source_review_records (
-                    record_key, source_name, source_type, native_id,
-                    observed_url, final_url, canonical_url,
-                    claim_uri, rating_fingerprint,
-                    source_text, extracted_text, normalized_text_hash,
-                    shingle_signature, word_count, payload_hash,
-                    document_id, claim_review_id
-                )
-                VALUES (
-                    %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s
-                )
-                ON CONFLICT (record_key) DO UPDATE SET
-                    observed_url = EXCLUDED.observed_url,
-                    final_url = EXCLUDED.final_url,
-                    canonical_url = EXCLUDED.canonical_url,
-                    claim_uri = EXCLUDED.claim_uri,
-                    rating_fingerprint = EXCLUDED.rating_fingerprint,
-                    source_text = EXCLUDED.source_text,
-                    extracted_text = EXCLUDED.extracted_text,
-                    normalized_text_hash = EXCLUDED.normalized_text_hash,
-                    shingle_signature = EXCLUDED.shingle_signature,
-                    word_count = EXCLUDED.word_count,
-                    payload_hash = EXCLUDED.payload_hash,
-                    document_id = EXCLUDED.document_id,
-                    claim_review_id = EXCLUDED.claim_review_id,
-                    last_seen_at = CURRENT_TIMESTAMP
+                SELECT document.id
+                FROM review_documents AS document
+                WHERE document.organization_uri = ANY(%s::text[])
+                  AND (
+                    document.normalized_text_hash = ANY(%s::text[])
+                    OR document.preferred_url = ANY(%s::text[])
+                    OR document.final_url = ANY(%s::text[])
+                    OR document.canonical_url = ANY(%s::text[])
+                  )
+                UNION
+                SELECT document.id
+                FROM review_documents AS document
+                JOIN source_review_records AS source
+                  ON source.document_id = document.id
+                WHERE document.organization_uri = ANY(%s::text[])
+                  AND (
+                    source.observed_url = ANY(%s::text[])
+                    OR source.final_url = ANY(%s::text[])
+                    OR source.canonical_url = ANY(%s::text[])
+                  )
                 """,
                 (
-                    record.source.record_key,
-                    record.source.source_name,
-                    record.source.source_type,
-                    record.source.native_id,
-                    record.document.observed_url,
-                    record.document.final_url,
-                    record.document.canonical_url,
-                    record.claim.uri,
-                    record.rating.fingerprint if record.rating else None,
-                    record.document.source_text,
-                    record.document.extracted_text,
-                    record.document.normalized_text_hash,
-                    json.dumps(record.document.shingle_signature),
-                    record.document.word_count,
-                    record.payload_hash,
-                    document.id,
-                    review.id,
+                    organization_uris,
+                    text_hashes,
+                    *(urls for _index in range(3)),
+                    organization_uris,
+                    *(urls for _index in range(3)),
                 ),
             )
-            cursor.execute(
-                """
-                WITH selected AS (
-                    SELECT
-                        COALESCE(extracted_text, source_text) AS content,
-                        normalized_text_hash,
-                        shingle_signature,
-                        word_count
-                    FROM source_review_records
-                    WHERE document_id = %s
-                      AND COALESCE(extracted_text, source_text) IS NOT NULL
-                    ORDER BY word_count DESC, last_seen_at DESC, record_key
-                    LIMIT 1
-                )
-                UPDATE review_documents AS document
-                SET preferred_url = %s,
-                    final_url = COALESCE(%s, document.final_url),
-                    canonical_url = COALESCE(%s, document.canonical_url),
-                    extracted_text = COALESCE(
-                        (SELECT content FROM selected),
-                        document.extracted_text
-                    ),
-                    normalized_text_hash = COALESCE(
-                        (SELECT normalized_text_hash FROM selected),
-                        document.normalized_text_hash
-                    ),
-                    shingle_signature = COALESCE(
-                        (SELECT shingle_signature FROM selected),
-                        document.shingle_signature
-                    ),
-                    word_count = COALESCE(
-                        (SELECT word_count FROM selected),
-                        document.word_count
-                    ),
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE document.id = %s
-                RETURNING preferred_url, final_url, canonical_url,
-                          extracted_text, normalized_text_hash,
-                          shingle_signature, word_count
-                """,
-                (
-                    document.id,
-                    record.document.preferred_url,
-                    record.document.final_url,
-                    record.document.canonical_url,
-                    document.id,
-                ),
-            )
-            document_row = cursor.fetchone()
-        if document_row is None:
-            raise KeyError(f"Unknown review document: {document.id}")
-        document.urls.update(
-            url
-            for url in (
-                record.document.observed_url,
-                record.document.final_url,
-                record.document.canonical_url,
-                document_row[0],
-                document_row[1],
-                document_row[2],
-            )
-            if url
-        )
-        document.preferred_url = document_row[0]
-        document.content = document_row[3]
-        document.normalized_text_hash = document_row[4]
-        document.shingles = frozenset(document_row[5])
-        document.word_count = document_row[6]
-        assignment = self._assignments.get(review.id)
-        if assignment is None:
-            assignment = IdentityAssignment(review=review)
-            self._assignments[review.id] = assignment
-        assignment.source_record_keys.add(record.source.record_key)
-        assignment.source_names.add(record.source.source_name)
-        self._review_by_source_key[record.source.record_key] = review.id
-        if record.source.native_id is not None:
-            self._review_by_native_key[
-                (record.source.source_name, record.source.native_id)
-            ] = review.id
+            return {row[0] for row in cursor.fetchall()}
 
-    def record_candidate(
-        self, source_record_key: str, candidate: IdentityCandidate
-    ) -> None:
+    def _claim_review_ids(
+        self, organization_uris: list[str], claim_uris: list[str]
+    ) -> set[UUID]:
         with self.connection.cursor() as cursor:
             cursor.execute(
                 """
-                INSERT INTO identity_candidates (
-                    source_record_key, candidate_review_id, similarity, evidence
+                WITH requested(organization_uri, claim_uri) AS (
+                    SELECT * FROM unnest(%s::text[], %s::text[])
                 )
-                VALUES (%s, %s, %s, %s)
-                ON CONFLICT (source_record_key, candidate_review_id) DO UPDATE SET
-                    similarity = EXCLUDED.similarity,
-                    evidence = EXCLUDED.evidence
+                SELECT identity.id
+                FROM requested
+                JOIN claim_review_identities AS identity
+                  ON identity.organization_uri = requested.organization_uri
+                 AND identity.claim_uri = requested.claim_uri
+                UNION
+                SELECT identity.id
+                FROM requested
+                JOIN source_review_records AS source
+                  ON source.claim_uri = requested.claim_uri
+                JOIN claim_review_identities AS identity
+                  ON identity.id = source.claim_review_id
+                 AND identity.organization_uri = requested.organization_uri
                 """,
-                (
-                    source_record_key,
-                    candidate.candidate_review_id,
-                    candidate.similarity,
-                    json.dumps(candidate.evidence),
-                ),
+                (organization_uris, claim_uris),
             )
+            return {row[0] for row in cursor.fetchall()}
 
-    def assignment(self, review_id: UUID) -> IdentityAssignment:
-        cached = self._assignments.get(review_id)
-        if cached is not None:
-            return cached
+    def _review_rows(
+        self, review_ids: set[UUID], document_ids: set[UUID]
+    ) -> list[dict[str, Any]]:
+        if not review_ids and not document_ids:
+            return []
         with self.connection.cursor(row_factory=dict_row) as cursor:
             cursor.execute(
                 """
                 SELECT id, document_id, organization_uri, claim_uri
                 FROM claim_review_identities
-                WHERE id = %s
+                WHERE id = ANY(%s::uuid[])
+                   OR document_id = ANY(%s::uuid[])
                 """,
-                (review_id,),
+                (sorted(review_ids, key=str), sorted(document_ids, key=str)),
             )
-            row = cursor.fetchone()
-            if row is None:
-                raise KeyError(f"Unknown claim review identity: {review_id}")
-            cursor.execute(
-                """
-                SELECT record_key, source_name
-                FROM source_review_records
-                WHERE claim_review_id = %s
-                """,
-                (review_id,),
-            )
-            sources = cursor.fetchall()
-        review = RegisteredReview(
-            id=row["id"],
-            document=self._document(row["document_id"]),
-            organization_uri=row["organization_uri"],
-            claim_uri=row["claim_uri"],
-        )
-        assignment = IdentityAssignment(
-            review=review,
-            source_record_keys={source["record_key"] for source in sources},
-            source_names={source["source_name"] for source in sources},
-        )
-        self._assignments[review_id] = assignment
-        return assignment
+            return list(cursor.fetchall())
 
-    def _document(self, document_id: UUID) -> RegisteredDocument:
-        cached = self._documents.get(document_id)
-        if cached is not None:
-            return cached
+    def _document_rows(self, document_ids: set[UUID]) -> list[dict[str, Any]]:
+        if not document_ids:
+            return []
         with self.connection.cursor(row_factory=dict_row) as cursor:
             cursor.execute(
                 """
-                SELECT id, organization_uri, preferred_url, final_url, canonical_url,
-                       extracted_text, normalized_text_hash, shingle_signature, word_count
+                SELECT id, organization_uri, preferred_url,
+                       final_url, canonical_url, extracted_text,
+                       normalized_text_hash, shingle_signature, word_count
                 FROM review_documents
-                WHERE id = %s
+                WHERE id = ANY(%s::uuid[])
                 """,
-                (document_id,),
+                (sorted(document_ids, key=str),),
             )
-            row = cursor.fetchone()
-            if row is None:
-                raise KeyError(f"Unknown review document: {document_id}")
+            return list(cursor.fetchall())
+
+    def _source_rows(self, document_ids: set[UUID]) -> list[dict[str, Any]]:
+        if not document_ids:
+            return []
+        with self.connection.cursor(row_factory=dict_row) as cursor:
             cursor.execute(
                 """
-                SELECT observed_url, final_url, canonical_url
+                SELECT record_key, source_name, native_id,
+                       observed_url, final_url, canonical_url,
+                       claim_uri, document_id, claim_review_id
                 FROM source_review_records
-                WHERE document_id = %s
+                WHERE document_id = ANY(%s::uuid[])
                 """,
-                (document_id,),
+                (sorted(document_ids, key=str),),
             )
-            source_rows = cursor.fetchall()
-        urls = {
-            url
-            for url in (
-                row["preferred_url"],
-                row["final_url"],
-                row["canonical_url"],
-                *(value for source_row in source_rows for value in source_row.values()),
+            return list(cursor.fetchall())
+
+    @staticmethod
+    def _build_documents(
+        document_rows: list[dict[str, Any]],
+        source_rows: list[dict[str, Any]],
+    ) -> dict[UUID, RegisteredDocument]:
+        urls_by_document: dict[UUID, set[str]] = defaultdict(set)
+        for row in source_rows:
+            urls_by_document[row["document_id"]].update(
+                url
+                for url in (
+                    row["observed_url"],
+                    row["final_url"],
+                    row["canonical_url"],
+                )
+                if url
             )
-            if url
-        }
-        document = RegisteredDocument(
-            id=row["id"],
-            organization_uri=row["organization_uri"],
-            urls=urls,
-            preferred_url=row["preferred_url"],
-            content=row["extracted_text"],
-            normalized_text_hash=row["normalized_text_hash"],
-            shingles=frozenset(row["shingle_signature"]),
-            word_count=row["word_count"],
+        documents: dict[UUID, RegisteredDocument] = {}
+        for row in document_rows:
+            urls = urls_by_document[row["id"]]
+            urls.update(
+                url
+                for url in (
+                    row["preferred_url"],
+                    row["final_url"],
+                    row["canonical_url"],
+                )
+                if url
+            )
+            documents[row["id"]] = RegisteredDocument(
+                id=row["id"],
+                organization_uri=row["organization_uri"],
+                urls=urls,
+                preferred_url=row["preferred_url"],
+                content=row["extracted_text"],
+                normalized_text_hash=row["normalized_text_hash"],
+                shingles=frozenset(row["shingle_signature"]),
+                word_count=row["word_count"],
+            )
+        return documents
+
+    @staticmethod
+    def _document_url_metadata(
+        plan: IdentityBatchPlan,
+    ) -> dict[UUID, tuple[str | None, str | None]]:
+        metadata: dict[UUID, tuple[str | None, str | None]] = {}
+        for source in plan.sources:
+            document_id = source.assignment.review.document.id
+            previous_final, previous_canonical = metadata.get(document_id, (None, None))
+            observed = source.record.document
+            metadata[document_id] = (
+                observed.final_url or previous_final,
+                observed.canonical_url or previous_canonical,
+            )
+        return metadata
+
+    @staticmethod
+    def _source_parameters(source: PlannedSourceAssignment) -> tuple[Any, ...]:
+        record = source.record
+        return (
+            record.source.record_key,
+            record.source.source_name,
+            record.source.source_type,
+            record.source.native_id,
+            record.document.observed_url,
+            record.document.final_url,
+            record.document.canonical_url,
+            record.claim.uri,
+            record.rating.fingerprint if record.rating else None,
+            record.document.source_text,
+            record.document.extracted_text,
+            record.document.normalized_text_hash,
+            json.dumps(record.document.shingle_signature),
+            record.document.word_count,
+            record.payload_hash,
+            source.assignment.review.document.id,
+            source.assignment.review.id,
         )
-        self._documents[document_id] = document
-        return document
+
+    @staticmethod
+    def _empty_evidence() -> IdentityBatchEvidence:
+        return IdentityBatchEvidence(
+            assignments_by_source_key={},
+            assignments_by_native_key={},
+            documents={},
+            reviews={},
+            assignments={},
+            review_claims={},
+        )

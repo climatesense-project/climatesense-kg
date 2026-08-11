@@ -16,8 +16,8 @@ from climatesense_kg.domain import (
     SourceReviewRecord,
 )
 from climatesense_kg.identity import (
+    IdentityRepositoryBatch,
     IdentityResolver,
-    IdentityTransaction,
     InMemoryIdentityRegistry,
 )
 
@@ -31,13 +31,13 @@ ORGANIZATION = CanonicalOrganization(
 class CountingIdentityRegistry(InMemoryIdentityRegistry):
     def __init__(self) -> None:
         super().__init__()
-        self.transaction_count = 0
+        self.batch_count = 0
 
     @contextmanager
-    def transaction(self) -> Iterator[IdentityTransaction]:
-        self.transaction_count += 1
-        with super().transaction() as transaction:
-            yield transaction
+    def batch(self, organization_uris: set[str]) -> Iterator[IdentityRepositoryBatch]:
+        self.batch_count += 1
+        with super().batch(organization_uris) as batch:
+            yield batch
 
 
 def _record(
@@ -168,6 +168,91 @@ def test_existing_source_record_keeps_identity_after_content_edit() -> None:
     assert second.review_text == "Completely edited article"
 
 
+def test_existing_source_refreshes_an_equal_length_content_variant() -> None:
+    resolver = IdentityResolver(InMemoryIdentityRegistry())
+    original = _record(
+        "stable",
+        url="https://factual.ro/article",
+        text="Original wording",
+        native_id="stable-native-id",
+    )
+    edited = _record(
+        "stable",
+        url="https://factual.ro/article",
+        text="Updated wording",
+        native_id="stable-native-id",
+    )
+
+    first = resolver.resolve(original, ORGANIZATION)
+    second = resolver.resolve(edited, ORGANIZATION)
+
+    assert second.id == first.id
+    assert second.review_text == "Updated wording"
+
+
+def test_existing_source_can_replace_its_longer_content_with_a_shorter_edit() -> None:
+    resolver = IdentityResolver(InMemoryIdentityRegistry())
+    original = _record(
+        "stable",
+        url="https://factual.ro/article",
+        text="An original article with much more text",
+        native_id="stable-native-id",
+    )
+    edited = _record(
+        "stable",
+        url="https://factual.ro/article",
+        text="Short revision",
+        native_id="stable-native-id",
+    )
+
+    resolver.resolve(original, ORGANIZATION)
+    resolved = resolver.resolve(edited, ORGANIZATION)
+
+    assert resolved.review_text == "Short revision"
+    assert resolved.document.word_count == 2
+
+
+def test_claim_alias_created_in_batch_is_available_to_later_records() -> None:
+    resolver = IdentityResolver(InMemoryIdentityRegistry())
+    url = "https://factual.ro/article"
+    original = resolver.resolve(
+        _record(
+            "stable",
+            url=url,
+            claim="Original claim",
+            native_id="stable-native-id",
+        ),
+        ORGANIZATION,
+    )
+
+    resolved = resolver.resolve_many(
+        [
+            (
+                _record(
+                    "stable",
+                    url=url,
+                    claim="Updated claim",
+                    native_id="stable-native-id",
+                ),
+                ORGANIZATION,
+            ),
+            (
+                _record(
+                    "second",
+                    url=url,
+                    claim="Updated claim",
+                    native_id="second-native-id",
+                ),
+                ORGANIZATION,
+            ),
+        ]
+    )
+
+    assert len(resolved) == 1
+    assert resolved[0].id == original.id
+    assert len(resolved[0].source_record_keys) == 2
+
+
 def test_one_document_can_have_two_claim_reviews() -> None:
     resolver = IdentityResolver(InMemoryIdentityRegistry())
     canonical_url = "https://factual.ro/multiple-claims"
@@ -282,7 +367,7 @@ def test_resolve_many_commits_bounded_batches_and_logs_progress(
     with caplog.at_level(logging.INFO, logger="climatesense_kg.identity.resolver"):
         reviews = resolver.resolve_many(records)
 
-    assert registry.transaction_count == 3
+    assert registry.batch_count == 3
     assert len(reviews) == 5
     assert "Identity resolution: 0/5 committed" in caplog.text
     assert "Identity resolution: 2/5 committed" in caplog.text

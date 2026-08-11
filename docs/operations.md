@@ -103,12 +103,13 @@ stored failures or fetching missing documents.
 
 ## Identity-Resolution Progress
 
-Identity resolution logs committed source records, canonical reviews, transaction
-batches, throughput, and estimated completion time. Each transaction contains at
-most `identity_resolution.batch_size` records. This removes per-record commits and
-organization-lock queries, and bulk-loads source assignments plus exact URL/text
-evidence once per batch. Interruption recovery remains bounded: committed batches
-stay durable and only the active batch is rolled back.
+Identity resolution logs committed source records, canonical reviews, batches,
+throughput, and estimated completion time. Each batch contains at most
+`identity_resolution.batch_size` records. The repository loads the relevant source
+assignments, document evidence, and similarity candidates with set-based queries.
+The resolver plans the complete batch in memory, and the repository persists the
+plan with bulk statements in one transaction. Interruption recovery remains
+bounded: committed batches stay durable and only the active batch is rolled back.
 
 Monitor durable identity progress directly:
 

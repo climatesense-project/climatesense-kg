@@ -1,289 +1,150 @@
-"""Identity registry contracts and an in-memory reference implementation."""
+"""Batch-oriented identity repository contracts and in-memory adapter."""
 
 from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import AbstractContextManager, contextmanager
+from copy import deepcopy
 from threading import RLock
 from typing import Protocol
 from uuid import UUID
 
-from ..domain import CanonicalOrganization, SourceReviewRecord
+from ..domain import SourceReviewRecord
 from .models import (
     IdentityAssignment,
+    IdentityBatchEvidence,
+    IdentityBatchPlan,
+    IdentityBatchRecord,
     IdentityCandidate,
     RegisteredDocument,
     RegisteredReview,
 )
 
 
-class IdentityTransaction(Protocol):
-    """Operations available inside one atomic identity-resolution transaction."""
+class IdentityRepositoryBatch(Protocol):
+    """Set-based persistence operations inside one atomic identity batch."""
 
-    def prepare(
-        self,
-        records: list[tuple[SourceReviewRecord, CanonicalOrganization]],
-    ) -> None:
-        """Bulk-load lookup state for a bounded resolution batch."""
-        ...
+    def load_evidence(
+        self, records: list[IdentityBatchRecord]
+    ) -> IdentityBatchEvidence: ...
 
-    def lock_scope(self, organization_uri: str) -> None: ...
-
-    def assignment_for_source(self, record_key: str) -> IdentityAssignment | None: ...
-
-    def assignment_for_native_id(
-        self, source_name: str, native_id: str
-    ) -> IdentityAssignment | None: ...
-
-    def documents_by_evidence(
-        self,
-        organization_uri: str,
-        urls: set[str],
-        normalized_text_hash: str | None,
-    ) -> list[RegisteredDocument]: ...
-
-    def review_for_document_claim(
-        self, document_id: UUID, claim_uri: str
-    ) -> RegisteredReview | None: ...
-
-    def reviews_for_claim(
-        self, organization_uri: str, claim_uri: str
-    ) -> list[RegisteredReview]: ...
-
-    def create_document(
-        self,
-        document_id: UUID,
-        organization: CanonicalOrganization,
-        record: SourceReviewRecord,
-    ) -> RegisteredDocument: ...
-
-    def create_review(
-        self,
-        review_id: UUID,
-        document: RegisteredDocument,
-        organization: CanonicalOrganization,
-        record: SourceReviewRecord,
-    ) -> RegisteredReview: ...
-
-    def attach_source(
-        self,
-        record: SourceReviewRecord,
-        document: RegisteredDocument,
-        review: RegisteredReview,
-    ) -> None: ...
-
-    def record_candidate(
-        self, source_record_key: str, candidate: IdentityCandidate
-    ) -> None: ...
-
-    def assignment(self, review_id: UUID) -> IdentityAssignment: ...
+    def commit(self, plan: IdentityBatchPlan) -> list[IdentityAssignment]: ...
 
 
 class IdentityRegistry(Protocol):
     """Authoritative persistent boundary for identity resolution."""
 
-    def transaction(self) -> AbstractContextManager[IdentityTransaction]: ...
+    def batch(
+        self, organization_uris: set[str]
+    ) -> AbstractContextManager[IdentityRepositoryBatch]: ...
 
 
 class InMemoryIdentityRegistry:
-    """Thread-safe registry used by domain tests and local deterministic workflows."""
+    """Thread-safe batch repository used by identity acceptance tests."""
 
     def __init__(self) -> None:
         self._lock = RLock()
         self._documents: dict[UUID, RegisteredDocument] = {}
         self._reviews: dict[UUID, RegisteredReview] = {}
         self._source_reviews: dict[str, UUID] = {}
-        self._source_names: dict[str, str] = {}
         self._native_reviews: dict[tuple[str, str], UUID] = {}
         self._source_documents: dict[str, SourceReviewRecord] = {}
-        self._document_source_keys: dict[UUID, set[str]] = {}
+        self._source_order: dict[str, int] = {}
+        self._next_source_order = 0
         self._candidates: dict[tuple[str, UUID], IdentityCandidate] = {}
 
     @contextmanager
-    def transaction(self) -> Iterator[IdentityTransaction]:
+    def batch(self, organization_uris: set[str]) -> Iterator[IdentityRepositoryBatch]:
+        del organization_uris
         with self._lock:
             yield self
 
-    def prepare(
-        self,
-        records: list[tuple[SourceReviewRecord, CanonicalOrganization]],
-    ) -> None:
+    def load_evidence(
+        self, records: list[IdentityBatchRecord]
+    ) -> IdentityBatchEvidence:
         del records
-
-    def lock_scope(self, organization_uri: str) -> None:
-        del organization_uri
-
-    def assignment_for_source(self, record_key: str) -> IdentityAssignment | None:
-        review_id = self._source_reviews.get(record_key)
-        return self.assignment(review_id) if review_id else None
-
-    def assignment_for_native_id(
-        self, source_name: str, native_id: str
-    ) -> IdentityAssignment | None:
-        review_id = self._native_reviews.get((source_name, native_id))
-        return self.assignment(review_id) if review_id else None
-
-    def documents_by_evidence(
-        self,
-        organization_uri: str,
-        urls: set[str],
-        normalized_text_hash: str | None,
-    ) -> list[RegisteredDocument]:
-        matches = [
-            document
-            for document in self._documents.values()
-            if document.organization_uri == organization_uri
-            and (
-                bool(document.urls & urls)
-                or (
-                    normalized_text_hash is not None
-                    and document.normalized_text_hash == normalized_text_hash
-                )
-            )
-        ]
-        return sorted(matches, key=lambda document: str(document.id))
-
-    def review_for_document_claim(
-        self, document_id: UUID, claim_uri: str
-    ) -> RegisteredReview | None:
-        return next(
-            (
-                review
-                for review in self._reviews.values()
-                if review.document.id == document_id
-                and self._review_matches_claim(review, claim_uri)
-            ),
-            None,
+        documents, reviews, source_documents = deepcopy(
+            (self._documents, self._reviews, self._source_documents)
         )
-
-    def reviews_for_claim(
-        self, organization_uri: str, claim_uri: str
-    ) -> list[RegisteredReview]:
-        return sorted(
-            (
-                review
-                for review in self._reviews.values()
-                if review.organization_uri == organization_uri
-                and self._review_matches_claim(review, claim_uri)
-            ),
-            key=lambda review: str(review.id),
-        )
-
-    def create_document(
-        self,
-        document_id: UUID,
-        organization: CanonicalOrganization,
-        record: SourceReviewRecord,
-    ) -> RegisteredDocument:
-        document = RegisteredDocument(
-            id=document_id,
-            organization_uri=organization.uri,
-            urls={
-                url
-                for url in (
-                    record.document.observed_url,
-                    record.document.final_url,
-                    record.document.canonical_url,
-                )
-                if url
-            },
-            preferred_url=record.document.preferred_url,
-            content=record.document.content,
-            normalized_text_hash=record.document.normalized_text_hash,
-            shingles=frozenset(record.document.shingle_signature),
-            word_count=record.document.word_count,
-        )
-        self._documents[document_id] = document
-        return document
-
-    def create_review(
-        self,
-        review_id: UUID,
-        document: RegisteredDocument,
-        organization: CanonicalOrganization,
-        record: SourceReviewRecord,
-    ) -> RegisteredReview:
-        review = RegisteredReview(
-            id=review_id,
-            document=document,
-            organization_uri=organization.uri,
-            claim_uri=record.claim.uri,
-        )
-        self._reviews[review_id] = review
-        return review
-
-    def attach_source(
-        self,
-        record: SourceReviewRecord,
-        document: RegisteredDocument,
-        review: RegisteredReview,
-    ) -> None:
-        self._source_reviews[record.source.record_key] = review.id
-        self._source_names[record.source.record_key] = record.source.source_name
-        if record.source.native_id:
-            self._native_reviews[
-                (record.source.source_name, record.source.native_id)
-            ] = review.id
-        self._source_documents[record.source.record_key] = record
-        self._document_source_keys.setdefault(document.id, set()).add(
-            record.source.record_key
-        )
-        document.urls.update(
-            url
-            for url in (
-                record.document.observed_url,
-                record.document.final_url,
-                record.document.canonical_url,
-            )
-            if url
-        )
-        document.preferred_url = record.document.preferred_url
-        document_records = (
-            self._source_documents[key]
-            for key in self._document_source_keys[document.id]
-            if self._source_documents[key].document.content
-        )
-        selected = max(
-            document_records,
-            key=lambda source_record: source_record.document.word_count,
-            default=None,
-        )
-        if selected is not None:
-            document.content = selected.document.content
-            document.normalized_text_hash = selected.document.normalized_text_hash
-            document.shingles = frozenset(selected.document.shingle_signature)
-            document.word_count = selected.document.word_count
-
-    def record_candidate(
-        self, source_record_key: str, candidate: IdentityCandidate
-    ) -> None:
-        self._candidates[(source_record_key, candidate.candidate_review_id)] = candidate
-
-    def assignment(self, review_id: UUID) -> IdentityAssignment:
-        review = self._reviews[review_id]
-        record_keys = {
-            record_key
-            for record_key, mapped_review_id in self._source_reviews.items()
-            if mapped_review_id == review_id
+        assignments = {
+            review_id: IdentityAssignment(review=review)
+            for review_id, review in reviews.items()
         }
-        return IdentityAssignment(
-            review=review,
-            source_record_keys=record_keys,
-            source_names={self._source_names[key] for key in record_keys},
+        review_claims = {
+            review_id: {review.claim_uri} for review_id, review in reviews.items()
+        }
+        for record_key, review_id in self._source_reviews.items():
+            assignment = assignments[review_id]
+            source_record = source_documents[record_key]
+            assignment.source_record_keys.add(record_key)
+            assignment.source_names.add(source_record.source.source_name)
+            review_claims[review_id].add(source_record.claim.uri)
+        return IdentityBatchEvidence(
+            assignments_by_source_key={
+                record_key: assignments[review_id]
+                for record_key, review_id in self._source_reviews.items()
+            },
+            assignments_by_native_key={
+                native_key: assignments[review_id]
+                for native_key, review_id in self._native_reviews.items()
+            },
+            documents=documents,
+            reviews=reviews,
+            assignments=assignments,
+            review_claims=review_claims,
         )
 
-    def _review_matches_claim(self, review: RegisteredReview, claim_uri: str) -> bool:
-        if review.claim_uri == claim_uri:
-            return True
-        return any(
-            self._source_documents[key].claim.uri == claim_uri
-            for key, mapped_review_id in self._source_reviews.items()
-            if mapped_review_id == review.id
-        )
+    def commit(self, plan: IdentityBatchPlan) -> list[IdentityAssignment]:
+        committed = deepcopy(plan)
+        for document_id, document in committed.documents.items():
+            self._documents[document_id] = document
+            for review in self._reviews.values():
+                if review.document.id == document_id:
+                    review.document = document
+        for source in committed.sources:
+            record = source.record
+            review = source.assignment.review
+            self._documents[review.document.id] = review.document
+            self._reviews[review.id] = review
+            self._source_reviews[record.source.record_key] = review.id
+            if record.source.native_id is not None:
+                self._native_reviews[
+                    (record.source.source_name, record.source.native_id)
+                ] = review.id
+            self._source_documents[record.source.record_key] = record
+            self._next_source_order += 1
+            self._source_order[record.source.record_key] = self._next_source_order
+        for document_id, document in committed.documents.items():
+            variants = [
+                (record_key, record)
+                for record_key, record in self._source_documents.items()
+                if record.document.content is not None
+                and self._reviews[self._source_reviews[record_key]].document.id
+                == document_id
+            ]
+            if variants:
+                _record_key, selected = min(
+                    variants,
+                    key=lambda item: (
+                        -item[1].document.word_count,
+                        -self._source_order[item[0]],
+                        item[0],
+                    ),
+                )
+                document.content = selected.document.content
+                document.normalized_text_hash = selected.document.normalized_text_hash
+                document.shingles = frozenset(selected.document.shingle_signature)
+                document.word_count = selected.document.word_count
+        for planned in committed.candidates:
+            candidate = planned.candidate
+            self._candidates[
+                (planned.source_record_key, candidate.candidate_review_id)
+            ] = candidate
+        return committed.results
 
     @property
     def candidates(self) -> list[tuple[str, IdentityCandidate]]:
-        """Return recorded candidates for assertions in acceptance tests."""
+        """Return recorded candidates for acceptance-test assertions."""
 
         return [
             (source_record_key, candidate)
