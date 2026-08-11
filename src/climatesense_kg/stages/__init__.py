@@ -1,4 +1,4 @@
-"""Typed application stages used by the v2 pipeline."""
+"""Typed application stages used by the pipeline."""
 
 from .document_extractor import DocumentExtractor
 from .enrichment import EnrichmentRunner, EnrichmentStage

@@ -1,4 +1,4 @@
-"""Acceptance tests for v2 claim-review identity resolution."""
+"""Acceptance tests for claim-review identity resolution."""
 
 from climatesense_kg.domain import (
     CanonicalClaim,

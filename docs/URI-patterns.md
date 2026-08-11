@@ -1,6 +1,6 @@
 # URI design patterns
 
-This document describes the breaking v2 RDF identifiers. The configured base URI is
+This document describes the RDF identifier design. The configured base URI is
 `http://data.climatesense-project.eu` unless `output.base_uri` overrides it.
 
 ## Identity rules
@@ -87,4 +87,4 @@ The implementation is split between the
 [`identity resolver`](../src/climatesense_kg/identity/resolver.py), and the
 [`RDF generator`](../src/climatesense_kg/rdf_generation/generator.py). The complete
 identity policy and persistence boundaries are in
-[`architecture-v2.md`](architecture-v2.md).
+[`architecture.md`](architecture.md).

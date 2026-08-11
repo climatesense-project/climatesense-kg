@@ -1,4 +1,4 @@
-"""RDF contract tests for resolved v2 claim reviews."""
+"""RDF contract tests for resolved claim reviews."""
 
 from uuid import UUID
 

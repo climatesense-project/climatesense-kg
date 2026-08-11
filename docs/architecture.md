@@ -1,10 +1,10 @@
-# ClimateSense KG pipeline v2
+# ClimateSense KG pipeline
 
 ## Status
 
-This document defines the breaking v2 architecture. The v2 pipeline is rebuilt from
-source data; compatibility with v1 entity IRIs and processing-cache entries is not a
-goal.
+This document defines the ClimateSense KG architecture. The pipeline is rebuilt from
+source data, and PostgreSQL is authoritative for canonical identity and semantic-stage
+state.
 
 ## Decisions
 

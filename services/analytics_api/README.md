@@ -17,7 +17,7 @@ The Analytics API provides metrics and statistics about the knowledge graph and 
          ▼
 ┌─────────────────┐      ┌──────────────┐
 │  Analytics API  │─────▶│  PostgreSQL  │
-│    (FastAPI)    │      │ (v2 state)   │
+│    (FastAPI)    │      │  (pipeline)  │
 └────────┬────────┘      └──────────────┘
          │
          │                ┌───────────────┐

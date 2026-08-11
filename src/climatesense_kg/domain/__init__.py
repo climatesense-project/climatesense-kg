@@ -1,4 +1,4 @@
-"""Domain entities used by the v2 ingestion and publication pipeline."""
+"""Domain entities used by the ingestion and publication pipeline."""
 
 from .models import (
     CanonicalClaim,

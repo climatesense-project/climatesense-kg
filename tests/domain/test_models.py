@@ -1,4 +1,4 @@
-"""Tests for v2 identity-bearing and source-observation models."""
+"""Tests for identity-bearing and source-observation models."""
 
 from uuid import UUID
 

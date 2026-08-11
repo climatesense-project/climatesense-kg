@@ -1,4 +1,4 @@
-"""Focused tests for typed, versioned v2 enrichers."""
+"""Focused tests for typed, versioned enrichers."""
 
 from unittest.mock import Mock, patch
 from uuid import uuid4

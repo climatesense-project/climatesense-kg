@@ -1,4 +1,4 @@
-"""Tests for the typed v2 pipeline orchestration."""
+"""Tests for the typed pipeline orchestration."""
 
 from pathlib import Path
 from unittest.mock import Mock, call

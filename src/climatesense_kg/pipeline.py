@@ -1,4 +1,4 @@
-"""Typed v2 ClimateSense knowledge-graph pipeline."""
+"""Typed ClimateSense knowledge-graph pipeline."""
 
 from __future__ import annotations
 

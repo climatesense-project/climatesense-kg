@@ -1,3 +1,4 @@
+-- Canonical identity and semantic-stage persistence.
 CREATE TABLE source_review_records (
     record_key TEXT PRIMARY KEY,
     source_name TEXT NOT NULL,

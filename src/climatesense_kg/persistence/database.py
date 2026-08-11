@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 class PostgresDatabase:
-    """Own the required PostgreSQL pool used by v2 persistence services."""
+    """Own the required PostgreSQL pool used by persistence services."""
 
     def __init__(
         self,
