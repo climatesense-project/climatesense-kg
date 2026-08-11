@@ -54,14 +54,12 @@ data_sources:
       timeout: 120
     cache_ttl_hours: 8760
 
-# Document extraction runs before identity resolution.
 document_extraction:
   enabled: true
   rate_limit_delay: 0
   timeout: 15
   max_retries: 2
 
-# Enrichment configuration
 enrichment:
   dbpedia_spotlight:
     enabled: true
@@ -90,23 +88,19 @@ enrichment:
     timeout: 300
     rate_limit_delay: 0
 
-# Output configuration
 output:
   format: "nt"
   output_path: "data/rdf/{DATE}/{SOURCE}_{DATETIME}.nt"
   base_uri: "http://data.climatesense-project.eu"
 
-# Cache configuration
 cache:
   cache_dir: "cache"
   default_ttl_hours: 24.0
 
-# Deployment configuration
 deployment:
   backend: "qlever"
   graph_template: "http://data.climatesense-project.eu/graph/{SOURCE}"
 
-# Logging configuration
 logging:
   level: "INFO"
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
