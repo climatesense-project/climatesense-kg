@@ -91,7 +91,7 @@ class PostgresIdentityTransaction:
                 LEFT JOIN source_review_records AS s ON s.document_id = d.id
                 WHERE d.organization_uri = %s
                   AND (
-                    (%s IS NOT NULL AND d.normalized_text_hash = %s)
+                    d.normalized_text_hash = %s
                     OR d.preferred_url = ANY(%s)
                     OR d.final_url = ANY(%s)
                     OR d.canonical_url = ANY(%s)
@@ -103,7 +103,6 @@ class PostgresIdentityTransaction:
                 """,
                 (
                     organization_uri,
-                    normalized_text_hash,
                     normalized_text_hash,
                     url_list,
                     url_list,
