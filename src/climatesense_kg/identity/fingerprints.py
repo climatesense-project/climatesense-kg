@@ -32,7 +32,7 @@ def normalize_identity_text(text: str) -> str:
 def fingerprint_text(
     text: str | None, *, shingle_size: int = DEFAULT_SHINGLE_SIZE
 ) -> DocumentFingerprint:
-    """Fingerprint text without using the result as an entity identifier."""
+    """Build exact and near-duplicate evidence from document text."""
 
     if shingle_size < 1:
         raise ValueError("Shingle size must be at least one")

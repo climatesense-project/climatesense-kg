@@ -17,7 +17,7 @@ from ..utils.text_processing import (
 
 
 def _digest(namespace: str, *values: str) -> str:
-    """Return an unambiguous SHA-256 digest for stable, non-entity keys."""
+    """Return an unambiguous SHA-256 digest for stable value keys."""
 
     payload = json.dumps(
         [namespace, *values], ensure_ascii=False, separators=(",", ":")
@@ -45,7 +45,7 @@ class SourceReference:
         native_id: str | None = None,
         discriminator: str = "",
     ) -> SourceReference:
-        """Build a deterministic source key without assigning RDF identity."""
+        """Build a deterministic provenance key for one source observation."""
 
         source_name = source_name.strip()
         source_type = source_type.strip()
@@ -260,7 +260,7 @@ class ReviewDocument:
 
 @dataclass
 class SourceReviewRecord:
-    """A source claim/rating observation with no canonical RDF identity."""
+    """A source claim/rating observation awaiting identity resolution."""
 
     source: SourceReference
     claim: CanonicalClaim
@@ -275,7 +275,7 @@ class SourceReviewRecord:
 
     @property
     def payload_hash(self) -> str:
-        """Fingerprint fields whose change requires source reprocessing."""
+        """Fingerprint the source fields consumed by processing stages."""
 
         return _digest(
             "source-review-payload",
@@ -349,7 +349,7 @@ class CanonicalClaimReview:
         return sorted(self.source_names)
 
     def for_source(self, source_name: str) -> CanonicalClaimReview:
-        """Project source-owned metadata without changing canonical identity."""
+        """Project source-owned metadata for this canonical identity."""
 
         observations = sorted(
             (
@@ -422,7 +422,7 @@ class CanonicalClaimReview:
         )
 
     def to_debug_dict(self) -> dict[str, Any]:
-        """Return concise diagnostic data without serializing enrichment payloads."""
+        """Return concise identity and provenance diagnostics."""
 
         return {
             "id": str(self.id),

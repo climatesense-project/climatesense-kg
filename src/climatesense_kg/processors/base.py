@@ -74,7 +74,7 @@ class BaseProcessor(ABC):
         authors: list[CanonicalPerson] | None = None,
         license_url: str | None = None,
     ) -> SourceReviewRecord:
-        """Build a source observation without assigning canonical identity."""
+        """Build a source observation for canonical identity resolution."""
 
         return SourceReviewRecord(
             source=SourceReference.from_observation(

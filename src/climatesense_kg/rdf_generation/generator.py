@@ -426,7 +426,7 @@ class RDFGenerator:
         for person_uri in person_uris:
             self.graph.add((review_uri, self.SCHEMA.author, person_uri))
 
-        # Every known URL is an alias of this already-resolved review.
+        # Emit every URL alias recorded for this canonical review.
         for review_url in sorted(claim_review.document.urls):
             sanitized_url = sanitize_url(review_url)
             if sanitized_url:

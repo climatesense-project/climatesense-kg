@@ -227,7 +227,7 @@ deployment:
 ## Querying pipeline state
 
 PostgreSQL is authoritative for canonical identity and versioned semantic-stage
-results. Downloaded source artifacts remain in the filesystem cache.
+results. The filesystem cache stores downloaded source artifacts.
 
 ### Example SQL Queries
 
@@ -285,8 +285,8 @@ LIMIT 10
 
 Use the read-only audit script on one generated N-Triples snapshot to find review
 bodies that are nearly identical but have distinct claim-review resources. Candidate
-pairs are limited to reviews attached to the same exact claim, so the comparison does
-not require an all-pairs scan of the knowledge graph.
+pairs are limited to reviews attached to the same exact claim, keeping comparisons
+within small, semantically relevant groups.
 
 ```bash
 uv run python scripts/audit_similar_claim_reviews.py \
@@ -299,8 +299,8 @@ score of `0.9` means at least 90% of the smaller review's shingles also occur in
 larger review. This catches extraction differences such as an added heading or a
 boilerplate paragraph while remaining easy to inspect. Reviews shorter than 50 words
 are excluded by default. Use the CSV as a manual review queue; a match can represent
-a duplicate source record, a migrated URL, or legitimate syndication and should not
-be deleted automatically.
+a duplicate source record, a URL alias, or legitimate syndication. Require human
+confirmation before merging or deleting resources.
 
 ## Development
 

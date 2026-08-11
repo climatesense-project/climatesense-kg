@@ -15,8 +15,8 @@ output:
   base_uri: "http://data.climatesense-project.eu"
 ```
 
-All relative URIs are resolved against this base URI. An absolute URI, such as a
-curated organization or DBpedia entity URI, is preserved unchanged.
+Relative URIs are resolved against this base URI. Curated organizations and DBpedia
+entities supply absolute URIs, which the RDF generator uses directly.
 
 ## URI Generation Strategy
 
@@ -39,16 +39,15 @@ collisions caused by ambiguous string concatenation.
 
 **Pattern**: `{base_uri}/claim-review/{uuid}`
 
-**Assignment**: A UUID is generated when the identity registry cannot resolve a
-source observation to an existing claim review. The UUID is then persisted and reused.
+**Assignment**: The identity registry assigns and persists one UUID for each canonical
+claim review.
 
 **Example**:
 `http://data.climatesense-project.eu/claim-review/550e8400-e29b-41d4-a716-446655440000`
 
-The URI is not derived from the claim text, rating, review URL, publication date, or
-document content. Changes to those values therefore do not recalculate the URI. When
-several URLs identify the same resolved review, they are emitted as multiple
-`schema:url` values on the same resource.
+The registry UUID is the complete identifier component. Claim text, rating,
+publication date, and document content are RDF attributes. The review's known URLs
+are emitted as `schema:url` aliases on the same resource.
 
 ### Claims
 
@@ -69,12 +68,10 @@ URL-only, and otherwise non-meaningful claims are rejected.
 **Example**:
 `http://data.climatesense-project.eu/organization/les-surligneurs`
 
-Organization IRIs are stable, human-readable identifiers assigned explicitly in
-[`data/organizations.ttl`](../data/organizations.ttl); the pipeline does not derive
-them at runtime. Every processor must provide an organization website, and extracted
-organizations are resolved against a unique normalized catalog URL. An unresolved
-organization stops the run so maintainers can add or correct its catalog entry instead
-of silently creating another identity.
+[`data/organizations.ttl`](../data/organizations.ttl) assigns stable, human-readable
+organization IRIs. Every processor provides an organization website, and runtime
+resolution maps its normalized URL to one catalog entry. A missing mapping is a
+configuration error that requires a catalog entry or URL correction.
 
 The catalog is the sole source of organization metadata. Claim-review source graphs
 link to organization IRIs with `schema:author`; names, websites, country-level
@@ -89,8 +86,8 @@ locations, network memberships, and parent relationships live in
 
 **Example**: `http://data.climatesense-project.eu/person/a1b2c3d4e5f6...`
 
-A person's role and external source URI are descriptive metadata and do not affect
-the generated URI.
+Name and website form the person's hash input. Role and external source URI are
+descriptive metadata.
 
 ### Source Ratings
 
@@ -109,8 +106,8 @@ The `rating_fingerprint` is itself a SHA-256 hash of:
 ["rating", label, original_label, rating_value, best_rating, worst_rating]
 ```
 
-Missing values are represented by empty strings. The explanation is descriptive
-metadata and is not part of the identifier.
+Missing values are represented by empty strings. These six values determine the
+fingerprint; the explanation is descriptive metadata.
 
 **Example**: `http://data.climatesense-project.eu/rating/3c2b1a9f8e7d...`
 
@@ -198,14 +195,14 @@ For triple-store deployment, graph URIs follow a template pattern:
 
 **Example**: `http://data.climatesense-project.eu/graph/euroclimatecheck`
 
-The `{SOURCE}` placeholder is replaced with a managed logical graph name. Most
-generated graphs use the configured data-source name. Provider-owned entity linking
-uses a stable enrichment graph name instead:
+The `{SOURCE}` placeholder represents a managed logical graph name. Source graphs use
+the configured data-source name, while provider-owned entity linking uses a stable
+enrichment graph name:
 
 - `{base_uri}/graph/dbpedia-enricher` contains DBpedia Spotlight `schema:mentions`
   assertions and DBpedia entity properties.
-- Source graphs contain the claims and reviews referenced by those assertions, but no
-  DBpedia entity-linking triples.
+- Source graphs contain the claims and reviews referenced by those assertions.
+- The DBpedia enrichment graph owns all DBpedia entity-linking triples.
 - `{base_uri}/graph/organizations` and `{base_uri}/graph/vocabularies` contain curated
   repository data.
 

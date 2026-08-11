@@ -16,7 +16,7 @@ from .registry import IdentityRegistry, IdentityTransaction
 
 
 class IdentityResolver:
-    """Resolve source observations without deriving identity from mutable metadata."""
+    """Resolve source observations to persistent canonical identities."""
 
     def __init__(
         self,

@@ -27,7 +27,7 @@ class EnrichmentStage(Protocol):
 
 
 class EnrichmentRunner:
-    """Run enabled enrichers without giving them orchestration concerns."""
+    """Coordinate enabled enrichers and their stored results."""
 
     def __init__(self, stages: list[EnrichmentStage]) -> None:
         self.stages = stages
