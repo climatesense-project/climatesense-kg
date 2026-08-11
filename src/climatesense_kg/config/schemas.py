@@ -127,6 +127,22 @@ class DocumentExtractionConfig:
 
 
 @dataclass
+class IdentityResolutionConfig:
+    """Operational settings for durable identity resolution."""
+
+    batch_size: int = 500
+    progress_interval_seconds: float = 10.0
+
+    def __post_init__(self) -> None:
+        if self.batch_size <= 0:
+            raise ValueError("Identity resolution batch_size must be positive")
+        if self.progress_interval_seconds < 0:
+            raise ValueError(
+                "Identity resolution progress_interval_seconds must be non-negative"
+            )
+
+
+@dataclass
 class DbpediaSpotlightConfig:
     """Configuration for DBpedia Spotlight entity extraction."""
 
@@ -221,6 +237,9 @@ class PipelineConfig:
     data_sources: list[DataSourceConfig] = field(default_factory=list[DataSourceConfig])
     document_extraction: DocumentExtractionConfig = field(
         default_factory=DocumentExtractionConfig
+    )
+    identity_resolution: IdentityResolutionConfig = field(
+        default_factory=IdentityResolutionConfig
     )
     enrichment: EnrichmentConfig = field(default_factory=EnrichmentConfig)
     output: OutputConfig = field(default_factory=OutputConfig)

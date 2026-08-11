@@ -20,6 +20,13 @@ from .models import (
 class IdentityTransaction(Protocol):
     """Operations available inside one atomic identity-resolution transaction."""
 
+    def prepare(
+        self,
+        records: list[tuple[SourceReviewRecord, CanonicalOrganization]],
+    ) -> None:
+        """Bulk-load lookup state for a bounded resolution batch."""
+        ...
+
     def lock_scope(self, organization_uri: str) -> None: ...
 
     def assignment_for_source(self, record_key: str) -> IdentityAssignment | None: ...
@@ -96,6 +103,12 @@ class InMemoryIdentityRegistry:
     def transaction(self) -> Iterator[IdentityTransaction]:
         with self._lock:
             yield self
+
+    def prepare(
+        self,
+        records: list[tuple[SourceReviewRecord, CanonicalOrganization]],
+    ) -> None:
+        del records
 
     def lock_scope(self, organization_uri: str) -> None:
         del organization_uri

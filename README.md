@@ -193,6 +193,10 @@ document_extraction:
   checkpoint_size: 25
   progress_interval_seconds: 10
 
+identity_resolution:
+  batch_size: 500
+  progress_interval_seconds: 10
+
 enrichment:
   dbpedia_spotlight:
     enabled: true
@@ -260,6 +264,11 @@ change result identity. If a run is interrupted, completed checkpoints are resto
 on the next run instead of being fetched again.
 Use `--skip-extraction` to apply stored successful extractions without fetching
 failed or missing documents.
+
+Identity resolution commits records in bounded
+`identity_resolution.batch_size` transactions and logs committed records, canonical
+reviews, throughput, and ETA at `identity_resolution.progress_interval_seconds`.
+Committed batches survive interruption; only the active batch is rolled back.
 
 ### Example SQL Queries
 

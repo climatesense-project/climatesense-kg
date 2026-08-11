@@ -62,6 +62,10 @@ document_extraction:
   checkpoint_size: 25
   progress_interval_seconds: 10
 
+identity_resolution:
+  batch_size: 500
+  progress_interval_seconds: 10
+
 enrichment:
   dbpedia_spotlight:
     enabled: true

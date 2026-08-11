@@ -211,7 +211,13 @@ def build_pipeline_dependencies(config: PipelineConfig) -> PipelineDependencies:
         ),
         organization_catalog=OrganizationCatalog(ORGANIZATION_CATALOG_PATH),
         document_extractor=document_extractor,
-        identity_resolver=IdentityResolver(PostgresIdentityRegistry(database.pool)),
+        identity_resolver=IdentityResolver(
+            PostgresIdentityRegistry(database.pool),
+            batch_size=config.identity_resolution.batch_size,
+            progress_interval_seconds=(
+                config.identity_resolution.progress_interval_seconds
+            ),
+        ),
         enrichment_runner=EnrichmentRunner(enrichers),
         rdf_artifact_builder=RdfArtifactBuilder(
             rdf_generator,

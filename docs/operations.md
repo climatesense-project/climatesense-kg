@@ -101,6 +101,25 @@ invalidate reusable extraction results.
 Run with `--skip-extraction` to restore successful checkpoints without retrying
 stored failures or fetching missing documents.
 
+## Identity-Resolution Progress
+
+Identity resolution logs committed source records, canonical reviews, transaction
+batches, throughput, and estimated completion time. Each transaction contains at
+most `identity_resolution.batch_size` records. This removes per-record commits and
+organization-lock queries, and bulk-loads source assignments plus exact URL/text
+evidence once per batch. Interruption recovery remains bounded: committed batches
+stay durable and only the active batch is rolled back.
+
+Monitor durable identity progress directly:
+
+```sql
+SELECT COUNT(*) AS resolved_source_records
+FROM source_review_records;
+```
+
+`identity_resolution.progress_interval_seconds` controls log frequency. Progress is
+reported after commits, so it always reflects durable work.
+
 ## Enrichment Completeness
 
 Each enabled enrichment stage reports:

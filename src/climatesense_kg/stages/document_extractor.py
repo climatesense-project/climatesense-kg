@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 
 from ..domain import SourceReviewRecord
 from ..persistence import StageResult, StageResultKey, StageResultStore
+from ..utils.progress import format_duration
 from ..utils.text_processing import (
     TextExtractionResult,
     fetch_and_extract_text,
@@ -97,7 +98,7 @@ class DocumentExtractor:
             last_logged_elapsed = progress.elapsed_seconds
             rate = progress.computation_rate
             rate_text = f"{rate:.2f}/s" if rate is not None else "n/a"
-            eta_text = self._format_duration(progress.eta_seconds)
+            eta_text = format_duration(progress.eta_seconds)
             logger.info(
                 "Document extraction: %d/%d processed (%.1f%%); "
                 "restored=%d, stored_failures=%d, fetched=%d, failed=%d; "
@@ -193,16 +194,3 @@ class DocumentExtractor:
         record.document.canonical_url = (
             canonical_url if isinstance(canonical_url, str) else None
         )
-
-    @staticmethod
-    def _format_duration(seconds: float | None) -> str:
-        if seconds is None:
-            return "n/a"
-        rounded = max(0, round(seconds))
-        minutes, remaining_seconds = divmod(rounded, 60)
-        hours, remaining_minutes = divmod(minutes, 60)
-        if hours:
-            return f"{hours}h {remaining_minutes}m"
-        if minutes:
-            return f"{minutes}m {remaining_seconds}s"
-        return f"{remaining_seconds}s"

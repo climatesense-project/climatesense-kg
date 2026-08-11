@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import time
 from uuid import uuid4
 
 from ..domain import (
@@ -10,9 +12,12 @@ from ..domain import (
     CanonicalReviewDocument,
     SourceReviewRecord,
 )
+from ..utils.progress import format_duration
 from .fingerprints import fingerprint_document, shingle_containment
 from .models import IdentityAssignment, IdentityCandidate
 from .registry import IdentityRegistry, IdentityTransaction
+
+logger = logging.getLogger(__name__)
 
 
 class IdentityResolver:
@@ -24,14 +29,22 @@ class IdentityResolver:
         *,
         similarity_threshold: float = 0.9,
         minimum_similarity_words: int = 50,
+        batch_size: int = 500,
+        progress_interval_seconds: float = 10.0,
     ) -> None:
         if not 0 <= similarity_threshold <= 1:
             raise ValueError("Similarity threshold must be between zero and one")
         if minimum_similarity_words < 1:
             raise ValueError("Minimum similarity words must be positive")
+        if batch_size <= 0:
+            raise ValueError("Identity batch size must be positive")
+        if progress_interval_seconds < 0:
+            raise ValueError("Identity progress interval must be non-negative")
         self.registry = registry
         self.similarity_threshold = similarity_threshold
         self.minimum_similarity_words = minimum_similarity_words
+        self.batch_size = batch_size
+        self.progress_interval_seconds = progress_interval_seconds
 
     def resolve(
         self,
@@ -43,27 +56,7 @@ class IdentityResolver:
         fingerprint_document(record.document)
         with self.registry.transaction() as transaction:
             transaction.lock_scope(organization.uri)
-            assignment = transaction.assignment_for_source(record.source.record_key)
-            if assignment is not None:
-                transaction.attach_source(
-                    record, assignment.review.document, assignment.review
-                )
-                assignment = transaction.assignment(assignment.review.id)
-                return self._to_canonical(record, organization, assignment)
-
-            if record.source.native_id:
-                assignment = transaction.assignment_for_native_id(
-                    record.source.source_name, record.source.native_id
-                )
-                if assignment is not None:
-                    transaction.attach_source(
-                        record, assignment.review.document, assignment.review
-                    )
-                    assignment = transaction.assignment(assignment.review.id)
-                    return self._to_canonical(record, organization, assignment)
-
-            assignment = self._resolve_new_source(transaction, record, organization)
-            return self._to_canonical(record, organization, assignment)
+            return self._resolve_in_transaction(transaction, record, organization)
 
     def resolve_many(
         self,
@@ -71,15 +64,90 @@ class IdentityResolver:
     ) -> list[CanonicalClaimReview]:
         """Resolve and merge repeated canonical identities within one pipeline batch."""
 
+        total = len(records)
+        started = time.monotonic()
+        last_logged_elapsed: float | None = None
         resolved: dict[str, CanonicalClaimReview] = {}
-        for record, organization in records:
-            current = self.resolve(record, organization)
-            existing = resolved.get(current.key)
-            if existing is None:
-                resolved[current.key] = current
-            else:
-                self._merge(existing, current)
+
+        def log_progress(committed: int, batches: int) -> None:
+            nonlocal last_logged_elapsed
+            elapsed = max(0.0, time.monotonic() - started)
+            should_log = (
+                last_logged_elapsed is None
+                or committed == total
+                or elapsed - last_logged_elapsed >= self.progress_interval_seconds
+            )
+            if not should_log:
+                return
+            last_logged_elapsed = elapsed
+            rate = committed / elapsed if committed and elapsed > 0 else None
+            remaining = max(0, total - committed)
+            eta = remaining / rate if rate and remaining else None
+            percent = 100.0 if not total else 100 * committed / total
+            logger.info(
+                "Identity resolution: %d/%d committed (%.1f%%); "
+                "canonical=%d, batches=%d; rate=%s; ETA=%s",
+                committed,
+                total,
+                percent,
+                len(resolved),
+                batches,
+                f"{rate:.2f}/s" if rate is not None else "n/a",
+                format_duration(eta),
+            )
+
+        log_progress(0, 0)
+        batches = 0
+        for start in range(0, total, self.batch_size):
+            batch = records[start : start + self.batch_size]
+            for record, _organization in batch:
+                fingerprint_document(record.document)
+            with self.registry.transaction() as transaction:
+                for organization_uri in sorted(
+                    {organization.uri for _record, organization in batch}
+                ):
+                    transaction.lock_scope(organization_uri)
+                transaction.prepare(batch)
+                for record, organization in batch:
+                    current = self._resolve_in_transaction(
+                        transaction, record, organization
+                    )
+                    existing = resolved.get(current.key)
+                    if existing is None:
+                        resolved[current.key] = current
+                    else:
+                        self._merge(existing, current)
+            batches += 1
+            log_progress(min(start + len(batch), total), batches)
         return list(resolved.values())
+
+    def _resolve_in_transaction(
+        self,
+        transaction: IdentityTransaction,
+        record: SourceReviewRecord,
+        organization: CanonicalOrganization,
+    ) -> CanonicalClaimReview:
+        assignment = transaction.assignment_for_source(record.source.record_key)
+        if assignment is not None:
+            transaction.attach_source(
+                record, assignment.review.document, assignment.review
+            )
+            assignment = transaction.assignment(assignment.review.id)
+            return self._to_canonical(record, organization, assignment)
+
+        if record.source.native_id:
+            assignment = transaction.assignment_for_native_id(
+                record.source.source_name, record.source.native_id
+            )
+            if assignment is not None:
+                transaction.attach_source(
+                    record, assignment.review.document, assignment.review
+                )
+                assignment = transaction.assignment(assignment.review.id)
+                return self._to_canonical(record, organization, assignment)
+
+        assignment = self._resolve_new_source(transaction, record, organization)
+        return self._to_canonical(record, organization, assignment)
 
     def _resolve_new_source(
         self,

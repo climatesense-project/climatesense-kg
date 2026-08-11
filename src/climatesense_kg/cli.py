@@ -387,8 +387,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
             )
     except KeyboardInterrupt:
         print(
-            "Pipeline interrupted; completed document-extraction checkpoints "
-            "were preserved.",
+            "Pipeline interrupted; completed pipeline checkpoints were preserved.",
             file=sys.stderr,
         )
         return 130

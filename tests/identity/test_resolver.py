@@ -1,5 +1,11 @@
 """Acceptance tests for claim-review identity resolution."""
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+import logging
+
+import pytest
+
 from climatesense_kg.domain import (
     CanonicalClaim,
     CanonicalOrganization,
@@ -9,13 +15,29 @@ from climatesense_kg.domain import (
     SourceReference,
     SourceReviewRecord,
 )
-from climatesense_kg.identity import IdentityResolver, InMemoryIdentityRegistry
+from climatesense_kg.identity import (
+    IdentityResolver,
+    IdentityTransaction,
+    InMemoryIdentityRegistry,
+)
 
 ORGANIZATION = CanonicalOrganization(
     uri="https://data.example.test/organization/factual",
     name="Factual",
     website="https://factual.ro",
 )
+
+
+class CountingIdentityRegistry(InMemoryIdentityRegistry):
+    def __init__(self) -> None:
+        super().__init__()
+        self.transaction_count = 0
+
+    @contextmanager
+    def transaction(self) -> Iterator[IdentityTransaction]:
+        self.transaction_count += 1
+        with super().transaction() as transaction:
+            yield transaction
 
 
 def _record(
@@ -235,3 +257,34 @@ def test_rating_change_does_not_change_deterministically_matched_identity() -> N
     assert second.id == first.id
     assert second.document.id == first.document.id
     assert not registry.candidates
+
+
+def test_resolve_many_commits_bounded_batches_and_logs_progress(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    registry = CountingIdentityRegistry()
+    resolver = IdentityResolver(
+        registry,
+        batch_size=2,
+        progress_interval_seconds=0,
+    )
+    records = [
+        (
+            _record(
+                str(index),
+                url=f"https://factual.ro/review-{index}",
+            ),
+            ORGANIZATION,
+        )
+        for index in range(5)
+    ]
+
+    with caplog.at_level(logging.INFO, logger="climatesense_kg.identity.resolver"):
+        reviews = resolver.resolve_many(records)
+
+    assert registry.transaction_count == 3
+    assert len(reviews) == 5
+    assert "Identity resolution: 0/5 committed" in caplog.text
+    assert "Identity resolution: 2/5 committed" in caplog.text
+    assert "Identity resolution: 4/5 committed" in caplog.text
+    assert "Identity resolution: 5/5 committed" in caplog.text

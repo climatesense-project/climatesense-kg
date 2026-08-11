@@ -177,4 +177,4 @@ def test_pipeline_interrupt_reports_preserved_checkpoints(capsys) -> None:
         exit_code = run_pipeline(Namespace(config="config.yaml", debug=False))
 
     assert exit_code == 130
-    assert "checkpoints were preserved" in capsys.readouterr().err
+    assert "pipeline checkpoints were preserved" in capsys.readouterr().err
