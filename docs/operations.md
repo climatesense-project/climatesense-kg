@@ -71,6 +71,34 @@ SQL
 This does not affect current reusable results in `stage_results` or any identity
 table. Analytics over attempt history reflects the retained time window.
 
+## Document-Extraction Progress
+
+Document extraction logs the number of eligible, restored, fetched, failed, and
+remaining documents together with the current rate and estimated completion time.
+New results are written to PostgreSQL every
+`document_extraction.checkpoint_size` documents. The final partial checkpoint and
+all completed work at the time of a graceful operator interruption are also written.
+
+Follow a running container from another terminal:
+
+```bash
+docker ps --filter label=com.docker.compose.service=pipeline \
+  --format 'table {{.Names}}\t{{.Status}}'
+docker logs --tail 100 --follow <pipeline-container-name>
+```
+
+Inspect durable extraction coverage at any time:
+
+```sql
+SELECT success, COUNT(*)
+FROM stage_results
+WHERE stage_name = 'document.extract'
+GROUP BY success;
+```
+
+Checkpoint size and progress-log frequency are operational settings and do not
+invalidate reusable extraction results.
+
 ## Enrichment Completeness
 
 Each enabled enrichment stage reports:

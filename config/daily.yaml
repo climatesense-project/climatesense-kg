@@ -59,6 +59,8 @@ document_extraction:
   rate_limit_delay: 0
   timeout: 15
   max_retries: 2
+  checkpoint_size: 25
+  progress_interval_seconds: 10
 
 enrichment:
   dbpedia_spotlight:

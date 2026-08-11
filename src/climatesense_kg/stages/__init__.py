@@ -2,18 +2,24 @@
 
 from .document_extractor import DocumentExtractor
 from .enrichment import (
-    EnrichmentExecutionPolicy,
     EnrichmentRunner,
     EnrichmentRunReport,
     EnrichmentStage,
-    EnrichmentStageReport,
+)
+from .persisted import (
+    StageExecutionPolicy,
+    StageExecutionReport,
+    StageExecutionSummary,
+    StageProgress,
 )
 
 __all__ = [
     "DocumentExtractor",
-    "EnrichmentExecutionPolicy",
     "EnrichmentRunReport",
     "EnrichmentRunner",
     "EnrichmentStage",
-    "EnrichmentStageReport",
+    "StageExecutionPolicy",
+    "StageExecutionReport",
+    "StageExecutionSummary",
+    "StageProgress",
 ]

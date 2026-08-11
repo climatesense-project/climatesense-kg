@@ -5,7 +5,11 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, call, patch
 
-from src.climatesense_kg.cli import run_flush_stage_results, run_redeploy
+from src.climatesense_kg.cli import (
+    run_flush_stage_results,
+    run_pipeline,
+    run_redeploy,
+)
 from src.climatesense_kg.config.graphs import (
     DBPEDIA_ENRICHER_SOURCE_NAME,
     GRAPH_CATALOG_PATH,
@@ -148,3 +152,20 @@ def test_flush_stage_results_uses_only_stage_store() -> None:
 
     assert exit_code == 0
     store.clear.assert_called_once_with()
+
+
+def test_pipeline_interrupt_reports_preserved_checkpoints(capsys) -> None:
+    config = SimpleNamespace(logging=SimpleNamespace(level="INFO"))
+    pipeline = Mock()
+    pipeline.__enter__ = Mock(return_value=pipeline)
+    pipeline.__exit__ = Mock(return_value=None)
+    pipeline.run.side_effect = KeyboardInterrupt
+
+    with (
+        patch("src.climatesense_kg.config.load_config", return_value=config),
+        patch("src.climatesense_kg.pipeline.Pipeline", return_value=pipeline),
+    ):
+        exit_code = run_pipeline(Namespace(config="config.yaml", debug=False))
+
+    assert exit_code == 130
+    assert "checkpoints were preserved" in capsys.readouterr().err

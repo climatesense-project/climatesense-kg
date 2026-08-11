@@ -114,6 +114,16 @@ class DocumentExtractionConfig:
     rate_limit_delay: float = 0.5
     timeout: int = 15
     max_retries: int = 2
+    checkpoint_size: int = 25
+    progress_interval_seconds: float = 10.0
+
+    def __post_init__(self) -> None:
+        if self.checkpoint_size <= 0:
+            raise ValueError("Document extraction checkpoint_size must be positive")
+        if self.progress_interval_seconds < 0:
+            raise ValueError(
+                "Document extraction progress_interval_seconds must be non-negative"
+            )
 
 
 @dataclass

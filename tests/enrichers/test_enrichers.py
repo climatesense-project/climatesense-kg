@@ -19,7 +19,7 @@ from climatesense_kg.persistence import (
     InMemoryStageResultStore,
     StageResult,
 )
-from climatesense_kg.stages import EnrichmentExecutionPolicy, EnrichmentRunner
+from climatesense_kg.stages import EnrichmentRunner, StageExecutionPolicy
 
 
 def _review(
@@ -340,7 +340,7 @@ def test_successful_empty_result_is_complete() -> None:
     enricher = DBpediaSpotlightEnricher(target="claim", store=store, rate_limit_delay=0)
 
     first = enricher.enrich([review])
-    second = enricher.enrich([review], policy=EnrichmentExecutionPolicy.STORED_ONLY)
+    second = enricher.enrich([review], policy=StageExecutionPolicy.STORED_ONLY)
 
     assert first.computed_successes == 1
     assert second.stored_successes == 1

@@ -31,7 +31,8 @@ from climatesense_kg.identity import IdentityResolver, InMemoryIdentityRegistry
 from climatesense_kg.persistence import InMemoryStageResultStore
 from climatesense_kg.pipeline import Pipeline, PipelineDependencies
 from climatesense_kg.rdf_generation import RdfArtifact, RdfArtifactBuilder, RDFGenerator
-from climatesense_kg.stages import EnrichmentRunner
+from climatesense_kg.stages import DocumentExtractor, EnrichmentRunner
+from climatesense_kg.utils.text_processing import TextExtractionResult
 
 BASE = "http://data.climatesense-project.eu"
 
@@ -132,6 +133,88 @@ def test_pipeline_resolves_duplicate_observations_before_rdf(tmp_path: Path) -> 
         URIRef("https://factual.ro/old"),
         URIRef("https://factual.ro/new"),
     }
+
+
+def test_pipeline_reports_document_extraction_counts(tmp_path: Path) -> None:
+    data_manager = Mock()
+    data_manager.get_data.return_value = [
+        _record(
+            "record",
+            "https://factual.ro/review",
+            "A sufficiently detailed review body",
+        )
+    ]
+    catalog = Mock()
+    catalog.resolve.return_value = CanonicalOrganization(
+        uri=f"{BASE}/organization/factual",
+        name="Factual",
+        website="https://factual.ro",
+    )
+    dependencies = _dependencies(data_manager, catalog, tmp_path)
+    dependencies.document_extractor = DocumentExtractor(
+        InMemoryStageResultStore(),
+        rate_limit_delay=0,
+        checkpoint_size=1,
+        progress_interval_seconds=0,
+    )
+    pipeline = Pipeline(_config(tmp_path, "source-a"), dependencies)
+
+    with patch(
+        "climatesense_kg.stages.document_extractor.fetch_and_extract_text",
+        return_value=TextExtractionResult(
+            success=True,
+            content="Fetched review content",
+        ),
+    ):
+        results = pipeline.run(skip_deployment=True)
+
+    assert results["success"] is True
+    assert results["document_extraction"] is not None
+    assert results["document_extraction"]["eligible_subjects"] == 1
+    assert results["document_extraction"]["computed_successes"] == 1
+    assert results["document_extraction"]["complete"] is True
+    assert results["degraded"] is False
+
+
+def test_incomplete_document_extraction_marks_pipeline_degraded(
+    tmp_path: Path,
+) -> None:
+    data_manager = Mock()
+    data_manager.get_data.return_value = [
+        _record(
+            "record",
+            "https://factual.ro/review",
+            "A sufficiently detailed review body",
+        )
+    ]
+    catalog = Mock()
+    catalog.resolve.return_value = CanonicalOrganization(
+        uri=f"{BASE}/organization/factual",
+        name="Factual",
+        website="https://factual.ro",
+    )
+    dependencies = _dependencies(data_manager, catalog, tmp_path)
+    dependencies.document_extractor = DocumentExtractor(
+        InMemoryStageResultStore(),
+        rate_limit_delay=0,
+        checkpoint_size=1,
+        progress_interval_seconds=0,
+    )
+    pipeline = Pipeline(_config(tmp_path, "source-a"), dependencies)
+
+    with patch(
+        "climatesense_kg.stages.document_extractor.fetch_and_extract_text",
+        return_value=TextExtractionResult(
+            success=False,
+            error_message="unavailable",
+        ),
+    ):
+        results = pipeline.run(skip_deployment=True)
+
+    assert results["success"] is True
+    assert results["document_extraction"] is not None
+    assert results["document_extraction"]["complete"] is False
+    assert results["degraded"] is True
 
 
 def test_source_graphs_retain_source_owned_metadata(tmp_path: Path) -> None:

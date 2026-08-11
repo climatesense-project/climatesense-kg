@@ -17,9 +17,9 @@ from .. import USER_AGENT
 from ..config.graphs import DBPEDIA_ENTITY_SOURCES
 from ..domain import CanonicalClaimReview, EntityMention, EntityPropertyValue
 from ..persistence import StageResult, StageResultKey, StageResultStore
-from ..stages.enrichment import (
-    EnrichmentExecutionPolicy,
-    EnrichmentStageReport,
+from ..stages.persisted import (
+    StageExecutionPolicy,
+    StageExecutionReport,
     execute_persisted_stage,
 )
 
@@ -87,10 +87,10 @@ class DBpediaPropertyEnricher:
         self,
         items: list[CanonicalClaimReview],
         *,
-        policy: EnrichmentExecutionPolicy = EnrichmentExecutionPolicy.COMPUTE,
+        policy: StageExecutionPolicy = StageExecutionPolicy.COMPUTE,
         force: bool = False,
         availability_check: Callable[[], bool] | None = None,
-    ) -> EnrichmentStageReport:
+    ) -> StageExecutionReport:
         """Restore or fetch each distinct entity result exactly once."""
 
         entity_map = self._collect_all_entity_references(items)

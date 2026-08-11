@@ -32,7 +32,12 @@ from .persistence import (
     PostgresStageResultStore,
 )
 from .rdf_generation import RdfArtifactBuilder, RdfBuildReport, RDFGenerator
-from .stages import DocumentExtractor, EnrichmentRunner
+from .stages import (
+    DocumentExtractor,
+    EnrichmentRunner,
+    StageExecutionReport,
+    StageExecutionSummary,
+)
 from .utils.logging import configure_external_loggers, setup_logging
 
 logger = logging.getLogger(__name__)
@@ -56,7 +61,7 @@ class EnrichmentResults(TypedDict):
     input_items: int
     output_items: int
     complete: bool
-    stages: list[dict[str, str | bool | int | None]]
+    stages: list[StageExecutionSummary]
 
 
 class GeneratedFileInfo(TypedDict):
@@ -96,6 +101,7 @@ class PipelineResults(TypedDict):
     end_time: float | None
     duration: float | None
     data_sources: DataSourceResults | None
+    document_extraction: StageExecutionSummary | None
     enrichment: EnrichmentResults | None
     rdf_generation: RDFGenerationResults | None
     deployment: DeploymentResults | None
@@ -139,6 +145,10 @@ def build_pipeline_dependencies(config: PipelineConfig) -> PipelineDependencies:
             rate_limit_delay=config.document_extraction.rate_limit_delay,
             timeout=config.document_extraction.timeout,
             max_retries=config.document_extraction.max_retries,
+            checkpoint_size=config.document_extraction.checkpoint_size,
+            progress_interval_seconds=(
+                config.document_extraction.progress_interval_seconds
+            ),
         )
 
     enrichers = []
@@ -278,7 +288,11 @@ class Pipeline:
                     "All enabled data sources failed ingestion: "
                     + ", ".join(ingestion["failed_sources"])
                 )
-            reviews = self._resolve_records(records, force=force_regenerate)
+            reviews, extraction_report = self._resolve_records(
+                records, force=force_regenerate
+            )
+            if extraction_report is not None:
+                results["document_extraction"] = extraction_report.to_dict()
             results["data_sources"]["total_items"] = len(reviews)
 
             enrichment_report = self.dependencies.enrichment_runner.run(
@@ -294,7 +308,9 @@ class Pipeline:
             }
             results["total_processed"] = len(enrichment_report.items)
             results["degraded"] = (
-                bool(ingestion["failed_sources"]) or not enrichment_report.complete
+                bool(ingestion["failed_sources"])
+                or (extraction_report is not None and not extraction_report.complete)
+                or not enrichment_report.complete
             )
 
             incomplete_by_graph = {
@@ -369,6 +385,7 @@ class Pipeline:
             "end_time": None,
             "duration": None,
             "data_sources": None,
+            "document_extraction": None,
             "enrichment": None,
             "rdf_generation": None,
             "deployment": None,
@@ -404,7 +421,7 @@ class Pipeline:
 
     def _resolve_records(
         self, records: list[SourceReviewRecord], *, force: bool
-    ) -> list[CanonicalClaimReview]:
+    ) -> tuple[list[CanonicalClaimReview], StageExecutionReport | None]:
         resolvable = []
         unresolved: set[tuple[str, str, str]] = set()
         for record in records:
@@ -429,12 +446,16 @@ class Pipeline:
             raise RuntimeError(
                 "Organizations are missing from the curated catalog: " + details
             )
+        extraction_report = None
         if self.dependencies.document_extractor is not None:
-            self.dependencies.document_extractor.extract_many(
+            extraction_report = self.dependencies.document_extractor.extract_many(
                 [record for record, _organization in resolvable],
                 force=force,
             )
-        return self.dependencies.identity_resolver.resolve_many(resolvable)
+        return (
+            self.dependencies.identity_resolver.resolve_many(resolvable),
+            extraction_report,
+        )
 
     @staticmethod
     def _rdf_results(report: RdfBuildReport) -> RDFGenerationResults:

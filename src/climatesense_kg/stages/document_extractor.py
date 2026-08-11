@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
 import logging
 import time
+from typing import Any
 from urllib.parse import urlparse
 
 from ..domain import SourceReviewRecord
@@ -13,6 +15,7 @@ from ..utils.text_processing import (
     fetch_and_extract_text,
     redact_url_credentials,
 )
+from .persisted import StageExecutionReport, StageProgress, execute_persisted_stage
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +33,8 @@ class DocumentExtractor:
         rate_limit_delay: float = 0.5,
         timeout: int = 15,
         max_retries: int = 2,
+        checkpoint_size: int = 25,
+        progress_interval_seconds: float = 10.0,
     ) -> None:
         if rate_limit_delay < 0:
             raise ValueError("rate_limit_delay must be non-negative")
@@ -37,67 +42,110 @@ class DocumentExtractor:
             raise ValueError("timeout must be positive")
         if max_retries < 0:
             raise ValueError("max_retries must be non-negative")
+        if checkpoint_size <= 0:
+            raise ValueError("checkpoint_size must be greater than zero")
+        if progress_interval_seconds < 0:
+            raise ValueError("progress_interval_seconds must be non-negative")
         self.store = store
         self.rate_limit_delay = rate_limit_delay
         self.timeout = timeout
         self.max_retries = max_retries
+        self.checkpoint_size = checkpoint_size
+        self.progress_interval_seconds = progress_interval_seconds
 
     def extract(
         self, record: SourceReviewRecord, *, force: bool = False
     ) -> SourceReviewRecord:
         """Fetch one HTTP document or restore the exact stage result."""
 
-        return self.extract_many([record], force=force)[0]
+        self.extract_many([record], force=force)
+        return record
 
     def extract_many(
         self, records: list[SourceReviewRecord], *, force: bool = False
-    ) -> list[SourceReviewRecord]:
-        """Restore state in bulk, then fetch only unresolved HTTP documents."""
+    ) -> StageExecutionReport:
+        """Restore HTTP documents, checkpoint new results, and report progress."""
 
-        keyed_records = [
-            (record, self._key(record))
-            for record in records
-            if urlparse(record.document.observed_url).scheme in {"http", "https"}
-        ]
-        stored_results = (
-            {}
-            if force
-            else self.store.get_many([key for _record, key in keyed_records])
+        records_by_key: dict[StageResultKey, list[SourceReviewRecord]] = defaultdict(
+            list
         )
-        pending: list[tuple[SourceReviewRecord, StageResultKey]] = []
-        for record, key in keyed_records:
-            stored = stored_results.get(key)
-            if stored is None or not stored.success:
-                pending.append((record, key))
-            else:
-                self._apply(record, stored.payload)
+        for record in records:
+            if urlparse(record.document.observed_url).scheme in {"http", "https"}:
+                records_by_key[self._key(record)].append(record)
 
-        new_results: dict[StageResultKey, StageResult] = {}
-        for record, key in pending:
-            url = record.document.observed_url
-            result = self._fetch(url)
-            if result.success:
-                payload = {
+        last_logged_elapsed: float | None = None
+
+        def log_progress(progress: StageProgress) -> None:
+            nonlocal last_logged_elapsed
+            should_log = (
+                last_logged_elapsed is None
+                or progress.remaining_subjects == 0
+                or progress.elapsed_seconds - last_logged_elapsed
+                >= self.progress_interval_seconds
+            )
+            if not should_log:
+                return
+            last_logged_elapsed = progress.elapsed_seconds
+            rate = progress.computation_rate
+            rate_text = f"{rate:.2f}/s" if rate is not None else "n/a"
+            eta_text = self._format_duration(progress.eta_seconds)
+            logger.info(
+                "Document extraction: %d/%d processed (%.1f%%); "
+                "restored=%d, stored_failures=%d, fetched=%d, failed=%d; "
+                "rate=%s; ETA=%s",
+                progress.processed_subjects,
+                progress.eligible_subjects,
+                progress.percent_complete,
+                progress.stored_successes,
+                progress.stored_failures,
+                progress.computed_successes,
+                progress.computed_failures,
+                rate_text,
+                eta_text,
+            )
+
+        def apply_group(
+            matching_records: list[SourceReviewRecord], payload: dict[str, Any]
+        ) -> None:
+            for record in matching_records:
+                self._apply(record, payload)
+
+        return execute_persisted_stage(
+            stage_name=self.name,
+            subjects=dict(records_by_key),
+            store=self.store,
+            compute_many=lambda groups: [self._compute(group[0]) for group in groups],
+            apply_result=apply_group,
+            force=force,
+            stage_logger=logger,
+            compute_batch_size=1,
+            checkpoint_size=self.checkpoint_size,
+            progress_callback=log_progress,
+        )
+
+    def _compute(self, record: SourceReviewRecord) -> StageResult:
+        url = record.document.observed_url
+        result = self._fetch(url)
+        if result.success:
+            return StageResult(
+                success=True,
+                payload={
                     "content": result.content,
                     "final_url": result.final_url,
                     "canonical_url": result.canonical_url,
-                }
-                self._apply(record, payload)
-                new_results[key] = StageResult(success=True, payload=payload)
-            else:
-                new_results[key] = StageResult(
-                    success=False,
-                    payload={
-                        "url": redact_url_credentials(url),
-                        "error_type": (
-                            result.error_type.value if result.error_type else "unknown"
-                        ),
-                        "error_message": result.error_message,
-                    },
-                )
-                logger.warning("Document extraction failed for %s", url)
-        self.store.put_many(new_results)
-        return records
+                },
+            )
+        logger.warning("Document extraction failed for %s", url)
+        return StageResult(
+            success=False,
+            payload={
+                "url": redact_url_credentials(url),
+                "error_type": (
+                    result.error_type.value if result.error_type else "unknown"
+                ),
+                "error_message": result.error_message,
+            },
+        )
 
     def _key(self, record: SourceReviewRecord) -> StageResultKey:
         return StageResultKey.build(
@@ -122,7 +170,7 @@ class DocumentExtractor:
         return result
 
     @staticmethod
-    def _apply(record: SourceReviewRecord, payload: dict[str, object]) -> None:
+    def _apply(record: SourceReviewRecord, payload: dict[str, Any]) -> None:
         content = payload.get("content")
         final_url = payload.get("final_url")
         canonical_url = payload.get("canonical_url")
@@ -131,3 +179,16 @@ class DocumentExtractor:
         record.document.canonical_url = (
             canonical_url if isinstance(canonical_url, str) else None
         )
+
+    @staticmethod
+    def _format_duration(seconds: float | None) -> str:
+        if seconds is None:
+            return "n/a"
+        rounded = max(0, round(seconds))
+        minutes, remaining_seconds = divmod(rounded, 60)
+        hours, remaining_minutes = divmod(minutes, 60)
+        if hours:
+            return f"{hours}h {remaining_minutes}m"
+        if minutes:
+            return f"{minutes}m {remaining_seconds}s"
+        return f"{remaining_seconds}s"

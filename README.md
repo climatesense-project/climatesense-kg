@@ -190,6 +190,8 @@ document_extraction:
   rate_limit_delay: 0.5
   timeout: 15
   max_retries: 2
+  checkpoint_size: 25
+  progress_interval_seconds: 10
 
 enrichment:
   dbpedia_spotlight:
@@ -250,6 +252,12 @@ Semantic settings are part of result identity: Spotlight model, confidence and
 support, CIMPLE model versions and maximum input length, and the selected DBpedia
 properties. Endpoint URLs, timeouts, retry counts, rate limits, and batch sizes are
 operational settings and do not invalidate stored results.
+
+Document extraction persists newly fetched results every
+`document_extraction.checkpoint_size` documents and logs live progress at
+`document_extraction.progress_interval_seconds`. These operational settings do not
+change result identity. If a run is interrupted, completed checkpoints are restored
+on the next run instead of being fetched again.
 
 ### Example SQL Queries
 

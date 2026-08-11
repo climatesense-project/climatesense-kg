@@ -10,9 +10,9 @@ from typing import Any
 
 from ..domain import CanonicalClaimReview
 from ..persistence import StageResult, StageResultKey, StageResultStore
-from ..stages.enrichment import (
-    EnrichmentExecutionPolicy,
-    EnrichmentStageReport,
+from ..stages.persisted import (
+    StageExecutionPolicy,
+    StageExecutionReport,
     execute_persisted_stage,
 )
 
@@ -41,10 +41,10 @@ class Enricher(ABC):
         self,
         items: list[CanonicalClaimReview],
         *,
-        policy: EnrichmentExecutionPolicy = EnrichmentExecutionPolicy.COMPUTE,
+        policy: StageExecutionPolicy = StageExecutionPolicy.COMPUTE,
         force: bool = False,
         availability_check: Callable[[], bool] | None = None,
-    ) -> EnrichmentStageReport:
+    ) -> StageExecutionReport:
         """Apply successful results and report semantic-subject completeness."""
 
         items_by_key: dict[StageResultKey, list[CanonicalClaimReview]] = defaultdict(

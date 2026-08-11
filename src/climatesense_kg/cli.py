@@ -14,6 +14,7 @@ if TYPE_CHECKING:
         PipelineResults,
         RDFGenerationResults,
     )
+    from .stages import StageExecutionSummary
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -143,6 +144,24 @@ def _print_deployment_summary(deployment_data: "DeploymentResults") -> None:
         )
 
 
+def _format_stage_counts(
+    stage: "StageExecutionSummary",
+    *,
+    success_label: str = "computed_successes",
+    failure_label: str = "computed_failures",
+) -> str:
+    """Format the counters shared by persisted-stage summaries."""
+
+    return (
+        f"eligible={stage['eligible_subjects']}, "
+        f"stored_successes={stage['stored_successes']}, "
+        f"stored_failures={stage['stored_failures']}, "
+        f"{success_label}={stage['computed_successes']}, "
+        f"{failure_label}={stage['computed_failures']}, "
+        f"missing={stage['missing_results']}"
+    )
+
+
 def _print_enrichment_summary(results: "PipelineResults") -> None:
     enrichment = results.get("enrichment")
     if not enrichment:
@@ -156,13 +175,19 @@ def _print_enrichment_summary(results: "PipelineResults") -> None:
         )
         print(
             f"  - {stage['stage_name']}: available={availability_text}, "
-            f"eligible={stage['eligible_subjects']}, "
-            f"stored_successes={stage['stored_successes']}, "
-            f"stored_failures={stage['stored_failures']}, "
-            f"computed_successes={stage['computed_successes']}, "
-            f"computed_failures={stage['computed_failures']}, "
-            f"missing={stage['missing_results']}"
+            f"{_format_stage_counts(stage)}"
         )
+
+
+def _print_document_extraction_summary(results: "PipelineResults") -> None:
+    extraction = results.get("document_extraction")
+    if extraction is None:
+        return
+    status = "complete" if extraction["complete"] else "incomplete"
+    print(
+        f"Document extraction: {status}; "
+        f"{_format_stage_counts(extraction, success_label='fetched', failure_label='failed')}"
+    )
 
 
 def _print_success_summary(results: "PipelineResults") -> None:
@@ -177,6 +202,7 @@ def _print_success_summary(results: "PipelineResults") -> None:
     if duration is not None:
         print(f"Duration: {duration:.2f} seconds")
 
+    _print_document_extraction_summary(results)
     _print_enrichment_summary(results)
 
     # Print RDF generation summary
@@ -353,6 +379,13 @@ def run_pipeline(args: argparse.Namespace) -> int:
                 skip_deployment=getattr(args, "skip_deployment", False),
                 force_regenerate=getattr(args, "force_regenerate", False),
             )
+    except KeyboardInterrupt:
+        print(
+            "Pipeline interrupted; completed document-extraction checkpoints "
+            "were preserved.",
+            file=sys.stderr,
+        )
+        return 130
     except Exception as e:
         print(f"Pipeline execution failed: {e}", file=sys.stderr)
         return 1
