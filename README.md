@@ -224,9 +224,6 @@ deployment:
 
 `data/graphs.ttl` is the curated catalog for the published named graphs.
 
-The architecture and identity policy are documented in
-[`docs/architecture.md`](docs/architecture.md).
-
 ## Querying pipeline state
 
 PostgreSQL is authoritative for canonical identity and versioned semantic-stage
