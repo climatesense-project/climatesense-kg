@@ -49,7 +49,7 @@ Examples:
     run_parser.add_argument(
         "--skip-extraction",
         action="store_true",
-        help="Skip document extraction for this run",
+        help="Skip external document fetches; apply stored successful results",
     )
     run_parser.add_argument(
         "--skip-enrichment",

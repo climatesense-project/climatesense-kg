@@ -15,7 +15,12 @@ from ..utils.text_processing import (
     fetch_and_extract_text,
     redact_url_credentials,
 )
-from .persisted import StageExecutionReport, StageProgress, execute_persisted_stage
+from .persisted import (
+    StageExecutionPolicy,
+    StageExecutionReport,
+    StageProgress,
+    execute_persisted_stage,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -62,9 +67,13 @@ class DocumentExtractor:
         return record
 
     def extract_many(
-        self, records: list[SourceReviewRecord], *, force: bool = False
+        self,
+        records: list[SourceReviewRecord],
+        *,
+        force: bool = False,
+        stored_only: bool = False,
     ) -> StageExecutionReport:
-        """Restore HTTP documents, checkpoint new results, and report progress."""
+        """Restore HTTP documents and optionally fetch and checkpoint missing ones."""
 
         records_by_key: dict[StageResultKey, list[SourceReviewRecord]] = defaultdict(
             list
@@ -116,7 +125,12 @@ class DocumentExtractor:
             store=self.store,
             compute_many=lambda groups: [self._compute(group[0]) for group in groups],
             apply_result=apply_group,
-            force=force,
+            policy=(
+                StageExecutionPolicy.STORED_ONLY
+                if stored_only
+                else StageExecutionPolicy.COMPUTE
+            ),
+            force=force if not stored_only else False,
             stage_logger=logger,
             compute_batch_size=1,
             checkpoint_size=self.checkpoint_size,

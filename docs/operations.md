@@ -98,6 +98,8 @@ GROUP BY success;
 
 Checkpoint size and progress-log frequency are operational settings and do not
 invalidate reusable extraction results.
+Run with `--skip-extraction` to restore successful checkpoints without retrying
+stored failures or fetching missing documents.
 
 ## Enrichment Completeness
 

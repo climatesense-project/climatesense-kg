@@ -258,6 +258,8 @@ Document extraction persists newly fetched results every
 `document_extraction.progress_interval_seconds`. These operational settings do not
 change result identity. If a run is interrupted, completed checkpoints are restored
 on the next run instead of being fetched again.
+Use `--skip-extraction` to apply stored successful extractions without fetching
+failed or missing documents.
 
 ### Example SQL Queries
 
@@ -378,7 +380,7 @@ uv run climatesense-kg run --config config/minimal.yaml --debug
 # Run daily pipeline skipping data download and forcing full RDF regeneration
 uv run climatesense-kg run --config config/daily.yaml --skip-download --force-regenerate
 
-# Run without fetching or extracting fact-check documents
+# Restore stored extractions without fetching fact-check documents
 uv run climatesense-kg run --config config/daily.yaml --skip-extraction
 
 # Replace the organization catalog and redeploy existing RDF to the selected backend

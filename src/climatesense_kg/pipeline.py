@@ -454,10 +454,11 @@ class Pipeline:
                 "Organizations are missing from the curated catalog: " + details
             )
         extraction_report = None
-        if not skip_extraction and self.dependencies.document_extractor is not None:
+        if self.dependencies.document_extractor is not None:
             extraction_report = self.dependencies.document_extractor.extract_many(
                 [record for record, _organization in resolvable],
                 force=force,
+                stored_only=skip_extraction,
             )
         return (
             self.dependencies.identity_resolver.resolve_many(resolvable),

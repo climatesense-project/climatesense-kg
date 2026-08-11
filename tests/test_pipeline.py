@@ -28,7 +28,7 @@ from climatesense_kg.domain import (
 )
 from climatesense_kg.enrichers import CimpleModelEnricher, DBpediaSpotlightEnricher
 from climatesense_kg.identity import IdentityResolver, InMemoryIdentityRegistry
-from climatesense_kg.persistence import InMemoryStageResultStore
+from climatesense_kg.persistence import InMemoryStageResultStore, StageResult
 from climatesense_kg.pipeline import Pipeline, PipelineDependencies
 from climatesense_kg.rdf_generation import RdfArtifact, RdfArtifactBuilder, RDFGenerator
 from climatesense_kg.stages import DocumentExtractor, EnrichmentRunner
@@ -176,15 +176,23 @@ def test_pipeline_reports_document_extraction_counts(tmp_path: Path) -> None:
     assert results["degraded"] is False
 
 
-def test_skip_extraction_bypasses_configured_extractor(tmp_path: Path) -> None:
-    data_manager = Mock()
-    data_manager.get_data.return_value = [
+def test_skip_extraction_restores_stored_results_without_fetching(
+    tmp_path: Path,
+) -> None:
+    records = [
         _record(
-            "record",
-            "https://factual.ro/review",
-            "A sufficiently detailed review body",
-        )
+            "cached",
+            "https://factual.ro/cached",
+            "Source-provided cached review body",
+        ),
+        _record(
+            "missing",
+            "https://factual.ro/missing",
+            "Source-provided missing review body",
+        ),
     ]
+    data_manager = Mock()
+    data_manager.get_data.return_value = records
     catalog = Mock()
     catalog.resolve.return_value = CanonicalOrganization(
         uri=f"{BASE}/organization/factual",
@@ -192,15 +200,29 @@ def test_skip_extraction_bypasses_configured_extractor(tmp_path: Path) -> None:
         website="https://factual.ro",
     )
     dependencies = _dependencies(data_manager, catalog, tmp_path)
-    extractor = Mock(spec=DocumentExtractor)
+    store = InMemoryStageResultStore()
+    extractor = DocumentExtractor(store, rate_limit_delay=0)
+    store.put(
+        extractor._key(records[0]),
+        StageResult(success=True, payload={"content": "Stored extracted content"}),
+    )
     dependencies.document_extractor = extractor
     pipeline = Pipeline(_config(tmp_path, "source-a"), dependencies)
 
-    results = pipeline.run(skip_extraction=True, skip_deployment=True)
+    with patch(
+        "climatesense_kg.stages.document_extractor.fetch_and_extract_text"
+    ) as fetch:
+        results = pipeline.run(skip_extraction=True, skip_deployment=True)
 
-    extractor.extract_many.assert_not_called()
+    fetch.assert_not_called()
     assert results["success"] is True
-    assert results["document_extraction"] is None
+    assert results["document_extraction"] is not None
+    assert results["document_extraction"]["stored_successes"] == 1
+    assert results["document_extraction"]["computed_successes"] == 0
+    assert results["document_extraction"]["missing_results"] == 1
+    assert records[0].document.extracted_text == "Stored extracted content"
+    assert records[1].document.extracted_text is None
+    assert results["degraded"] is True
 
 
 def test_incomplete_document_extraction_marks_pipeline_degraded(
