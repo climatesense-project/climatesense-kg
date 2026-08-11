@@ -378,6 +378,9 @@ uv run climatesense-kg run --config config/minimal.yaml --debug
 # Run daily pipeline skipping data download and forcing full RDF regeneration
 uv run climatesense-kg run --config config/daily.yaml --skip-download --force-regenerate
 
+# Run without fetching or extracting fact-check documents
+uv run climatesense-kg run --config config/daily.yaml --skip-extraction
+
 # Replace the organization catalog and redeploy existing RDF to the selected backend
 uv run climatesense-kg redeploy --config config/daily.yaml --rdf-dir data/rdf
 

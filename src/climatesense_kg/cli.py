@@ -47,6 +47,11 @@ Examples:
         help="Skip data downloads and use only cached/already downloaded data",
     )
     run_parser.add_argument(
+        "--skip-extraction",
+        action="store_true",
+        help="Skip document extraction for this run",
+    )
+    run_parser.add_argument(
         "--skip-enrichment",
         action="store_true",
         help=("Skip external enrichment calls; apply stored successful results"),
@@ -375,6 +380,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
         with Pipeline(config) as pipeline:
             results = pipeline.run(
                 skip_download=getattr(args, "skip_download", False),
+                skip_extraction=getattr(args, "skip_extraction", False),
                 skip_enrichment=getattr(args, "skip_enrichment", False),
                 skip_deployment=getattr(args, "skip_deployment", False),
                 force_regenerate=getattr(args, "force_regenerate", False),

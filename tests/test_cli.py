@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, call, patch
 
 from src.climatesense_kg.cli import (
+    create_parser,
     run_flush_stage_results,
     run_pipeline,
     run_redeploy,
@@ -19,6 +20,14 @@ from src.climatesense_kg.config.organizations import (
     ORGANIZATION_CATALOG_PATH,
     ORGANIZATION_SOURCE_NAME,
 )
+
+
+def test_run_parser_accepts_skip_extraction() -> None:
+    args = create_parser().parse_args(
+        ["run", "--config", "config/local.yaml", "--skip-extraction"]
+    )
+
+    assert args.skip_extraction is True
 
 
 def test_redeploy_preserves_underscored_source_name(tmp_path: Path) -> None:

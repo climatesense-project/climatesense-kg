@@ -176,6 +176,33 @@ def test_pipeline_reports_document_extraction_counts(tmp_path: Path) -> None:
     assert results["degraded"] is False
 
 
+def test_skip_extraction_bypasses_configured_extractor(tmp_path: Path) -> None:
+    data_manager = Mock()
+    data_manager.get_data.return_value = [
+        _record(
+            "record",
+            "https://factual.ro/review",
+            "A sufficiently detailed review body",
+        )
+    ]
+    catalog = Mock()
+    catalog.resolve.return_value = CanonicalOrganization(
+        uri=f"{BASE}/organization/factual",
+        name="Factual",
+        website="https://factual.ro",
+    )
+    dependencies = _dependencies(data_manager, catalog, tmp_path)
+    extractor = Mock(spec=DocumentExtractor)
+    dependencies.document_extractor = extractor
+    pipeline = Pipeline(_config(tmp_path, "source-a"), dependencies)
+
+    results = pipeline.run(skip_extraction=True, skip_deployment=True)
+
+    extractor.extract_many.assert_not_called()
+    assert results["success"] is True
+    assert results["document_extraction"] is None
+
+
 def test_incomplete_document_extraction_marks_pipeline_degraded(
     tmp_path: Path,
 ) -> None:

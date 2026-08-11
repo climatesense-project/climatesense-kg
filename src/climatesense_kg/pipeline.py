@@ -265,6 +265,7 @@ class Pipeline:
         self,
         skip_download: bool = False,
         force_regenerate: bool = False,
+        skip_extraction: bool = False,
         skip_enrichment: bool = False,
         skip_deployment: bool = False,
     ) -> PipelineResults:
@@ -289,7 +290,9 @@ class Pipeline:
                     + ", ".join(ingestion["failed_sources"])
                 )
             reviews, extraction_report = self._resolve_records(
-                records, force=force_regenerate
+                records,
+                force=force_regenerate,
+                skip_extraction=skip_extraction,
             )
             if extraction_report is not None:
                 results["document_extraction"] = extraction_report.to_dict()
@@ -420,7 +423,11 @@ class Pipeline:
         }
 
     def _resolve_records(
-        self, records: list[SourceReviewRecord], *, force: bool
+        self,
+        records: list[SourceReviewRecord],
+        *,
+        force: bool,
+        skip_extraction: bool,
     ) -> tuple[list[CanonicalClaimReview], StageExecutionReport | None]:
         resolvable = []
         unresolved: set[tuple[str, str, str]] = set()
@@ -447,7 +454,7 @@ class Pipeline:
                 "Organizations are missing from the curated catalog: " + details
             )
         extraction_report = None
-        if self.dependencies.document_extractor is not None:
+        if not skip_extraction and self.dependencies.document_extractor is not None:
             extraction_report = self.dependencies.document_extractor.extract_many(
                 [record for record, _organization in resolvable],
                 force=force,
