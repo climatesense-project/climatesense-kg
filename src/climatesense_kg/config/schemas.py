@@ -185,6 +185,8 @@ class CimpleConfig:
 class EnrichmentConfig:
     """Configuration for enrichment methods."""
 
+    checkpoint_size: int = 100
+    progress_interval_seconds: float = 10.0
     dbpedia_spotlight: DbpediaSpotlightConfig = field(
         default_factory=DbpediaSpotlightConfig
     )
@@ -192,6 +194,14 @@ class EnrichmentConfig:
         default_factory=DbpediaEntityPropertiesConfig
     )
     cimple: CimpleConfig = field(default_factory=CimpleConfig)
+
+    def __post_init__(self) -> None:
+        if self.checkpoint_size <= 0:
+            raise ValueError("Enrichment checkpoint_size must be positive")
+        if self.progress_interval_seconds < 0:
+            raise ValueError(
+                "Enrichment progress_interval_seconds must be non-negative"
+            )
 
 
 @dataclass

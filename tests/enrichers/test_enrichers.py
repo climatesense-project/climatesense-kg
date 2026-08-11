@@ -1,7 +1,10 @@
 """Focused tests for typed, versioned enrichers."""
 
+import logging
 from unittest.mock import Mock, patch
 from uuid import uuid4
+
+import pytest
 
 from climatesense_kg.domain import (
     CanonicalClaim,
@@ -18,8 +21,19 @@ from climatesense_kg.enrichers import (
 from climatesense_kg.persistence import (
     InMemoryStageResultStore,
     StageResult,
+    StageResultKey,
 )
 from climatesense_kg.stages import EnrichmentRunner, StageExecutionPolicy
+
+
+class TrackingStageResultStore(InMemoryStageResultStore):
+    def __init__(self) -> None:
+        super().__init__()
+        self.checkpoint_sizes: list[int] = []
+
+    def put_many(self, results: dict[StageResultKey, StageResult]) -> None:
+        self.checkpoint_sizes.append(len(results))
+        super().put_many(results)
 
 
 def _review(
@@ -268,6 +282,33 @@ def test_spotlight_review_result_is_shared_by_exact_text_digest() -> None:
 
     extract.assert_called_once_with("The same exact review body.")
     assert report.eligible_subjects == 1
+
+
+def test_spotlight_checkpoints_and_logs_bounded_progress(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    store = TrackingStageResultStore()
+    enricher = DBpediaSpotlightEnricher(
+        target="claim",
+        store=store,
+        rate_limit_delay=0,
+        checkpoint_size=2,
+        progress_interval_seconds=0,
+    )
+    reviews = [_review(f"Distinct climate claim {index}") for index in range(5)]
+
+    with (
+        patch.object(enricher, "_extract_entities", return_value=[]),
+        patch.object(enricher, "is_available", return_value=True),
+        caplog.at_level(logging.INFO),
+    ):
+        report = EnrichmentRunner([enricher]).run(reviews)
+
+    assert report.complete is True
+    assert store.checkpoint_sizes == [2, 2, 1]
+    assert "Enrichment stage 1/1 starting" in caplog.text
+    assert "Enrichment enrichment.dbpedia_spotlight.claim: 2/5 processed" in caplog.text
+    assert "Enrichment stage 1/1 finished" in caplog.text
 
 
 def test_operational_settings_do_not_invalidate_spotlight_result() -> None:

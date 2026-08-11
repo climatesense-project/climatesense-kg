@@ -28,6 +28,8 @@ class DBpediaSpotlightEnricher(Enricher):
         support: int = 20,
         timeout: int = 20,
         rate_limit_delay: float = 0.1,
+        checkpoint_size: int = 100,
+        progress_interval_seconds: float = 10.0,
     ) -> None:
         super().__init__(
             f"dbpedia_spotlight.{target}",
@@ -39,6 +41,9 @@ class DBpediaSpotlightEnricher(Enricher):
                 "support": support,
             },
             availability_key="dbpedia_spotlight",
+            compute_batch_size=25,
+            checkpoint_size=checkpoint_size,
+            progress_interval_seconds=progress_interval_seconds,
         )
         self.target = target
         self.api_url = api_url

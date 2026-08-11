@@ -198,6 +198,9 @@ identity_resolution:
   progress_interval_seconds: 10
 
 enrichment:
+  checkpoint_size: 100
+  progress_interval_seconds: 10
+
   dbpedia_spotlight:
     enabled: true
     api_url: "https://api.dbpedia-spotlight.org/en/annotate"
@@ -269,6 +272,12 @@ Identity resolution commits records in bounded
 `identity_resolution.batch_size` transactions and logs committed records, canonical
 reviews, throughput, and ETA at `identity_resolution.progress_interval_seconds`.
 Committed batches survive interruption; only the active batch is rolled back.
+
+Each enrichment stage announces when it starts and finishes, persists results every
+`enrichment.checkpoint_size` subjects, and logs restored, computed, failed, and
+remaining subjects with throughput and ETA at
+`enrichment.progress_interval_seconds`. Completed checkpoints are restored after an
+interruption.
 
 ### Example SQL Queries
 

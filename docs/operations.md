@@ -123,6 +123,13 @@ reported after commits, so it always reflects durable work.
 
 ## Enrichment Completeness
 
+Each enrichment stage logs when it starts and finishes. While it runs, progress
+includes restored, computed, failed, and remaining semantic subjects together with
+throughput and ETA. Results are persisted every `enrichment.checkpoint_size`
+subjects, and `enrichment.progress_interval_seconds` controls progress-log
+frequency. After a graceful interruption, the next run restores completed
+checkpoints before computing missing results.
+
 Each enabled enrichment stage reports:
 
 - dependency availability;

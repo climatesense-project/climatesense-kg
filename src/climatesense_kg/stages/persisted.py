@@ -10,6 +10,7 @@ import time
 from typing import Any, TypedDict, TypeVar
 
 from ..persistence import StageResult, StageResultKey, StageResultStore
+from ..utils.progress import format_duration
 
 SubjectT = TypeVar("SubjectT")
 
@@ -114,6 +115,52 @@ class StageProgress:
         return self.remaining_subjects / rate
 
 
+class StageProgressLogger:
+    """Rate-limit consistent live progress logs for a persisted stage."""
+
+    def __init__(
+        self,
+        stage_logger: logging.Logger,
+        *,
+        label: str,
+        interval_seconds: float = 10.0,
+    ) -> None:
+        if interval_seconds < 0:
+            raise ValueError("Progress interval must be non-negative")
+        self.stage_logger = stage_logger
+        self.label = label
+        self.interval_seconds = interval_seconds
+        self.last_logged_elapsed: float | None = None
+
+    def __call__(self, progress: StageProgress) -> None:
+        should_log = (
+            self.last_logged_elapsed is None
+            or progress.remaining_subjects == 0
+            or progress.elapsed_seconds - self.last_logged_elapsed
+            >= self.interval_seconds
+        )
+        if not should_log:
+            return
+        self.last_logged_elapsed = progress.elapsed_seconds
+        rate = progress.computation_rate
+        self.stage_logger.info(
+            "%s %s: %d/%d processed (%.1f%%); "
+            "restored=%d, stored_failures=%d, computed=%d, failed=%d; "
+            "rate=%s; ETA=%s",
+            self.label,
+            progress.stage_name,
+            progress.processed_subjects,
+            progress.eligible_subjects,
+            progress.percent_complete,
+            progress.stored_successes,
+            progress.stored_failures,
+            progress.computed_successes,
+            progress.computed_failures,
+            f"{rate:.2f}/s" if rate is not None else "n/a",
+            format_duration(progress.eta_seconds),
+        )
+
+
 def execute_persisted_stage(
     *,
     stage_name: str,
@@ -195,7 +242,7 @@ def execute_persisted_stage(
             )
             missing_results = len(pending)
         else:
-            batch_size = compute_batch_size or len(pending)
+            batch_size = compute_batch_size or min(100, len(pending))
             persist_size = checkpoint_size or len(pending)
             checkpoint: dict[StageResultKey, StageResult] = {}
 
@@ -237,8 +284,8 @@ def execute_persisted_stage(
                         else:
                             computed_failures += 1
                             missing_results += 1
-                    if len(checkpoint) >= persist_size:
-                        persist_checkpoint()
+                        if len(checkpoint) >= persist_size:
+                            persist_checkpoint()
                     notify_progress()
             except (KeyboardInterrupt, SystemExit):
                 persist_checkpoint()

@@ -63,7 +63,13 @@ class EnrichmentRunner:
     ) -> EnrichmentRunReport:
         availability: dict[str, bool] = {}
         reports: list[StageExecutionReport] = []
-        for stage in self.stages:
+        for index, stage in enumerate(self.stages, start=1):
+            logger.info(
+                "Enrichment stage %d/%d starting: %s",
+                index,
+                len(self.stages),
+                stage.stage_name,
+            )
 
             def check_availability(current: EnrichmentStage = stage) -> bool:
                 if current.availability_key not in availability:
@@ -81,12 +87,23 @@ class EnrichmentRunner:
                 if stored_only
                 else StageExecutionPolicy.COMPUTE
             )
-            reports.append(
-                stage.enrich(
-                    items,
-                    policy=policy,
-                    force=force if policy is StageExecutionPolicy.COMPUTE else False,
-                    availability_check=(None if stored_only else check_availability),
-                )
+            report = stage.enrich(
+                items,
+                policy=policy,
+                force=force if policy is StageExecutionPolicy.COMPUTE else False,
+                availability_check=(None if stored_only else check_availability),
+            )
+            reports.append(report)
+            logger.info(
+                "Enrichment stage %d/%d finished: %s; "
+                "eligible=%d, restored=%d, computed=%d, failed=%d, missing=%d",
+                index,
+                len(self.stages),
+                stage.stage_name,
+                report.eligible_subjects,
+                report.stored_successes,
+                report.computed_successes,
+                report.computed_failures,
+                report.missing_results,
             )
         return EnrichmentRunReport(items=items, stages=reports)

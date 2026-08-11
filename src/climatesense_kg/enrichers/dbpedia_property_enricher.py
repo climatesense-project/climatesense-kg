@@ -20,6 +20,7 @@ from ..persistence import StageResult, StageResultKey, StageResultStore
 from ..stages.persisted import (
     StageExecutionPolicy,
     StageExecutionReport,
+    StageProgressLogger,
     execute_persisted_stage,
 )
 
@@ -54,7 +55,13 @@ class DBpediaPropertyEnricher:
         timeout: int = 20,
         rate_limit_delay: float = 0.1,
         max_retries: int = 2,
+        checkpoint_size: int = 100,
+        progress_interval_seconds: float = 10.0,
     ) -> None:
+        if checkpoint_size <= 0:
+            raise ValueError("Checkpoint size must be positive")
+        if progress_interval_seconds < 0:
+            raise ValueError("Progress interval must be non-negative")
         self.store = store
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         self.endpoint = sparql_endpoint
@@ -63,6 +70,8 @@ class DBpediaPropertyEnricher:
         self.timeout = timeout
         self.rate_limit_delay = rate_limit_delay
         self.max_retries = max_retries
+        self.checkpoint_size = checkpoint_size
+        self.progress_interval_seconds = progress_interval_seconds
         self.headers = {
             "Accept": "application/sparql-results+json",
             "User-Agent": USER_AGENT,
@@ -114,6 +123,13 @@ class DBpediaPropertyEnricher:
             force=force,
             availability_check=availability_check,
             stage_logger=self.logger,
+            compute_batch_size=min(self.entity_batch_size, self.checkpoint_size),
+            checkpoint_size=self.checkpoint_size,
+            progress_callback=StageProgressLogger(
+                self.logger,
+                label="Enrichment",
+                interval_seconds=self.progress_interval_seconds,
+            ),
         )
 
     def _result_key(self, entity_uri: str) -> StageResultKey:

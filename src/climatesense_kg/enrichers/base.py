@@ -13,6 +13,7 @@ from ..persistence import StageResult, StageResultKey, StageResultStore
 from ..stages.persisted import (
     StageExecutionPolicy,
     StageExecutionReport,
+    StageProgressLogger,
     execute_persisted_stage,
 )
 
@@ -28,13 +29,25 @@ class Enricher(ABC):
         store: StageResultStore,
         semantic_config: dict[str, Any] | None = None,
         availability_key: str | None = None,
+        compute_batch_size: int = 25,
+        checkpoint_size: int = 100,
+        progress_interval_seconds: float = 10.0,
     ) -> None:
+        if compute_batch_size <= 0:
+            raise ValueError("Compute batch size must be positive")
+        if checkpoint_size <= 0:
+            raise ValueError("Checkpoint size must be positive")
+        if progress_interval_seconds < 0:
+            raise ValueError("Progress interval must be non-negative")
         self.name = name
         self.stage_name = f"enrichment.{name}"
         self.version = version
         self.store = store
         self.semantic_config = semantic_config or {}
         self.availability_key = availability_key or self.stage_name
+        self.compute_batch_size = min(compute_batch_size, checkpoint_size)
+        self.checkpoint_size = checkpoint_size
+        self.progress_interval_seconds = progress_interval_seconds
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
     def enrich(
@@ -71,6 +84,13 @@ class Enricher(ABC):
             force=force,
             availability_check=availability_check,
             stage_logger=self.logger,
+            compute_batch_size=self.compute_batch_size,
+            checkpoint_size=self.checkpoint_size,
+            progress_callback=StageProgressLogger(
+                self.logger,
+                label="Enrichment",
+                interval_seconds=self.progress_interval_seconds,
+            ),
         )
         if items:
             self.logger.info(

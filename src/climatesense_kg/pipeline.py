@@ -167,6 +167,8 @@ def build_pipeline_dependencies(config: PipelineConfig) -> PipelineDependencies:
                 support=spotlight.support,
                 timeout=spotlight.timeout,
                 rate_limit_delay=spotlight.rate_limit_delay,
+                checkpoint_size=enrichment.checkpoint_size,
+                progress_interval_seconds=(enrichment.progress_interval_seconds),
             )
             for target in ("claim", "review")
         ]
@@ -183,6 +185,8 @@ def build_pipeline_dependencies(config: PipelineConfig) -> PipelineDependencies:
             timeout=properties.timeout,
             rate_limit_delay=properties.rate_limit_delay,
             max_retries=properties.max_retries,
+            checkpoint_size=enrichment.checkpoint_size,
+            progress_interval_seconds=enrichment.progress_interval_seconds,
         )
         enrichers.append(property_enricher)
         dbpedia_graph_requirements.add(property_enricher.stage_name)
@@ -197,6 +201,8 @@ def build_pipeline_dependencies(config: PipelineConfig) -> PipelineDependencies:
                 max_length=cimple.max_length,
                 timeout=cimple.timeout,
                 rate_limit_delay=cimple.rate_limit_delay,
+                checkpoint_size=enrichment.checkpoint_size,
+                progress_interval_seconds=enrichment.progress_interval_seconds,
             )
             for model in CimpleModelEnricher.MODEL_KEYS
         ]

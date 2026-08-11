@@ -67,6 +67,9 @@ identity_resolution:
   progress_interval_seconds: 10
 
 enrichment:
+  checkpoint_size: 100
+  progress_interval_seconds: 10
+
   dbpedia_spotlight:
     enabled: true
     api_url: "https://api.dbpedia-spotlight.org/en/annotate"

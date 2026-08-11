@@ -31,10 +31,13 @@ class CimpleModelEnricher(Enricher):
         max_length: int = 128,
         timeout: int = 60,
         rate_limit_delay: float = 0.1,
+        checkpoint_size: int = 100,
+        progress_interval_seconds: float = 10.0,
     ) -> None:
         if model not in CIMPLE_MODELS:
             raise ValueError(f"Unknown CIMPLE model: {model}")
         endpoint = CIMPLE_MODELS[model].endpoint
+        effective_batch_size = max(1, batch_size)
         super().__init__(
             f"cimple.{model}",
             version="1",
@@ -45,10 +48,13 @@ class CimpleModelEnricher(Enricher):
                 "max_length": max_length,
             },
             availability_key="cimple_factors",
+            compute_batch_size=effective_batch_size,
+            checkpoint_size=checkpoint_size,
+            progress_interval_seconds=progress_interval_seconds,
         )
         self.model = model
         self.api_url = os.environ.get("CIMPLE_FACTORS_API_URL", "http://localhost:8000")
-        self.batch_size = max(1, batch_size)
+        self.batch_size = effective_batch_size
         self.max_length = max_length
         self.timeout = timeout
         self.rate_limit_delay = rate_limit_delay
