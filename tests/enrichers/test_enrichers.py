@@ -11,14 +11,22 @@ from climatesense_kg.domain import (
     EntityMention,
 )
 from climatesense_kg.enrichers import (
-    BertFactorsEnricher,
-    DBpediaEnricher,
+    CimpleModelEnricher,
     DBpediaPropertyEnricher,
+    DBpediaSpotlightEnricher,
 )
-from climatesense_kg.persistence import InMemoryStageResultStore
+from climatesense_kg.persistence import (
+    InMemoryStageResultStore,
+    StageResult,
+)
+from climatesense_kg.stages import EnrichmentExecutionPolicy, EnrichmentRunner
 
 
-def _review(text: str = "Climate change is a reviewed claim") -> CanonicalClaimReview:
+def _review(
+    text: str = "Climate change is a reviewed claim",
+    *,
+    review_text: str | None = None,
+) -> CanonicalClaimReview:
     url = "https://example.test/review"
     return CanonicalClaimReview(
         id=uuid4(),
@@ -28,13 +36,18 @@ def _review(text: str = "Climate change is a reviewed claim") -> CanonicalClaimR
             name="Example",
             website="https://example.test",
         ),
-        document=CanonicalReviewDocument(id=uuid4(), urls={url}, preferred_url=url),
+        document=CanonicalReviewDocument(
+            id=uuid4(),
+            urls={url},
+            preferred_url=url,
+            content=review_text,
+        ),
         source_record_keys={"record"},
         source_names={"source"},
     )
 
 
-@patch("climatesense_kg.enrichers.dbpedia_enricher.requests.post")
+@patch("climatesense_kg.enrichers.dbpedia_spotlight_enricher.requests.post")
 def test_dbpedia_stage_restores_typed_entities_from_versioned_state(post: Mock) -> None:
     response = post.return_value
     response.json.return_value = {
@@ -50,7 +63,7 @@ def test_dbpedia_stage_restores_typed_entities_from_versioned_state(post: Mock) 
         ]
     }
     store = InMemoryStageResultStore()
-    enricher = DBpediaEnricher(store=store, rate_limit_delay=0)
+    enricher = DBpediaSpotlightEnricher(target="claim", store=store, rate_limit_delay=0)
     review = _review()
 
     enricher.enrich([review])
@@ -79,9 +92,21 @@ def test_dbpedia_entity_result_is_reused_across_reviews(get: Mock) -> None:
         "results": {
             "bindings": [
                 {
+                    "entity": {
+                        "type": "uri",
+                        "value": "http://dbpedia.org/resource/Climate_change",
+                    },
                     "property": {"value": "http://example.test/property"},
                     "value": {"type": "literal", "value": "42"},
-                }
+                },
+                {
+                    "entity": {
+                        "type": "uri",
+                        "value": "http://dbpedia.org/resource/Global_warming",
+                    },
+                    "property": {"value": "http://example.test/property"},
+                    "value": {"type": "literal", "value": "43"},
+                },
             ]
         }
     }
@@ -91,11 +116,20 @@ def test_dbpedia_entity_result_is_reused_across_reviews(get: Mock) -> None:
         properties=["http://example.test/property"],
         rate_limit_delay=0,
     )
-    reviews = [_review("First climate claim"), _review("Second climate claim")]
-    for review in reviews:
+    reviews = [
+        _review("First climate claim"),
+        _review("Second climate claim"),
+        _review("Third climate claim"),
+    ]
+    entity_uris = [
+        "http://dbpedia.org/resource/Climate_change",
+        "http://dbpedia.org/resource/Climate_change",
+        "http://dbpedia.org/resource/Global_warming",
+    ]
+    for review, entity_uri in zip(reviews, entity_uris, strict=True):
         review.claim.analysis.entities.append(
             EntityMention(
-                uri="http://dbpedia.org/resource/Climate_change",
+                uri=entity_uri,
                 source="dbpedia_spotlight",
             )
         )
@@ -103,11 +137,11 @@ def test_dbpedia_entity_result_is_reused_across_reviews(get: Mock) -> None:
     enricher.enrich(reviews)
 
     assert get.call_count == 1
-    for review in reviews:
+    for review, expected in zip(reviews, ["42", "42", "43"], strict=True):
         value = review.claim.analysis.entities[0].properties[
             "http://example.test/property"
         ][0]
-        assert value.value == "42"
+        assert value.value == expected
         assert value.value_type == "literal"
 
     enricher.enrich(reviews, force=True)
@@ -115,21 +149,230 @@ def test_dbpedia_entity_result_is_reused_across_reviews(get: Mock) -> None:
     assert get.call_count == 2
 
 
-def test_cimple_stage_batches_each_model_once_for_multiple_reviews() -> None:
+def test_cimple_models_are_batched_and_persisted_independently() -> None:
     store = InMemoryStageResultStore()
-    enricher = BertFactorsEnricher(store=store, batch_size=32, rate_limit_delay=0)
     reviews = [_review("First climate claim"), _review("Second climate claim")]
 
-    def call_model(model: str, texts: list[str]) -> list[dict[str, object]]:
-        value: object = model == "climate_related" or f"{model}-value"
-        return [{"value": value} for _text in texts]
+    values: dict[str, object] = {
+        "emotion": "anger",
+        "sentiment": "negative",
+        "political_leaning": "other",
+        "tropes": ["appeal"],
+        "persuasion_techniques": ["repetition"],
+        "conspiracies": {"mentioned": ["antivax"], "promoted": []},
+        "climate_related": True,
+    }
+    for model in CimpleModelEnricher.MODEL_KEYS:
+        enricher = CimpleModelEnricher(
+            model=model,
+            store=store,
+            batch_size=32,
+            rate_limit_delay=0,
+        )
+        with patch.object(
+            enricher,
+            "_call_model",
+            return_value=[{"value": values[model]} for _review in reviews],
+        ) as model_call:
+            report = enricher.enrich(reviews)
+        model_call.assert_called_once()
+        assert report.computed_successes == 2
 
-    with (
-        patch.object(enricher, "is_available", return_value=True),
-        patch.object(enricher, "_call_model", side_effect=call_model) as model_call,
-    ):
-        enricher.enrich(reviews)
-
-    assert model_call.call_count == len(enricher.MODEL_KEYS)
     assert all(review.claim.analysis.climate_related is True for review in reviews)
-    assert all(review.claim.analysis.emotion == "emotion-value" for review in reviews)
+    assert all(review.claim.analysis.emotion == "anger" for review in reviews)
+
+
+def test_cimple_result_identity_separates_semantic_and_operational_settings() -> None:
+    review = _review()
+    store = InMemoryStageResultStore()
+    first = CimpleModelEnricher(
+        model="emotion",
+        store=store,
+        model_version="1",
+        max_length=128,
+        batch_size=8,
+        timeout=5,
+        rate_limit_delay=0,
+    )
+    operational_change = CimpleModelEnricher(
+        model="emotion",
+        store=store,
+        model_version="1",
+        max_length=128,
+        batch_size=64,
+        timeout=90,
+        rate_limit_delay=2,
+    )
+    semantic_change = CimpleModelEnricher(
+        model="emotion",
+        store=store,
+        model_version="2",
+        max_length=128,
+    )
+
+    assert first.result_key(review) == operational_change.result_key(review)
+    assert first.result_key(review) != semantic_change.result_key(review)
+
+
+def test_dbpedia_property_identity_separates_config_types() -> None:
+    store = InMemoryStageResultStore()
+    entity_uri = "http://dbpedia.org/resource/Climate_change"
+    first = DBpediaPropertyEnricher(
+        store=store,
+        sparql_endpoint="https://first.example/sparql",
+        properties=["http://example.test/property"],
+        timeout=5,
+        max_retries=0,
+    )
+    operational_change = DBpediaPropertyEnricher(
+        store=store,
+        sparql_endpoint="https://second.example/sparql",
+        properties=["http://example.test/property"],
+        timeout=90,
+        max_retries=5,
+    )
+    semantic_change = DBpediaPropertyEnricher(
+        store=store,
+        properties=["http://example.test/other-property"],
+    )
+
+    assert first._result_key(entity_uri) == operational_change._result_key(entity_uri)
+    assert first._result_key(entity_uri) != semantic_change._result_key(entity_uri)
+
+
+def test_spotlight_claim_result_is_shared_by_claim_uri() -> None:
+    store = InMemoryStageResultStore()
+    enricher = DBpediaSpotlightEnricher(target="claim", store=store, rate_limit_delay=0)
+    reviews = [_review(), _review()]
+
+    with patch.object(enricher, "_extract_entities", return_value=[]) as extract:
+        report = enricher.enrich(reviews)
+
+    extract.assert_called_once()
+    assert report.eligible_subjects == 1
+    assert report.computed_successes == 1
+
+
+def test_spotlight_review_result_is_shared_by_exact_text_digest() -> None:
+    store = InMemoryStageResultStore()
+    enricher = DBpediaSpotlightEnricher(
+        target="review", store=store, rate_limit_delay=0
+    )
+    reviews = [
+        _review("First claim", review_text="The same exact review body."),
+        _review("Second claim", review_text="The same exact review body."),
+    ]
+
+    with patch.object(enricher, "_extract_entities", return_value=[]) as extract:
+        report = enricher.enrich(reviews)
+
+    extract.assert_called_once_with("The same exact review body.")
+    assert report.eligible_subjects == 1
+
+
+def test_operational_settings_do_not_invalidate_spotlight_result() -> None:
+    store = InMemoryStageResultStore()
+    review = _review()
+    first = DBpediaSpotlightEnricher(
+        target="claim",
+        store=store,
+        api_url="https://first.example/annotate",
+        timeout=1,
+        rate_limit_delay=0,
+    )
+    with patch.object(first, "_extract_entities", return_value=[]):
+        first.enrich([review])
+
+    second = DBpediaSpotlightEnricher(
+        target="claim",
+        store=store,
+        api_url="https://second.example/annotate",
+        timeout=99,
+        rate_limit_delay=5,
+    )
+    with patch.object(second, "_extract_entities") as extract:
+        report = second.enrich([review])
+
+    extract.assert_not_called()
+    assert report.stored_successes == 1
+
+
+def test_semantic_settings_invalidate_spotlight_result() -> None:
+    store = InMemoryStageResultStore()
+    review = _review()
+    first = DBpediaSpotlightEnricher(
+        target="claim", store=store, confidence=0.5, rate_limit_delay=0
+    )
+    with patch.object(first, "_extract_entities", return_value=[]):
+        first.enrich([review])
+
+    second = DBpediaSpotlightEnricher(
+        target="claim", store=store, confidence=0.8, rate_limit_delay=0
+    )
+    with patch.object(second, "_extract_entities", return_value=[]) as extract:
+        report = second.enrich([review])
+
+    extract.assert_called_once()
+    assert report.computed_successes == 1
+
+
+def test_stored_failure_is_retried_and_not_applied_as_success() -> None:
+    store = InMemoryStageResultStore()
+    review = _review()
+    enricher = DBpediaSpotlightEnricher(target="claim", store=store, rate_limit_delay=0)
+    store.put(
+        enricher.result_key(review),
+        StageResult(success=False, payload={"error": "temporarily unavailable"}),
+    )
+
+    with patch.object(enricher, "_extract_entities", return_value=[]) as extract:
+        report = enricher.enrich([review])
+
+    extract.assert_called_once()
+    assert report.stored_failures == 1
+    assert report.computed_successes == 1
+    assert report.missing_results == 0
+
+
+def test_successful_empty_result_is_complete() -> None:
+    store = InMemoryStageResultStore()
+    review = _review("Short")
+    enricher = DBpediaSpotlightEnricher(target="claim", store=store, rate_limit_delay=0)
+
+    first = enricher.enrich([review])
+    second = enricher.enrich([review], policy=EnrichmentExecutionPolicy.STORED_ONLY)
+
+    assert first.computed_successes == 1
+    assert second.stored_successes == 1
+    assert second.complete is True
+
+
+def test_unavailable_dependency_reuses_complete_stored_results() -> None:
+    store = InMemoryStageResultStore()
+    review = _review()
+    enricher = DBpediaSpotlightEnricher(target="claim", store=store, rate_limit_delay=0)
+    with patch.object(enricher, "_extract_entities", return_value=[]):
+        enricher.enrich([review])
+
+    with patch.object(enricher, "is_available", return_value=False) as available:
+        run = EnrichmentRunner([enricher]).run([review])
+
+    available.assert_not_called()
+    assert run.complete is True
+    assert run.stages[0].available is None
+    assert run.stages[0].stored_successes == 1
+
+
+def test_unavailable_dependency_reports_stored_miss() -> None:
+    review = _review()
+    enricher = DBpediaSpotlightEnricher(
+        target="claim",
+        store=InMemoryStageResultStore(),
+        rate_limit_delay=0,
+    )
+
+    with patch.object(enricher, "is_available", return_value=False):
+        run = EnrichmentRunner([enricher]).run([review])
+
+    assert run.complete is False
+    assert run.stages[0].missing_results == 1

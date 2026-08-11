@@ -1,12 +1,16 @@
 """Tests for the typed pipeline orchestration."""
 
 from pathlib import Path
-from unittest.mock import Mock, call
+from unittest.mock import Mock, call, patch
 
 from rdflib import Graph, URIRef
 from rdflib.namespace import RDF
 
 from climatesense_kg.config import PipelineConfig
+from climatesense_kg.config.graphs import (
+    DBPEDIA_ENRICHER_SOURCE_NAME,
+    DBPEDIA_ENTITY_SOURCES,
+)
 from climatesense_kg.config.schemas import (
     DataSourceConfig,
     FileProviderConfig,
@@ -22,7 +26,9 @@ from climatesense_kg.domain import (
     SourceReference,
     SourceReviewRecord,
 )
+from climatesense_kg.enrichers import CimpleModelEnricher, DBpediaSpotlightEnricher
 from climatesense_kg.identity import IdentityResolver, InMemoryIdentityRegistry
+from climatesense_kg.persistence import InMemoryStageResultStore
 from climatesense_kg.pipeline import Pipeline, PipelineDependencies
 from climatesense_kg.rdf_generation import RdfArtifact, RdfArtifactBuilder, RDFGenerator
 from climatesense_kg.stages import EnrichmentRunner
@@ -304,3 +310,102 @@ def test_deployment_replaces_every_full_snapshot_graph(tmp_path: Path) -> None:
     assert handler.deploy.call_args_list[-1] == call(
         source_path, "source-a", replace=True
     )
+
+
+def test_incomplete_enrichment_preserves_deployed_graph_and_marks_run_degraded(
+    tmp_path: Path,
+) -> None:
+    data_manager = Mock()
+    data_manager.get_data.return_value = [
+        _record(
+            "record",
+            "https://factual.ro/review",
+            "A sufficiently detailed review body",
+        )
+    ]
+    catalog = Mock()
+    catalog.resolve.return_value = CanonicalOrganization(
+        uri=f"{BASE}/organization/factual",
+        name="Factual",
+        website="https://factual.ro",
+    )
+    handler = Mock()
+    handler.deploy.return_value = True
+    dependencies = _dependencies(
+        data_manager,
+        catalog,
+        tmp_path,
+        deployment_handler=handler,
+    )
+    spotlight = DBpediaSpotlightEnricher(
+        target="claim",
+        store=InMemoryStageResultStore(),
+        rate_limit_delay=0,
+    )
+    dependencies.enrichment_runner = EnrichmentRunner([spotlight])
+    dependencies.enrichment_graph_requirements = {
+        DBPEDIA_ENRICHER_SOURCE_NAME: frozenset({spotlight.stage_name})
+    }
+    dependencies.rdf_artifact_builder = RdfArtifactBuilder(
+        RDFGenerator(BASE),
+        output_path_template=str(tmp_path / "{SOURCE}.ttl"),
+        output_format="turtle",
+        enrichment_graphs={
+            DBPEDIA_ENRICHER_SOURCE_NAME: DBPEDIA_ENTITY_SOURCES,
+        },
+    )
+    pipeline = Pipeline(_config(tmp_path, "source-a"), dependencies)
+
+    with patch.object(spotlight, "is_available", return_value=False):
+        results = pipeline.run()
+
+    assert results["success"] is True
+    assert results["degraded"] is True
+    assert results["deployment"] is not None
+    assert results["deployment"]["skipped_graphs"] == [DBPEDIA_ENRICHER_SOURCE_NAME]
+    deployed_graphs = [args.args[1] for args in handler.deploy.call_args_list]
+    assert "source-a" in deployed_graphs
+    assert DBPEDIA_ENRICHER_SOURCE_NAME not in deployed_graphs
+
+
+def test_missing_cimple_result_preserves_affected_source_graph(tmp_path: Path) -> None:
+    data_manager = Mock()
+    data_manager.get_data.return_value = [
+        _record(
+            "record",
+            "https://factual.ro/review",
+            "A sufficiently detailed review body",
+        )
+    ]
+    catalog = Mock()
+    catalog.resolve.return_value = CanonicalOrganization(
+        uri=f"{BASE}/organization/factual",
+        name="Factual",
+        website="https://factual.ro",
+    )
+    handler = Mock()
+    handler.deploy.return_value = True
+    dependencies = _dependencies(
+        data_manager,
+        catalog,
+        tmp_path,
+        deployment_handler=handler,
+    )
+    cimple = CimpleModelEnricher(
+        model="emotion",
+        store=InMemoryStageResultStore(),
+        rate_limit_delay=0,
+    )
+    dependencies.enrichment_runner = EnrichmentRunner([cimple])
+    dependencies.source_graph_requirements = frozenset({cimple.stage_name})
+    pipeline = Pipeline(_config(tmp_path, "source-a"), dependencies)
+
+    with patch.object(cimple, "is_available", return_value=False):
+        results = pipeline.run()
+
+    assert results["success"] is True
+    assert results["degraded"] is True
+    assert results["deployment"] is not None
+    assert results["deployment"]["skipped_graphs"] == ["source-a"]
+    deployed_graphs = [args.args[1] for args in handler.deploy.call_args_list]
+    assert "source-a" not in deployed_graphs

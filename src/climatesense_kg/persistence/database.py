@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from importlib.resources import files
 import logging
+import os
 
 from psycopg.conninfo import make_conninfo
 from psycopg_pool import ConnectionPool
@@ -40,6 +41,18 @@ class PostgresDatabase:
         )
         self.require_available()
         self.migrate()
+
+    @classmethod
+    def from_environment(cls) -> PostgresDatabase:
+        """Create the durable state database from standard environment variables."""
+
+        return cls(
+            host=os.getenv("POSTGRES_HOST", "localhost"),
+            port=int(os.getenv("POSTGRES_PORT", "5432")),
+            database=os.getenv("POSTGRES_DB", "climatesense"),
+            user=os.getenv("POSTGRES_USER", "postgres"),
+            password=os.getenv("POSTGRES_PASSWORD"),
+        )
 
     def require_available(self) -> None:
         """Fail immediately when authoritative persistence is unavailable."""

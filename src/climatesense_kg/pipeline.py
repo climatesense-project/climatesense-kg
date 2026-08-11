@@ -2,23 +2,29 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 import logging
-import os
 import time
 from typing import TypedDict
 
 from dotenv import load_dotenv
 
 from .config import PipelineConfig
-from .config.graphs import ENRICHMENT_GRAPH_ENTITY_SOURCES
+from .config.graphs import (
+    DBPEDIA_ENRICHER_SOURCE_NAME,
+    ENRICHMENT_GRAPH_ENTITY_SOURCES,
+)
 from .config.organizations import ORGANIZATION_CATALOG_PATH, OrganizationCatalog
 from .data_manager import DataManager
-from .deployment import ArtifactDeployer
+from .deployment import ArtifactDeployer, plan_artifact_deployment
 from .deployment.factory import create_deployment_handler
 from .domain import CanonicalClaimReview, SourceReviewRecord
-from .enrichers import BertFactorsEnricher, DBpediaEnricher, DBpediaPropertyEnricher
+from .enrichers import (
+    CimpleModelEnricher,
+    DBpediaPropertyEnricher,
+    DBpediaSpotlightEnricher,
+)
 from .identity import IdentityResolver
 from .persistence import (
     PostgresDatabase,
@@ -49,6 +55,8 @@ class IngestionResults(TypedDict):
 class EnrichmentResults(TypedDict):
     input_items: int
     output_items: int
+    complete: bool
+    stages: list[dict[str, str | bool | int | None]]
 
 
 class GeneratedFileInfo(TypedDict):
@@ -59,6 +67,8 @@ class GeneratedFileInfo(TypedDict):
     failed_items: int
     file_size: int
     review_uris: list[str]
+    complete: bool
+    incomplete_stages: list[str]
 
 
 class RDFGenerationResults(TypedDict):
@@ -70,12 +80,15 @@ class RDFGenerationResults(TypedDict):
     output_format: str
     total_file_size: int
     error: str | None
+    warnings: list[str]
 
 
 class DeploymentResults(TypedDict):
     success: bool
     files_deployed: int
     total_files: int
+    skipped_files: int
+    skipped_graphs: list[str]
 
 
 class PipelineResults(TypedDict):
@@ -88,6 +101,7 @@ class PipelineResults(TypedDict):
     deployment: DeploymentResults | None
     total_processed: int
     success: bool
+    degraded: bool
     error: str | None
 
 
@@ -103,6 +117,10 @@ class PipelineDependencies:
     rdf_artifact_builder: RdfArtifactBuilder
     artifact_deployer: ArtifactDeployer
     database: PostgresDatabase | None = None
+    source_graph_requirements: frozenset[str] = frozenset()
+    enrichment_graph_requirements: dict[str, frozenset[str]] = field(
+        default_factory=dict
+    )
 
     def close(self) -> None:
         if self.database is not None:
@@ -112,13 +130,7 @@ class PipelineDependencies:
 def build_pipeline_dependencies(config: PipelineConfig) -> PipelineDependencies:
     """Construct runtime infrastructure outside orchestration control flow."""
 
-    database = PostgresDatabase(
-        host=os.getenv("POSTGRES_HOST", "localhost"),
-        port=int(os.getenv("POSTGRES_PORT", "5432")),
-        database=os.getenv("POSTGRES_DB", "climatesense_cache"),
-        user=os.getenv("POSTGRES_USER", "postgres"),
-        password=os.getenv("POSTGRES_PASSWORD"),
-    )
+    database = PostgresDatabase.from_environment()
     stage_store = PostgresStageResultStore(database.pool)
     document_extractor = None
     if config.document_extraction.enabled:
@@ -130,42 +142,56 @@ def build_pipeline_dependencies(config: PipelineConfig) -> PipelineDependencies:
         )
 
     enrichers = []
+    source_graph_requirements: set[str] = set()
+    dbpedia_graph_requirements: set[str] = set()
     enrichment = config.enrichment
     if enrichment.dbpedia_spotlight.enabled:
         spotlight = enrichment.dbpedia_spotlight
-        enrichers.append(
-            DBpediaEnricher(
+        spotlight_enrichers = [
+            DBpediaSpotlightEnricher(
+                target=target,
                 store=stage_store,
                 api_url=spotlight.api_url,
+                model_id=spotlight.model_id,
                 confidence=spotlight.confidence,
                 support=spotlight.support,
                 timeout=spotlight.timeout,
                 rate_limit_delay=spotlight.rate_limit_delay,
             )
+            for target in ("claim", "review")
+        ]
+        enrichers.extend(spotlight_enrichers)
+        dbpedia_graph_requirements.update(
+            stage.stage_name for stage in spotlight_enrichers
         )
     if enrichment.dbpedia_entity_properties.enabled:
         properties = enrichment.dbpedia_entity_properties
-        enrichers.append(
-            DBpediaPropertyEnricher(
-                store=stage_store,
-                sparql_endpoint=properties.sparql_endpoint,
-                properties=properties.properties,
-                timeout=properties.timeout,
-                rate_limit_delay=properties.rate_limit_delay,
-                max_retries=properties.max_retries,
-            )
+        property_enricher = DBpediaPropertyEnricher(
+            store=stage_store,
+            sparql_endpoint=properties.sparql_endpoint,
+            properties=properties.properties,
+            timeout=properties.timeout,
+            rate_limit_delay=properties.rate_limit_delay,
+            max_retries=properties.max_retries,
         )
-    if enrichment.bert_factors.enabled:
-        factors = enrichment.bert_factors
-        enrichers.append(
-            BertFactorsEnricher(
+        enrichers.append(property_enricher)
+        dbpedia_graph_requirements.add(property_enricher.stage_name)
+    if enrichment.cimple.enabled:
+        cimple = enrichment.cimple
+        cimple_enrichers = [
+            CimpleModelEnricher(
+                model=model,
                 store=stage_store,
-                batch_size=factors.batch_size,
-                max_length=factors.max_length,
-                timeout=factors.timeout,
-                rate_limit_delay=factors.rate_limit_delay,
+                model_version=cimple.model_versions.get(model, "1"),
+                batch_size=cimple.batch_size,
+                max_length=cimple.max_length,
+                timeout=cimple.timeout,
+                rate_limit_delay=cimple.rate_limit_delay,
             )
-        )
+            for model in CimpleModelEnricher.MODEL_KEYS
+        ]
+        enrichers.extend(cimple_enrichers)
+        source_graph_requirements.update(stage.stage_name for stage in cimple_enrichers)
 
     rdf_generator = RDFGenerator(base_uri=config.output.base_uri)
     return PipelineDependencies(
@@ -191,6 +217,12 @@ def build_pipeline_dependencies(config: PipelineConfig) -> PipelineDependencies:
             create_deployment_handler(config.deployment)
         ),
         database=database,
+        source_graph_requirements=frozenset(source_graph_requirements),
+        enrichment_graph_requirements=(
+            {DBPEDIA_ENRICHER_SOURCE_NAME: frozenset(dbpedia_graph_requirements)}
+            if config.enrichment.dbpedia_spotlight.enabled
+            else {}
+        ),
     )
 
 
@@ -249,32 +281,58 @@ class Pipeline:
             reviews = self._resolve_records(records, force=force_regenerate)
             results["data_sources"]["total_items"] = len(reviews)
 
-            enriched = self.dependencies.enrichment_runner.run(
+            enrichment_report = self.dependencies.enrichment_runner.run(
                 reviews,
-                cached_only=skip_enrichment,
+                stored_only=skip_enrichment,
                 force=force_regenerate,
             )
             results["enrichment"] = {
                 "input_items": len(reviews),
-                "output_items": len(enriched),
+                "output_items": len(enrichment_report.items),
+                "complete": enrichment_report.complete,
+                "stages": [stage.to_dict() for stage in enrichment_report.stages],
             }
-            results["total_processed"] = len(enriched)
+            results["total_processed"] = len(enrichment_report.items)
+            results["degraded"] = (
+                bool(ingestion["failed_sources"]) or not enrichment_report.complete
+            )
+
+            incomplete_by_graph = {
+                graph_name: requirements & enrichment_report.incomplete_stage_names
+                for graph_name, requirements in (
+                    self.dependencies.enrichment_graph_requirements.items()
+                )
+            }
+            source_incomplete = (
+                self.dependencies.source_graph_requirements
+                & enrichment_report.incomplete_stage_names
+            )
+            incomplete_by_graph.update(
+                {
+                    source_name: set(source_incomplete)
+                    for source_name in ingestion["successful_sources"]
+                }
+            )
 
             build_report = self.dependencies.rdf_artifact_builder.build(
-                enriched,
+                enrichment_report.items,
                 successful_sources=ingestion["successful_sources"],
                 run_datetime=self._run_datetime,
+                incomplete_stages_by_graph=incomplete_by_graph,
             )
             rdf_results = self._rdf_results(build_report)
             results["rdf_generation"] = rdf_results
             if rdf_results["error"]:
                 raise RuntimeError(rdf_results["error"])
 
+            deployment_plan = plan_artifact_deployment(build_report.artifacts)
             if skip_deployment:
                 deployment = {
                     "success": True,
                     "files_deployed": 0,
-                    "total_files": len(build_report.artifacts) + 2,
+                    "total_files": deployment_plan.total_files,
+                    "skipped_files": deployment_plan.skipped_files,
+                    "skipped_graphs": list(deployment_plan.skipped_graphs),
                 }
             else:
                 deployment_report = self.dependencies.artifact_deployer.deploy(
@@ -284,8 +342,12 @@ class Pipeline:
                     "success": deployment_report.success,
                     "files_deployed": deployment_report.files_deployed,
                     "total_files": deployment_report.total_files,
+                    "skipped_files": deployment_report.skipped_files,
+                    "skipped_graphs": list(deployment_report.skipped_graphs),
                 }
             results["deployment"] = deployment
+            if build_report.enrichment_errors or deployment["skipped_files"]:
+                results["degraded"] = True
             if not deployment["success"]:
                 raise RuntimeError("One or more RDF graphs failed deployment")
 
@@ -312,6 +374,7 @@ class Pipeline:
             "deployment": None,
             "total_processed": 0,
             "success": False,
+            "degraded": False,
             "error": None,
         }
 
@@ -384,6 +447,8 @@ class Pipeline:
                 "failed_items": artifact.failed_items,
                 "file_size": artifact.file_size,
                 "review_uris": artifact.review_uris,
+                "complete": artifact.complete,
+                "incomplete_stages": list(artifact.incomplete_stages),
             }
             for artifact in report.artifacts
         ]
@@ -395,7 +460,8 @@ class Pipeline:
             "failed_items": report.failed_items,
             "output_format": report.output_format,
             "total_file_size": report.total_file_size,
-            "error": "; ".join(report.errors) or None,
+            "error": "; ".join(report.source_errors) or None,
+            "warnings": report.enrichment_errors,
         }
 
     def clear_cache(self, source_name: str | None = None) -> None:

@@ -26,13 +26,13 @@ def test_triple_volume_filters_graphs_before_limit() -> None:
     assert "http://data.climatesense-project.eu/graph/" in query
 
 
-def test_pipeline_metrics_use_versioned_stage_results() -> None:
+def test_pipeline_metrics_use_immutable_stage_attempts() -> None:
     queries = [
         path.read_text(encoding="utf-8") for path in _PIPELINE_QUERY_DIR.glob("*.sql")
     ]
 
     assert len(queries) == 4
-    assert all("stage_results" in query for query in queries)
+    assert all("stage_result_attempts" in query for query in queries)
     assert all("cache_entries" not in query for query in queries)
     assert all("stage_version" in query for query in queries)
 

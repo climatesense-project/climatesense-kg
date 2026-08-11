@@ -64,6 +64,7 @@ enrichment:
   dbpedia_spotlight:
     enabled: true
     api_url: "https://api.dbpedia-spotlight.org/en/annotate"
+    model_id: "dbpedia-spotlight-en"
     confidence: 0.6
     support: 30
     timeout: 20
@@ -81,8 +82,16 @@ enrichment:
     timeout: 30
     rate_limit_delay: 0
 
-  bert_factors:
+  cimple:
     enabled: true
+    model_versions:
+      emotion: "1"
+      sentiment: "1"
+      political_leaning: "1"
+      tropes: "1"
+      persuasion_techniques: "1"
+      conspiracies: "1"
+      climate_related: "1"
     batch_size: 64
     max_length: 128
     timeout: 300

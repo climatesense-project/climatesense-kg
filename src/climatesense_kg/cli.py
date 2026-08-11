@@ -48,7 +48,7 @@ Examples:
     run_parser.add_argument(
         "--skip-enrichment",
         action="store_true",
-        help=("Skip running enrichers; apply cached enrichment data if available"),
+        help=("Skip external enrichment calls; apply stored successful results"),
     )
     run_parser.add_argument(
         "--skip-deployment",
@@ -58,7 +58,7 @@ Examples:
     run_parser.add_argument(
         "--force-regenerate",
         action="store_true",
-        help="Force regeneration of RDF for all items, ignoring cache",
+        help="Recompute stage results instead of restoring stored successes",
     )
 
     redeploy_parser = subparsers.add_parser(
@@ -78,6 +78,16 @@ Examples:
         "--debug",
         action="store_true",
         help="Enable DEBUG level logging",
+    )
+
+    flush_parser = subparsers.add_parser(
+        "flush-stage-results",
+        help="Delete recomputable stage results while preserving identities",
+    )
+    flush_parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Confirm deletion of all persisted stage results",
     )
     return parser
 
@@ -102,6 +112,9 @@ def _print_rdf_generation_summary(rdf_data: "RDFGenerationResults") -> None:
     if failed_items:
         print(f"RDF Generation: {failed_items} items failed")
 
+    for warning in rdf_data.get("warnings", []):
+        print(f"RDF Generation warning: {warning}")
+
     for file_info in generated_files:
         failure_summary = ""
         if file_info["failed_items"]:
@@ -118,19 +131,53 @@ def _print_deployment_summary(deployment_data: "DeploymentResults") -> None:
     success = deployment_data["success"]
     files_deployed = deployment_data["files_deployed"]
     total_files = deployment_data["total_files"]
+    skipped_files = deployment_data["skipped_files"]
 
     status = "Success" if success else "Failed"
     print(f"Deployment: {status} ({files_deployed}/{total_files} files)")
+    if skipped_files:
+        skipped_graphs = ", ".join(deployment_data["skipped_graphs"])
+        print(
+            f"Deployment: preserved {skipped_files} incomplete graph(s): "
+            f"{skipped_graphs}"
+        )
+
+
+def _print_enrichment_summary(results: "PipelineResults") -> None:
+    enrichment = results.get("enrichment")
+    if not enrichment:
+        return
+    status = "complete" if enrichment["complete"] else "incomplete"
+    print(f"Enrichment: {status}")
+    for stage in enrichment["stages"]:
+        availability = stage["available"]
+        availability_text = (
+            "not checked" if availability is None else str(availability).lower()
+        )
+        print(
+            f"  - {stage['stage_name']}: available={availability_text}, "
+            f"eligible={stage['eligible_subjects']}, "
+            f"stored_successes={stage['stored_successes']}, "
+            f"stored_failures={stage['stored_failures']}, "
+            f"computed_successes={stage['computed_successes']}, "
+            f"computed_failures={stage['computed_failures']}, "
+            f"missing={stage['missing_results']}"
+        )
 
 
 def _print_success_summary(results: "PipelineResults") -> None:
     """Print pipeline success summary."""
-    print("Pipeline completed successfully!")
+    if results["degraded"]:
+        print("Pipeline completed with degraded coverage.")
+    else:
+        print("Pipeline completed successfully!")
     print(f"Processed {results['total_processed']} claim reviews")
 
     duration = results.get("duration")
     if duration is not None:
         print(f"Duration: {duration:.2f} seconds")
+
+    _print_enrichment_summary(results)
 
     # Print RDF generation summary
     rdf_data = results.get("rdf_generation")
@@ -320,6 +367,33 @@ def run_pipeline(args: argparse.Namespace) -> int:
         return 1
 
 
+def run_flush_stage_results(args: argparse.Namespace) -> int:
+    """Delete recomputable stage state without touching identity tables."""
+
+    if not getattr(args, "yes", False):
+        print(
+            "Refusing to flush stage results without --yes; identity data is never "
+            "deleted by this command.",
+            file=sys.stderr,
+        )
+        return 1
+
+    from dotenv import load_dotenv
+
+    from .persistence import PostgresDatabase, PostgresStageResultStore
+
+    load_dotenv()
+    try:
+        with PostgresDatabase.from_environment() as database:
+            deleted = PostgresStageResultStore(database.pool).clear()
+    except Exception as exc:
+        print(f"Failed to flush stage results: {exc}", file=sys.stderr)
+        return 1
+
+    print(f"Deleted {deleted} recomputable stage result(s); identities were preserved.")
+    return 0
+
+
 def main() -> int:
     """Main CLI entry point."""
     parser = create_parser()
@@ -330,6 +404,7 @@ def main() -> int:
         return 1
 
     handlers = {
+        "flush-stage-results": run_flush_stage_results,
         "run": run_pipeline,
         "redeploy": run_redeploy,
     }

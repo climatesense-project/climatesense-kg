@@ -53,6 +53,7 @@
   - [Configuration](#configuration)
   - [Querying pipeline state](#querying-pipeline-state)
     - [Example SQL Queries](#example-sql-queries)
+  - [Production operations](#production-operations)
   - [Querying the Knowledge Graph](#querying-the-knowledge-graph)
     - [Example SPARQL Queries](#example-sparql-queries)
   - [Auditing near-duplicate claim reviews](#auditing-near-duplicate-claim-reviews)
@@ -132,12 +133,12 @@ just run config/minimal.yaml
    - `POSTGRES_HOST`: Pipeline state database host (default `postgres`)
    - `POSTGRES_BIND_ADDRESS`: Host interface for PostgreSQL (default `127.0.0.1`)
    - `POSTGRES_PORT`: Pipeline state database port (default `5432`)
-   - `POSTGRES_DB`: Pipeline state database name (default `climatesense_cache`)
+   - `POSTGRES_DB`: Durable pipeline-state database name (default `climatesense`)
    - `POSTGRES_USER`: Pipeline state database user (default `postgres`)
    - `POSTGRES_PASSWORD`: Pipeline state database password (required)
    - `ANALYTICS_SPARQL_ENDPOINT`: Selected triplestore endpoint for analytics
    - `ANALYTICS_ALLOWED_ORIGINS`: Comma-separated origins permitted to call the analytics API (default `http://localhost:3000`)
-   - `ANALYTICS_CACHE_TTL`: Analytics API cache TTL in seconds (default `60`)
+   - `ANALYTICS_RESULT_CACHE_TTL`: Analytics query-result cache TTL in seconds (default `300`)
    - `ANALYTICS_SPARQL_TIMEOUT`: SPARQL timeout in seconds for analytics queries (default `20`)
    - `NEXT_PUBLIC_ANALYTICS_API_URL`: Base URL the dashboard uses for the analytics API (default `http://localhost:8000`)
    - `ANALYTICS_API_PORT`: Published port for the analytics API container (default `8000`)
@@ -194,13 +195,22 @@ enrichment:
   dbpedia_spotlight:
     enabled: true
     api_url: "https://api.dbpedia-spotlight.org/en/annotate"
+    model_id: "dbpedia-spotlight-en"
     confidence: 0.6
     support: 30
     timeout: 20
     rate_limit_delay: 0.2
 
-  bert_factors:
+  cimple:
     enabled: true
+    model_versions:
+      emotion: "1"
+      sentiment: "1"
+      political_leaning: "1"
+      tropes: "1"
+      persuasion_techniques: "1"
+      conspiracies: "1"
+      climate_related: "1"
     batch_size: 32
     max_length: 128
     timeout: 30
@@ -227,20 +237,50 @@ deployment:
 ## Querying pipeline state
 
 PostgreSQL is authoritative for canonical identity and versioned semantic-stage
-results. The filesystem cache stores downloaded source artifacts.
+results. It is durable application state and must be included in normal backup and
+restore procedures. The filesystem cache stores downloaded source artifacts and may
+be recreated.
+
+`stage_results` contains the current reusable outcome for each semantic subject,
+input, stage implementation, and semantic configuration. `stage_result_attempts`
+retains immutable success and failure diagnostics. Claim-review UUID assignments
+live in separate identity tables and are not affected by stage-result flushing.
+
+Semantic settings are part of result identity: Spotlight model, confidence and
+support, CIMPLE model versions and maximum input length, and the selected DBpedia
+properties. Endpoint URLs, timeouts, retry counts, rate limits, and batch sizes are
+operational settings and do not invalidate stored results.
 
 ### Example SQL Queries
 
 ```sql
--- Processing success rates by stage and implementation version
+-- Current reusable coverage by stage and implementation version
 SELECT stage_name, stage_version, COUNT(*) AS total,
        COUNT(*) FILTER (WHERE success) AS successes
 FROM stage_results GROUP BY stage_name, stage_version;
+
+-- Historical attempt success rates, including failures that later recovered
+SELECT stage_name, stage_version, COUNT(*) AS attempts,
+       COUNT(*) FILTER (WHERE success) AS successes
+FROM stage_result_attempts GROUP BY stage_name, stage_version;
 
 -- Highest-confidence identity candidates for offline auditing
 SELECT source_record_key, candidate_review_id, similarity, evidence
 FROM identity_candidates ORDER BY similarity DESC;
 ```
+
+Every run reports dependency availability, eligible subjects, stored successes and
+failures, computed successes and failures, and missing results for each enrichment
+stage. A graph with missing required enrichment results is not deployed; its existing
+named graph is left untouched and the run is reported as degraded. Spotlight and
+DBpedia property stages govern the DBpedia enrichment graph, while enabled CIMPLE
+stages govern the source graphs that contain their claim-analysis triples.
+
+## Production operations
+
+The backup, restore, outage, and fresh-deployment procedures are documented in the
+[production operations runbook](docs/operations.md). In particular, restoring the
+PostgreSQL identity tables is what preserves non-deterministic claim-review UUIDs.
 
 ## Querying the Knowledge Graph
 
@@ -332,6 +372,9 @@ uv run climatesense-kg run --config config/daily.yaml --skip-download --force-re
 
 # Replace the organization catalog and redeploy existing RDF to the selected backend
 uv run climatesense-kg redeploy --config config/daily.yaml --rdf-dir data/rdf
+
+# Delete recomputable stage results without deleting identity assignments
+uv run climatesense-kg flush-stage-results --yes
 ```
 
 ### QLever UI

@@ -311,7 +311,7 @@
             <div xmlns="http://www.w3.org/1999/xhtml"
               style="color:#bf360c!important;display:table-cell;white-space:normal;line-height:1.5;max-width:133.67px;text-align:center">
               <span class="nodeLabel" style="color:#bf360c!important">
-                <p>BERT fine-tuned models</p>
+                <p>CIMPLE models</p>
               </span>
             </div>
           </foreignObject>
@@ -367,7 +367,7 @@
             <div xmlns="http://www.w3.org/1999/xhtml"
               style="color:#fff!important;display:table-cell;white-space:normal;line-height:1.5;max-width:75.9652px;text-align:center">
               <span class="nodeLabel" style="color:#fff!important">
-                <p>PostgreSQL<br />Cache</p>
+                <p>PostgreSQL<br />Durable State</p>
               </span>
             </div>
           </foreignObject>

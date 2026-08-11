@@ -1,13 +1,20 @@
-"""Versioned enrichment-stage base class."""
+"""Base class for persisted semantic enrichment stages."""
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections import defaultdict
+from collections.abc import Callable
 import logging
 from typing import Any
 
 from ..domain import CanonicalClaimReview
 from ..persistence import StageResult, StageResultKey, StageResultStore
+from ..stages.enrichment import (
+    EnrichmentExecutionPolicy,
+    EnrichmentStageReport,
+    execute_persisted_stage,
+)
 
 
 class Enricher(ABC):
@@ -19,69 +26,66 @@ class Enricher(ABC):
         *,
         version: str,
         store: StageResultStore,
-        **config: Any,
+        semantic_config: dict[str, Any] | None = None,
+        availability_key: str | None = None,
     ) -> None:
         self.name = name
         self.stage_name = f"enrichment.{name}"
         self.version = version
         self.store = store
-        self.config = config
+        self.semantic_config = semantic_config or {}
+        self.availability_key = availability_key or self.stage_name
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
     def enrich(
         self,
         items: list[CanonicalClaimReview],
         *,
-        cached_only: bool = False,
+        policy: EnrichmentExecutionPolicy = EnrichmentExecutionPolicy.COMPUTE,
         force: bool = False,
-    ) -> list[CanonicalClaimReview]:
-        """Apply stored or newly computed enrichment to canonical reviews."""
+        availability_check: Callable[[], bool] | None = None,
+    ) -> EnrichmentStageReport:
+        """Apply successful results and report semantic-subject completeness."""
 
-        keyed_items = [(item, self.result_key(item)) for item in items]
-        stored_results = (
-            {} if force else self.store.get_many([key for _item, key in keyed_items])
+        items_by_key: dict[StageResultKey, list[CanonicalClaimReview]] = defaultdict(
+            list
         )
-        pending: list[tuple[CanonicalClaimReview, StageResultKey]] = []
-        for item, key in keyed_items:
-            stored = stored_results.get(key)
-            if stored is not None:
-                self._apply(item, stored.payload)
-            elif not cached_only:
-                pending.append((item, key))
+        for item in self._eligible_items(items):
+            items_by_key[self.result_key(item)].append(item)
 
-        if pending:
-            pending_items = [item for item, _key in pending]
-            try:
-                computed = self._compute_many(pending_items, force=force)
-                if len(computed) != len(pending):
-                    raise ValueError(
-                        f"{self.name} returned {len(computed)} results "
-                        f"for {len(pending)} inputs"
-                    )
-            except Exception as exc:
-                self.logger.error("%s batch failed: %s", self.name, exc)
-                computed = [
-                    StageResult(
-                        success=False,
-                        payload={"error_type": "stage_error", "error": str(exc)},
-                    )
-                    for _item, _key in pending
-                ]
-            new_results = {
-                key: result
-                for (_item, key), result in zip(pending, computed, strict=True)
-            }
-            self.store.put_many(new_results)
-            for (item, _key), result in zip(pending, computed, strict=True):
-                self._apply(item, result.payload)
+        def apply_group(
+            group: list[CanonicalClaimReview], payload: dict[str, Any]
+        ) -> None:
+            for item in group:
+                self._apply(item, payload)
 
+        report = execute_persisted_stage(
+            stage_name=self.stage_name,
+            subjects=dict(items_by_key),
+            store=self.store,
+            compute_many=lambda groups: self._compute_many(
+                [group[0] for group in groups], force=force
+            ),
+            apply_result=apply_group,
+            policy=policy,
+            force=force,
+            availability_check=availability_check,
+            stage_logger=self.logger,
+        )
         if items:
             self.logger.info(
-                "Applied %s to %d reviews (%d computed)",
+                "%s completeness: %d eligible, %d stored, %d computed, %d missing",
                 self.name,
-                len(items),
-                len(pending),
+                report.eligible_subjects,
+                report.stored_successes,
+                report.computed_successes,
+                report.missing_results,
             )
+        return report
+
+    def _eligible_items(
+        self, items: list[CanonicalClaimReview]
+    ) -> list[CanonicalClaimReview]:
         return items
 
     def _compute_many(
@@ -108,12 +112,15 @@ class Enricher(ABC):
 
     def result_key(self, item: CanonicalClaimReview) -> StageResultKey:
         return StageResultKey.build(
-            subject_key=item.key,
+            subject_key=self._subject_key(item),
             stage_name=self.stage_name,
             stage_version=self.version,
             input_value=self._input_value(item),
-            config_value=self.config,
+            config_value=self.semantic_config,
         )
+
+    def _subject_key(self, item: CanonicalClaimReview) -> str:
+        return item.key
 
     @abstractmethod
     def is_available(self) -> bool:
@@ -131,4 +138,4 @@ class Enricher(ABC):
 
     @abstractmethod
     def _apply(self, item: CanonicalClaimReview, payload: dict[str, Any]) -> None:
-        """Apply a stored stage payload to the typed domain model."""
+        """Apply a successful stage payload to the typed domain model."""

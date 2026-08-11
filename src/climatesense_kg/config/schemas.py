@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
+from .enrichment import default_cimple_model_versions
+
 
 @dataclass
 class FileProviderConfig:
@@ -120,6 +122,7 @@ class DbpediaSpotlightConfig:
 
     enabled: bool = False
     api_url: str = "https://api.dbpedia-spotlight.org/en/annotate"
+    model_id: str = "dbpedia-spotlight-en"
     confidence: float = 0.5
     support: int = 20
     timeout: int = 20
@@ -139,10 +142,13 @@ class DbpediaEntityPropertiesConfig:
 
 
 @dataclass
-class BertFactorsConfig:
-    """Configuration for BERT factors enrichment."""
+class CimpleConfig:
+    """Configuration for individually persisted CIMPLE models."""
 
     enabled: bool = False
+    model_versions: dict[str, str] = field(
+        default_factory=default_cimple_model_versions
+    )
     batch_size: int = 32
     max_length: int = 128
     timeout: int = 60
@@ -159,7 +165,7 @@ class EnrichmentConfig:
     dbpedia_entity_properties: DbpediaEntityPropertiesConfig = field(
         default_factory=DbpediaEntityPropertiesConfig
     )
-    bert_factors: BertFactorsConfig = field(default_factory=BertFactorsConfig)
+    cimple: CimpleConfig = field(default_factory=CimpleConfig)
 
 
 @dataclass

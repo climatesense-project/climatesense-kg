@@ -119,7 +119,7 @@ stage-results-flush:
     @echo "WARNING: This will delete ALL semantic stage results!"
     @read -p "Are you sure? (y/N) " confirm; \
     if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then \
-        cd docker && docker compose exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "TRUNCATE TABLE stage_results;"' && \
+        docker compose -f docker/docker-compose.yml run --rm pipeline flush-stage-results --yes && \
         echo "✅ Semantic stage results cleared successfully"; \
     else \
         echo "❌ Stage-result flush cancelled"; \

@@ -10,7 +10,7 @@ services:
     container_name: climatesense-postgres
     shm_size: 1gb
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-climatesense_cache}
+      POSTGRES_DB: ${POSTGRES_DB:-climatesense}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
     ports:
@@ -22,7 +22,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-climatesense_cache}",
+          "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-climatesense}",
         ]
       interval: 15s
       timeout: 5s
@@ -255,7 +255,7 @@ services:
       GITHUB_TOKEN: ${GITHUB_TOKEN}
       POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
       POSTGRES_PORT: "5432"
-      POSTGRES_DB: ${POSTGRES_DB:-climatesense_cache}
+      POSTGRES_DB: ${POSTGRES_DB:-climatesense}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       VIRTUOSO_HOST: ${VIRTUOSO_HOST:-virtuoso}
@@ -287,9 +287,10 @@ services:
       ANALYTICS_SPARQL_PASSWORD: ${ANALYTICS_SPARQL_PASSWORD:-}
       ANALYTICS_ALLOWED_ORIGINS: ${ANALYTICS_ALLOWED_ORIGINS:-http://localhost:3000}
       ANALYTICS_SPARQL_TIMEOUT: ${ANALYTICS_SPARQL_TIMEOUT:-20}
+      ANALYTICS_RESULT_CACHE_TTL: ${ANALYTICS_RESULT_CACHE_TTL:-300}
       POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
       POSTGRES_PORT: "5432"
-      POSTGRES_DB: ${POSTGRES_DB:-climatesense_cache}
+      POSTGRES_DB: ${POSTGRES_DB:-climatesense}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     depends_on:

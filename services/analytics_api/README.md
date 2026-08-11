@@ -63,7 +63,11 @@ Environment variables:
 - `ANALYTICS_SPARQL_PASSWORD` - Optional SPARQL authentication password
 - `ANALYTICS_ALLOWED_ORIGINS` - CORS allowed origins (comma-separated)
 - `ANALYTICS_SPARQL_TIMEOUT` - SPARQL query timeout in seconds (default: 20)
-- `POSTGRES_*` - PostgreSQL connection settings
+- `POSTGRES_*` - Durable pipeline-state PostgreSQL connection settings
+- `ANALYTICS_RESULT_CACHE_TTL` - Analytics query-result cache TTL in seconds
+
+Pipeline activity endpoints read immutable rows from `stage_result_attempts`, so a
+failure remains visible after a later retry succeeds.
 
 Use `http://virtuoso:8890/sparql` for Virtuoso or `http://qlever:7019` for QLever.
 

@@ -27,7 +27,7 @@ def stable_hash(value: Any) -> str:
 
 @dataclass(frozen=True)
 class StageResultKey:
-    """Complete cache identity for one semantic transformation."""
+    """Complete persistence identity for one semantic transformation."""
 
     subject_key: str
     stage_name: str
@@ -75,6 +75,10 @@ class StageResultStore(Protocol):
 
     def put_many(self, results: dict[StageResultKey, StageResult]) -> None: ...
 
+    def clear(self) -> int:
+        """Delete recomputable stage state and return the result count."""
+        ...
+
 
 class InMemoryStageResultStore:
     """Small reference store used in stage unit tests."""
@@ -98,6 +102,12 @@ class InMemoryStageResultStore:
     def put_many(self, results: dict[StageResultKey, StageResult]) -> None:
         with self._lock:
             self._results.update(results)
+
+    def clear(self) -> int:
+        with self._lock:
+            count = len(self._results)
+            self._results.clear()
+            return count
 
 
 class PostgresStageResultStore:
@@ -161,6 +171,18 @@ class PostgresStageResultStore:
     def put_many(self, results: dict[StageResultKey, StageResult]) -> None:
         if not results:
             return
+        rows = [
+            (
+                key.subject_key,
+                key.stage_name,
+                key.stage_version,
+                key.input_hash,
+                key.config_hash,
+                result.success,
+                json.dumps(result.payload),
+            )
+            for key, result in results.items()
+        ]
         with self.pool.connection() as connection:
             with connection.cursor() as cursor:
                 cursor.executemany(
@@ -178,16 +200,27 @@ class PostgresStageResultStore:
                         payload = EXCLUDED.payload,
                         updated_at = CURRENT_TIMESTAMP
                     """,
-                    [
-                        (
-                            key.subject_key,
-                            key.stage_name,
-                            key.stage_version,
-                            key.input_hash,
-                            key.config_hash,
-                            result.success,
-                            json.dumps(result.payload),
-                        )
-                        for key, result in results.items()
-                    ],
+                    rows,
                 )
+                cursor.executemany(
+                    """
+                    INSERT INTO stage_result_attempts (
+                        subject_key, stage_name, stage_version,
+                        input_hash, config_hash, success, payload
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    rows,
+                )
+
+    def clear(self) -> int:
+        """Delete only recomputable stage results and their attempt history."""
+
+        with self.pool.connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT COUNT(*) FROM stage_results")
+                row = cursor.fetchone()
+                count = int(row[0]) if row else 0
+                cursor.execute("DELETE FROM stage_result_attempts")
+                cursor.execute("DELETE FROM stage_results")
+        return count

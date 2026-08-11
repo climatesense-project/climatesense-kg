@@ -49,6 +49,10 @@ The registry UUID is the complete identifier component. Claim text, rating,
 publication date, and document content are RDF attributes. The review's known URLs
 are emitted as `schema:url` aliases on the same resource.
 
+Claim-review UUIDs are not recomputed from review content. A PostgreSQL backup and
+restore therefore preserves the same identifiers across deployments; initializing a
+fresh identity registry creates an independent set of claim-review identifiers.
+
 ### Claims
 
 **Pattern**: `{base_uri}/claim/{sha256_hash}`

@@ -12,6 +12,7 @@ import zipfile
 import requests
 from tqdm import tqdm
 
+from .. import USER_AGENT
 from ..config.schemas import GitHubProviderConfig
 from ..utils.logging import parse_file_size
 from .base import BaseProvider
@@ -165,7 +166,7 @@ class GitHubProvider(BaseProvider[GitHubProviderConfig]):
         """Download asset data."""
         response = requests.get(
             asset.url,
-            headers=self._build_headers("application/octet-stream", for_download=True),
+            headers=self._build_headers("application/octet-stream"),
             timeout=timeout,
             stream=True,
         )
@@ -305,18 +306,11 @@ class GitHubProvider(BaseProvider[GitHubProviderConfig]):
 
         return fields
 
-    def _build_headers(
-        self, accept: str, *, for_download: bool = False
-    ) -> dict[str, str]:
+    def _build_headers(self, accept: str) -> dict[str, str]:
         """Build headers for GitHub API requests."""
-        user_agent = (
-            "ClimateSense-Pipeline/1.0 (+https://github.com/climatesense-project)"
-            if for_download
-            else "ClimateSense-Pipeline/2.0"
-        )
         headers = {
             "Accept": accept,
-            "User-Agent": user_agent,
+            "User-Agent": USER_AGENT,
         }
 
         if self.github_token:
@@ -379,7 +373,7 @@ class GitHubProvider(BaseProvider[GitHubProviderConfig]):
         """Download raw file content using provided URL."""
         response = requests.get(
             url,
-            headers=self._build_headers("application/octet-stream", for_download=True),
+            headers=self._build_headers("application/octet-stream"),
             timeout=timeout,
         )
         response.raise_for_status()

@@ -1,4 +1,4 @@
--- Canonical identity and semantic-stage persistence.
+-- Durable canonical identity registry.
 CREATE TABLE source_review_records (
     record_key TEXT PRIMARY KEY,
     source_name TEXT NOT NULL,
@@ -85,28 +85,3 @@ CREATE TABLE identity_candidates (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (source_record_key, candidate_review_id)
 );
-
-CREATE TABLE stage_results (
-    subject_key TEXT NOT NULL,
-    stage_name TEXT NOT NULL,
-    stage_version TEXT NOT NULL,
-    input_hash TEXT NOT NULL,
-    config_hash TEXT NOT NULL,
-    success BOOLEAN NOT NULL,
-    payload JSONB NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (
-        subject_key,
-        stage_name,
-        stage_version,
-        input_hash,
-        config_hash
-    )
-);
-
-CREATE INDEX stage_results_stage_success
-    ON stage_results (stage_name, success);
-
-CREATE INDEX stage_results_updated_at
-    ON stage_results (updated_at);

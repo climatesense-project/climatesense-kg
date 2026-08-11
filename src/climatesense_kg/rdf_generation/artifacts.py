@@ -6,9 +6,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Literal
 
 from ..domain import CanonicalClaimReview
 from .generator import RDFGenerator
+
+ArtifactKind = Literal["source", "enrichment"]
 
 
 @dataclass(frozen=True)
@@ -16,12 +19,19 @@ class RdfArtifact:
     """One complete named-graph snapshot ready for deployment."""
 
     graph_name: str
-    kind: str
+    kind: ArtifactKind
     path: Path
     items: int
     failed_items: int
     file_size: int
     review_uris: list[str]
+    incomplete_stages: tuple[str, ...] = ()
+
+    @property
+    def complete(self) -> bool:
+        """Return whether the snapshot is safe to deploy."""
+
+        return self.failed_items == 0 and not self.incomplete_stages
 
 
 @dataclass(frozen=True)
@@ -34,7 +44,8 @@ class RdfBuildReport:
     failed_items: int
     output_format: str
     total_file_size: int
-    errors: list[str]
+    source_errors: list[str]
+    enrichment_errors: list[str]
 
 
 class RdfArtifactBuilder:
@@ -59,7 +70,9 @@ class RdfArtifactBuilder:
         *,
         successful_sources: list[str],
         run_datetime: datetime,
+        incomplete_stages_by_graph: dict[str, set[str]] | None = None,
     ) -> RdfBuildReport:
+        incomplete_stages_by_graph = incomplete_stages_by_graph or {}
         reviews_by_graph: dict[str, list[CanonicalClaimReview]] = {
             source: [] for source in successful_sources
         }
@@ -75,7 +88,8 @@ class RdfArtifactBuilder:
             )
 
         artifacts: list[RdfArtifact] = []
-        errors: list[str] = []
+        source_errors: list[str] = []
+        enrichment_errors: list[str] = []
         failed_review_uris: set[str] = set()
         for graph_name, graph_reviews in reviews_by_graph.items():
             artifact, failed, error = self._build_graph(
@@ -84,12 +98,13 @@ class RdfArtifactBuilder:
                 [review.for_source(graph_name) for review in graph_reviews],
                 run_datetime,
                 self.generator.save,
+                incomplete_stages=incomplete_stages_by_graph.get(graph_name, set()),
             )
             if artifact is not None:
                 artifacts.append(artifact)
             failed_review_uris.update(failed)
             if error:
-                errors.append(error)
+                source_errors.append(error)
 
         for graph_name, entity_sources in self.enrichment_graphs.items():
             entity_reviews = [
@@ -110,12 +125,13 @@ class RdfArtifactBuilder:
                         entity_sources=sources,
                     )
                 ),
+                incomplete_stages=incomplete_stages_by_graph.get(graph_name, set()),
             )
             if artifact is not None:
                 artifacts.append(artifact)
             failed_review_uris.update(failed)
             if error:
-                errors.append(error)
+                enrichment_errors.append(error)
 
         return RdfBuildReport(
             artifacts=artifacts,
@@ -124,17 +140,21 @@ class RdfArtifactBuilder:
             failed_items=len(failed_review_uris),
             output_format=self.output_format,
             total_file_size=sum(artifact.file_size for artifact in artifacts),
-            errors=errors,
+            source_errors=source_errors,
+            enrichment_errors=enrichment_errors,
         )
 
     def _build_graph(
         self,
         graph_name: str,
-        kind: str,
+        kind: ArtifactKind,
         reviews: list[CanonicalClaimReview],
         run_datetime: datetime,
         save: Callable[[list[CanonicalClaimReview], Path, str], list[str]],
+        *,
+        incomplete_stages: set[str] | None = None,
     ) -> tuple[RdfArtifact | None, set[str], str | None]:
+        incomplete_stages = incomplete_stages or set()
         path = self._output_path(graph_name, run_datetime)
         try:
             successful = save(reviews, path, self.output_format)
@@ -155,6 +175,7 @@ class RdfArtifactBuilder:
                 failed_items=len(failed),
                 file_size=path.stat().st_size,
                 review_uris=successful,
+                incomplete_stages=tuple(sorted(incomplete_stages)),
             ),
             failed,
             error,

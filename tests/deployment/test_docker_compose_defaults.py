@@ -41,3 +41,17 @@ def test_service_clients_use_postgres_container_port() -> None:
 
     assert services["pipeline"]["environment"]["POSTGRES_PORT"] == "5432"
     assert services["analytics-api"]["environment"]["POSTGRES_PORT"] == "5432"
+
+
+def test_services_share_durable_postgres_database_default() -> None:
+    services = _compose_services()
+
+    assert services["postgres"]["environment"]["POSTGRES_DB"] == (
+        "${POSTGRES_DB:-climatesense}"
+    )
+    assert services["pipeline"]["environment"]["POSTGRES_DB"] == (
+        "${POSTGRES_DB:-climatesense}"
+    )
+    assert services["analytics-api"]["environment"]["POSTGRES_DB"] == (
+        "${POSTGRES_DB:-climatesense}"
+    )

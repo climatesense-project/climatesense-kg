@@ -13,14 +13,14 @@ The implementation should preserve the current RDF relationships. The principal 
 - Treat PostgreSQL as durable pipeline state, not as a disposable cache.
 - Use one PostgreSQL database named `climatesense`; separate identity data from recomputable stage results through schema and migration boundaries.
 - Do not build an importer for the existing production annotation database. The production database and RDF may be archived for rollback, but the fresh production run will not read or migrate them.
-- Do not add an RDF compatibility layer or legacy URI migration.
+- Do not add an RDF compatibility layer or migrate existing RDF URI identifiers.
 - Keep downloaded artifacts and analytics query results as caches; do not describe the identity registry or persisted enrichment results as caches.
 
 ## Implementation
 
 ### 1. Rename and clarify persistence
 
-- Change the default PostgreSQL database name from `climatesense_cache` to `climatesense` in Compose, environment examples, pipeline configuration, analytics configuration, and documentation.
+- Use `climatesense` as the PostgreSQL database name in Compose, environment examples, pipeline configuration, analytics configuration, and documentation.
 - Describe PostgreSQL as durable state that requires normal backup, restore, and retention procedures.
 - Separate identity-registry migrations from stage-result migrations.
 - Ensure the stage-results flush operation deletes only recomputable stage results and never identity mappings.
@@ -103,7 +103,7 @@ The run summary must distinguish results computed during the run, results restor
 
 ### 7. Align code and documentation
 
-- Remove remaining `ClimateSense-Pipeline/2.0` user-agent strings and use a version-neutral application identifier.
+- Use a version-neutral application identifier consistently across HTTP clients.
 - Document PostgreSQL backup and restore as part of production operations.
 - Document stage-result flushing separately from identity preservation and database restoration.
 - Add an outage runbook covering dependency unavailability, stored-result coverage, degraded runs, and safe graph deployment.
@@ -144,12 +144,12 @@ The run summary must distinguish results computed during the run, results restor
 - Semantic input, model, or configuration changes invalidate only the affected results.
 - Flushing stage results never removes identity mappings.
 - Backing up and restoring PostgreSQL preserves claim-review UUIDs.
-- Default configuration and documentation contain neither `climatesense_cache` nor versioned architecture terminology.
+- Default configuration and documentation use `climatesense` and canonical architecture terminology consistently.
 - The repository's formatting, static checks, and test suite pass.
 
 ## Out of Scope
 
 - Deterministic claim-review UUIDs.
 - Importing results or identities from the existing production database.
-- Migrating legacy URIs.
+- Migrating existing RDF URI identifiers.
 - Maintaining a permanent RDF compatibility layer.

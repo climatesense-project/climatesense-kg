@@ -1,41 +1,46 @@
-"""DBpedia Spotlight entity-extraction stage."""
+"""DBpedia Spotlight entity-extraction stages."""
 
 from __future__ import annotations
 
 from dataclasses import asdict
-import json
 import time
-from typing import Any
+from typing import Any, Literal
 
 import requests
 
+from .. import USER_AGENT
 from ..domain import CanonicalClaimReview, EntityMention
-from ..persistence import StageResult, StageResultStore
+from ..persistence import StageResult, StageResultStore, stable_hash
 from .base import Enricher
 
 
-class DBpediaEnricher(Enricher):
-    """Extract typed entity mentions from claim and review text."""
+class DBpediaSpotlightEnricher(Enricher):
+    """Extract entities for either canonical claim text or exact review text."""
 
     def __init__(
         self,
         *,
+        target: Literal["claim", "review"],
         store: StageResultStore,
         api_url: str = "https://api.dbpedia-spotlight.org/en/annotate",
+        model_id: str = "dbpedia-spotlight-en",
         confidence: float = 0.5,
         support: int = 20,
         timeout: int = 20,
         rate_limit_delay: float = 0.1,
     ) -> None:
         super().__init__(
-            "dbpedia_spotlight",
+            f"dbpedia_spotlight.{target}",
             version="1",
             store=store,
-            api_url=api_url,
-            confidence=confidence,
-            support=support,
-            timeout=timeout,
+            semantic_config={
+                "model_id": model_id,
+                "confidence": confidence,
+                "support": support,
+            },
+            availability_key="dbpedia_spotlight",
         )
+        self.target = target
         self.api_url = api_url
         self.confidence = confidence
         self.support = support
@@ -43,7 +48,7 @@ class DBpediaEnricher(Enricher):
         self.rate_limit_delay = rate_limit_delay
         self.headers = {
             "accept": "application/json",
-            "User-Agent": "ClimateSense-Pipeline/2.0 (+https://github.com/climatesense-project)",
+            "User-Agent": USER_AGENT,
         }
 
     def is_available(self) -> bool:
@@ -59,42 +64,49 @@ class DBpediaEnricher(Enricher):
             self.logger.warning("DBpedia Spotlight unavailable: %s", exc)
             return False
 
+    def _eligible_items(
+        self, items: list[CanonicalClaimReview]
+    ) -> list[CanonicalClaimReview]:
+        if self.target == "claim":
+            return items
+        return [item for item in items if (item.review_text or "").strip()]
+
+    def _subject_key(self, item: CanonicalClaimReview) -> str:
+        if self.target == "claim":
+            return item.claim.uri
+        review_text = item.review_text or ""
+        digest = stable_hash(review_text)
+        return f"review-text/{digest}"
+
     def _input_value(self, item: CanonicalClaimReview) -> Any:
-        return {
-            "claim_text": item.claim.analysis_text,
-            "review_text": item.review_text,
-        }
+        return {"text": self._text(item)}
 
     def _compute(
         self, item: CanonicalClaimReview, *, force: bool = False
     ) -> StageResult:
         del force
-        claim_entities = self._extract_entities(item.claim.analysis_text)
-        review_entities = self._extract_entities(item.review_text or "")
+        entities = self._extract_entities(self._text(item))
         return StageResult(
             success=True,
-            payload={
-                "claim_entities": [asdict(entity) for entity in claim_entities],
-                "review_entities": [asdict(entity) for entity in review_entities],
-            },
+            payload={"entities": [asdict(entity) for entity in entities]},
         )
 
     def _apply(self, item: CanonicalClaimReview, payload: dict[str, Any]) -> None:
-        item.claim.analysis.entities = [
-            entity
-            for entity in item.claim.analysis.entities
-            if entity.source != "dbpedia_spotlight"
-        ]
-        item.analysis.entities = [
-            entity
-            for entity in item.analysis.entities
-            if entity.source != "dbpedia_spotlight"
-        ]
-        item.claim.analysis.entities.extend(
-            self._deserialize_entities(payload.get("claim_entities"))
+        target_entities = (
+            item.claim.analysis.entities
+            if self.target == "claim"
+            else item.analysis.entities
         )
-        item.analysis.entities.extend(
-            self._deserialize_entities(payload.get("review_entities"))
+        target_entities[:] = [
+            entity for entity in target_entities if entity.source != "dbpedia_spotlight"
+        ]
+        target_entities.extend(self._deserialize_entities(payload.get("entities")))
+
+    def _text(self, item: CanonicalClaimReview) -> str:
+        return (
+            item.claim.analysis_text
+            if self.target == "claim"
+            else item.review_text or ""
         )
 
     def _extract_entities(self, text: str) -> list[EntityMention]:
@@ -113,8 +125,6 @@ class DBpediaEnricher(Enricher):
             )
             response.raise_for_status()
             return self._parse_dbpedia_response(response.json())
-        except json.JSONDecodeError:
-            raise
         finally:
             time.sleep(self.rate_limit_delay)
 

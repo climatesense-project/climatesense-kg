@@ -83,3 +83,32 @@ def test_failure_state_retains_url_for_operational_diagnostics(fetch: Mock) -> N
     assert result is not None
     assert result.success is False
     assert result.payload["url"] == record.document.observed_url
+
+
+@patch("climatesense_kg.stages.document_extractor.fetch_and_extract_text")
+def test_stored_document_failure_is_retried(fetch: Mock) -> None:
+    fetch.side_effect = [
+        TextExtractionResult(success=False, error_message="Timed out"),
+        TextExtractionResult(success=True, content="Recovered content"),
+    ]
+    store = InMemoryStageResultStore()
+    extractor = DocumentExtractor(store, rate_limit_delay=0)
+
+    extractor.extract(_record())
+    recovered = extractor.extract(_record())
+
+    assert fetch.call_count == 2
+    assert recovered.document.extracted_text == "Recovered content"
+
+
+def test_operational_extraction_settings_do_not_change_result_identity() -> None:
+    store = InMemoryStageResultStore()
+    record = _record()
+    baseline = DocumentExtractor(
+        store, rate_limit_delay=0, timeout=5, max_retries=0
+    )._key(record)
+    tuned = DocumentExtractor(
+        store, rate_limit_delay=3, timeout=60, max_retries=5
+    )._key(record)
+
+    assert tuned == baseline

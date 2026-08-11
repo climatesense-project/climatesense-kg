@@ -5,7 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, call, patch
 
-from src.climatesense_kg.cli import run_redeploy
+from src.climatesense_kg.cli import run_flush_stage_results, run_redeploy
 from src.climatesense_kg.config.graphs import (
     DBPEDIA_ENRICHER_SOURCE_NAME,
     GRAPH_CATALOG_PATH,
@@ -121,3 +121,30 @@ def test_redeploy_rejects_multiple_snapshots_for_one_graph(
 
     assert exit_code == 1
     handler.deploy.assert_not_called()
+
+
+def test_flush_stage_results_requires_explicit_confirmation() -> None:
+    assert run_flush_stage_results(Namespace(yes=False)) == 1
+
+
+def test_flush_stage_results_uses_only_stage_store() -> None:
+    database = Mock()
+    database.__enter__ = Mock(return_value=database)
+    database.__exit__ = Mock(return_value=None)
+    store = Mock()
+    store.clear.return_value = 7
+
+    with (
+        patch(
+            "src.climatesense_kg.persistence.PostgresDatabase.from_environment",
+            return_value=database,
+        ),
+        patch(
+            "src.climatesense_kg.persistence.PostgresStageResultStore",
+            return_value=store,
+        ),
+    ):
+        exit_code = run_flush_stage_results(Namespace(yes=True))
+
+    assert exit_code == 0
+    store.clear.assert_called_once_with()

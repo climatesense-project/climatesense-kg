@@ -44,3 +44,18 @@ def test_stage_store_preserves_explicit_failure_results() -> None:
     store.put(key, failure)
 
     assert store.get(key) == failure
+
+
+def test_stage_result_flush_preserves_a_separate_identity_boundary() -> None:
+    store = InMemoryStageResultStore()
+    key = StageResultKey.build(
+        subject_key="claim/example",
+        stage_name="enrichment.example",
+        stage_version="1",
+        input_value="claim",
+        config_value={},
+    )
+    store.put(key, StageResult(success=True, payload={}))
+
+    assert store.clear() == 1
+    assert store.get(key) is None

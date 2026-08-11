@@ -52,7 +52,7 @@ class DocumentExtractor:
     def extract_many(
         self, records: list[SourceReviewRecord], *, force: bool = False
     ) -> list[SourceReviewRecord]:
-        """Restore state in bulk, then fetch only uncached HTTP documents."""
+        """Restore state in bulk, then fetch only unresolved HTTP documents."""
 
         keyed_records = [
             (record, self._key(record))
@@ -66,11 +66,11 @@ class DocumentExtractor:
         )
         pending: list[tuple[SourceReviewRecord, StageResultKey]] = []
         for record, key in keyed_records:
-            cached = stored_results.get(key)
-            if cached is None:
+            stored = stored_results.get(key)
+            if stored is None or not stored.success:
                 pending.append((record, key))
-            elif cached.success:
-                self._apply(record, cached.payload)
+            else:
+                self._apply(record, stored.payload)
 
         new_results: dict[StageResultKey, StageResult] = {}
         for record, key in pending:
@@ -105,11 +105,7 @@ class DocumentExtractor:
             stage_name=self.name,
             stage_version=self.version,
             input_value={"url": record.document.observed_url},
-            config_value={
-                "rate_limit_delay": self.rate_limit_delay,
-                "timeout": self.timeout,
-                "max_retries": self.max_retries,
-            },
+            config_value={},
         )
 
     def _fetch(self, url: str) -> TextExtractionResult:
