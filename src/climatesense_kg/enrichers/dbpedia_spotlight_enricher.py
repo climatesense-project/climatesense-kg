@@ -91,9 +91,8 @@ class DBpediaSpotlightEnricher(Enricher):
     ) -> StageResult:
         del force
         entities = self._extract_entities(self._text(item))
-        return StageResult(
-            success=True,
-            payload={"entities": [asdict(entity) for entity in entities]},
+        return StageResult.succeeded(
+            {"entities": [asdict(entity) for entity in entities]},
         )
 
     def _apply(self, item: CanonicalClaimReview, payload: dict[str, Any]) -> None:

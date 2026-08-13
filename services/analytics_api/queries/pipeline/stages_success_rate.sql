@@ -2,10 +2,10 @@ SELECT
     stage_name,
     stage_version,
     COUNT(*) AS total_results,
-    COUNT(*) FILTER (WHERE success) AS successful,
-    COUNT(*) FILTER (WHERE NOT success) AS failed,
+    COUNT(*) FILTER (WHERE status = 'success') AS successful,
+    COUNT(*) FILTER (WHERE status <> 'success') AS failed,
     ROUND(
-        COUNT(*) FILTER (WHERE success) * 100.0
+        COUNT(*) FILTER (WHERE status = 'success') * 100.0
         / NULLIF(COUNT(*), 0),
         2
     ) AS success_rate_percent

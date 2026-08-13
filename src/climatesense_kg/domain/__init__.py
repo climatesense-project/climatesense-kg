@@ -16,6 +16,7 @@ from .models import (
     SourceReference,
     SourceReviewRecord,
 )
+from .serialization import source_record_from_payload, source_record_to_payload
 
 __all__ = [
     "CanonicalClaim",
@@ -32,4 +33,6 @@ __all__ = [
     "ReviewDocument",
     "SourceReference",
     "SourceReviewRecord",
+    "source_record_from_payload",
+    "source_record_to_payload",
 ]

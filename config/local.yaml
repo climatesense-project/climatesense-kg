@@ -56,38 +56,19 @@ data_sources:
 
 document_extraction:
   enabled: true
-  max_workers: 32
-  rate_limit_delay: 0.5
+  rate_limit_delay: 1
   timeout: 15
   max_retries: 2
-  transient_retry_delay_hours: 1
-  blocked_retry_delay_hours: 720
-  dns_retry_delay_hours: 168
-  content_retry_delay_hours: 720
-  checkpoint_size: 25
-  progress_interval_seconds: 10
-
-identity_resolution:
-  batch_size: 500
-  progress_interval_seconds: 10
-
-duplicate_audit:
-  similarity_threshold: 0.9
-  minimum_similarity_words: 50
-  group_batch_size: 100
 
 enrichment:
-  checkpoint_size: 100
-  progress_interval_seconds: 10
-
   dbpedia_spotlight:
     enabled: true
-    api_url: "https://api.dbpedia-spotlight.org/en/annotate"
+    api_url: "https://dbpedia-spotlight.tools.eurecom.fr/rest/annotate"
     model_id: "dbpedia-spotlight-en"
     confidence: 0.6
     support: 30
     timeout: 20
-    rate_limit_delay: 0
+    rate_limit_delay: 1
 
   dbpedia_entity_properties:
     enabled: true
@@ -99,7 +80,7 @@ enrichment:
       - "http://www.georss.org/georss/point"
       - "http://www.opengis.net/ont/geosparql#asWKT"
     timeout: 30
-    rate_limit_delay: 0
+    rate_limit_delay: 1
 
   cimple:
     enabled: true

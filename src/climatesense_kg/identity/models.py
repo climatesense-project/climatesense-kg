@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
 from uuid import UUID
 
 from ..domain import CanonicalOrganization, SourceReviewRecord
@@ -19,7 +18,6 @@ class RegisteredDocument:
     preferred_url: str
     content: str | None
     normalized_text_hash: str | None
-    shingles: frozenset[str]
     word_count: int
 
 
@@ -40,15 +38,6 @@ class IdentityAssignment:
     review: RegisteredReview
     source_record_keys: set[str] = field(default_factory=set)
     source_names: set[str] = field(default_factory=set)
-
-
-@dataclass(frozen=True)
-class IdentityCandidate:
-    """Non-deterministic match retained for offline duplicate audits."""
-
-    candidate_review_id: UUID
-    similarity: float
-    evidence: dict[str, Any]
 
 
 IdentityBatchRecord = tuple[SourceReviewRecord, CanonicalOrganization]
@@ -74,14 +63,6 @@ class PlannedSourceAssignment:
     assignment: IdentityAssignment
 
 
-@dataclass(frozen=True)
-class PlannedIdentityCandidate:
-    """A fuzzy identity candidate associated with its source observation."""
-
-    source_record_key: str
-    candidate: IdentityCandidate
-
-
 @dataclass
 class IdentityBatchPlan:
     """Pure identity decisions ready for one atomic repository commit."""
@@ -91,4 +72,3 @@ class IdentityBatchPlan:
     new_document_ids: set[UUID]
     new_reviews: dict[UUID, RegisteredReview]
     sources: list[PlannedSourceAssignment]
-    candidates: list[PlannedIdentityCandidate]

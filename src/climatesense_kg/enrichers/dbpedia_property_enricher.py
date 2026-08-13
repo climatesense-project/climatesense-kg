@@ -99,6 +99,7 @@ class DBpediaPropertyEnricher:
         policy: StageExecutionPolicy = StageExecutionPolicy.COMPUTE,
         force: bool = False,
         availability_check: Callable[[], bool] | None = None,
+        report_progress: bool = True,
     ) -> StageExecutionReport:
         """Restore or fetch each distinct entity result exactly once."""
 
@@ -125,10 +126,14 @@ class DBpediaPropertyEnricher:
             stage_logger=self.logger,
             compute_batch_size=min(self.entity_batch_size, self.checkpoint_size),
             checkpoint_size=self.checkpoint_size,
-            progress_callback=StageProgressLogger(
-                self.logger,
-                label="Enrichment",
-                interval_seconds=self.progress_interval_seconds,
+            progress_callback=(
+                StageProgressLogger(
+                    self.logger,
+                    label="Enrichment",
+                    interval_seconds=self.progress_interval_seconds,
+                )
+                if report_progress
+                else None
             ),
         )
 
@@ -169,9 +174,8 @@ class DBpediaPropertyEnricher:
                 parsed = self._parse_bindings_by_entity(bindings)
                 time.sleep(self.rate_limit_delay)
                 return [
-                    StageResult(
-                        success=True,
-                        payload={"properties": parsed.get(entity_uri, {})},
+                    StageResult.succeeded(
+                        {"properties": parsed.get(entity_uri, {})},
                     )
                     for entity_uri in entity_uris
                 ]
@@ -180,9 +184,8 @@ class DBpediaPropertyEnricher:
                 if attempt < self.max_retries:
                     time.sleep(min(2**attempt, 2))
         return [
-            StageResult(
-                success=False,
-                payload={
+            StageResult.retryable_failure(
+                {
                     "error_type": "property_query_error",
                     "entity_uri": entity_uri,
                     "error": str(last_exception or "Unknown DBpedia property error"),

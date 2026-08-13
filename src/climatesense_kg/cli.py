@@ -95,6 +95,14 @@ Examples:
         action="store_true",
         help="Confirm deletion of all persisted stage results",
     )
+
+    audit_parser = subparsers.add_parser(
+        "audit-duplicates",
+        help="Rebuild exact near-duplicate claim-review candidates",
+    )
+    audit_parser.add_argument(
+        "--config", "-c", type=str, required=True, help="Configuration file path"
+    )
     return parser
 
 
@@ -161,8 +169,12 @@ def _format_stage_counts(
         f"eligible={stage['eligible_subjects']}, "
         f"stored_successes={stage['stored_successes']}, "
         f"stored_failures={stage['stored_failures']}, "
+        f"stored_deferred={stage['stored_deferred_failures']}, "
+        f"stored_permanent={stage['stored_permanent_failures']}, "
         f"{success_label}={stage['computed_successes']}, "
         f"{failure_label}={stage['computed_failures']}, "
+        f"computed_deferred={stage['computed_deferred_failures']}, "
+        f"computed_permanent={stage['computed_permanent_failures']}, "
         f"missing={stage['missing_results']}"
     )
 
@@ -188,9 +200,10 @@ def _print_document_extraction_summary(results: "PipelineResults") -> None:
     extraction = results.get("document_extraction")
     if extraction is None:
         return
-    status = "complete" if extraction["complete"] else "incomplete"
+    coverage = "complete" if extraction["complete"] else "incomplete"
+    health = "healthy" if extraction["healthy"] else "degraded"
     print(
-        f"Document extraction: {status}; "
+        f"Document extraction: coverage={coverage}, run={health}; "
         f"{_format_stage_counts(extraction, success_label='fetched', failure_label='failed')}"
     )
 
@@ -432,6 +445,45 @@ def run_flush_stage_results(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_duplicate_audit(args: argparse.Namespace) -> int:
+    """Rebuild bounded exact near-duplicate candidate evidence."""
+
+    from dotenv import load_dotenv
+
+    from .config import load_config
+    from .identity import DuplicateAuditor
+    from .persistence import PostgresDatabase
+    from .utils.logging import setup_logging
+
+    try:
+        config = load_config(args.config)
+    except Exception as exc:
+        print(f"Failed to load configuration: {exc}", file=sys.stderr)
+        return 1
+
+    setup_logging(config.logging)
+    load_dotenv()
+    audit = config.duplicate_audit
+    try:
+        with PostgresDatabase.from_environment() as database:
+            report = DuplicateAuditor(
+                database.pool,
+                similarity_threshold=audit.similarity_threshold,
+                minimum_similarity_words=audit.minimum_similarity_words,
+                group_batch_size=audit.group_batch_size,
+            ).run()
+    except Exception as exc:
+        print(f"Duplicate audit failed: {exc}", file=sys.stderr)
+        return 1
+
+    print(
+        "Duplicate audit complete: "
+        f"groups={report.groups}, pairs={report.candidate_pairs}, "
+        f"eligible={report.eligible_pairs}, matches={report.matches}"
+    )
+    return 0
+
+
 def main() -> int:
     """Main CLI entry point."""
     parser = create_parser()
@@ -442,6 +494,7 @@ def main() -> int:
         return 1
 
     handlers = {
+        "audit-duplicates": run_duplicate_audit,
         "flush-stage-results": run_flush_stage_results,
         "run": run_pipeline,
         "redeploy": run_redeploy,

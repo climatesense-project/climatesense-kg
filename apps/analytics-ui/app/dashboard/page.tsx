@@ -213,7 +213,7 @@ export default function DashboardPage() {
               <Skeleton className="h-40 w-full" />
             ) : (
               domainFailures?.map((item) => (
-                <div key={`${item.stage_name}-${item.stage_version}-${item.domain}`} className="flex items-center justify-between">
+                <div key={`${item.stage_name}-${item.stage_version}-${item.status}-${item.domain}`} className="flex items-center justify-between">
                   <div className="flex items-center gap-2 text-sm">
                     <Globe2 className="h-4 w-4 text-muted-foreground" />
                     <span className="truncate" title={item.domain}>
@@ -243,16 +243,24 @@ export default function DashboardPage() {
                   <TableRow>
                     <TableHead>Enricher</TableHead>
                     <TableHead>Error type</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead>HTTP</TableHead>
+                    <TableHead>Status</TableHead>
                     <TableHead className="text-right">Count</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {errorData.map((row) => (
-                    <TableRow key={`${row.stage_name}-${row.stage_version}-${row.error_type ?? "unknown"}`}>
+                    <TableRow key={`${row.stage_name}-${row.stage_version}-${row.status}-${row.error_type ?? "unknown"}-${row.http_status ?? "none"}`}>
                       <TableCell>{`${row.stage_name} v${row.stage_version}`}</TableCell>
                       <TableCell>
                         {row.error_type?.replaceAll("_", " ") ?? "unknown"}
                       </TableCell>
+                      <TableCell>
+                        {row.failure_category?.replaceAll("_", " ") ?? "—"}
+                      </TableCell>
+                      <TableCell>{row.http_status ?? "—"}</TableCell>
+                      <TableCell>{row.status.replaceAll("_", " ")}</TableCell>
                       <TableCell className="text-right">{row.error_count}</TableCell>
                     </TableRow>
                   ))}

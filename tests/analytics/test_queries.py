@@ -27,12 +27,19 @@ def test_triple_volume_filters_graphs_before_limit() -> None:
 
 
 def test_pipeline_metrics_use_immutable_stage_attempts() -> None:
-    queries = [
-        path.read_text(encoding="utf-8") for path in _PIPELINE_QUERY_DIR.glob("*.sql")
-    ]
+    query_paths = list(_PIPELINE_QUERY_DIR.glob("*.sql"))
+    queries = [path.read_text(encoding="utf-8") for path in query_paths]
 
-    assert len(queries) == 4
-    assert all("stage_result_attempts" in query for query in queries)
+    assert len(queries) == 5
+    attempt_queries = [
+        path.read_text(encoding="utf-8")
+        for path in query_paths
+        if path.name != "stages_retry_queue.sql"
+    ]
+    assert all("stage_result_attempts" in query for query in attempt_queries)
+    assert "stage_results" in (
+        _PIPELINE_QUERY_DIR / "stages_retry_queue.sql"
+    ).read_text(encoding="utf-8")
     assert all("cache_entries" not in query for query in queries)
     assert all("stage_version" in query for query in queries)
 

@@ -16,13 +16,17 @@ export type StageSuccessRate = {
 export type StageErrorBreakdown = {
   stage_name: string;
   stage_version: string;
+  status: string;
   error_type: string | null;
+  failure_category: string | null;
+  http_status: number | null;
   error_count: number;
 };
 
 export type StageDomainFailure = {
   stage_name: string;
   stage_version: string;
+  status: string;
   domain: string;
   failure_count: number;
 };

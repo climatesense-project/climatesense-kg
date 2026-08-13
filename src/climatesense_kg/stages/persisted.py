@@ -4,12 +4,18 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from enum import Enum
 import logging
 import time
 from typing import Any, TypedDict, TypeVar
 
-from ..persistence import StageResult, StageResultKey, StageResultStore
+from ..persistence import (
+    StageResult,
+    StageResultKey,
+    StageResultStore,
+)
+from ..utils.memory import format_process_rss
 from ..utils.progress import format_duration
 
 SubjectT = TypeVar("SubjectT")
@@ -23,10 +29,15 @@ class StageExecutionSummary(TypedDict):
     eligible_subjects: int
     stored_successes: int
     stored_failures: int
+    stored_deferred_failures: int
+    stored_permanent_failures: int
     computed_successes: int
     computed_failures: int
+    computed_deferred_failures: int
+    computed_permanent_failures: int
     missing_results: int
     complete: bool
+    healthy: bool
 
 
 class StageExecutionPolicy(Enum):
@@ -45,15 +56,89 @@ class StageExecutionReport:
     eligible_subjects: int
     stored_successes: int
     stored_failures: int
+    stored_deferred_failures: int
+    stored_permanent_failures: int
     computed_successes: int
     computed_failures: int
+    computed_deferred_failures: int
+    computed_permanent_failures: int
     missing_results: int
+
+    @classmethod
+    def combine(
+        cls,
+        reports: list[StageExecutionReport],
+        *,
+        stage_name: str | None = None,
+    ) -> StageExecutionReport:
+        """Combine bounded-batch reports without retaining their subjects."""
+
+        if not reports:
+            if stage_name is None:
+                raise ValueError("stage_name is required when combining no reports")
+            return cls(
+                stage_name=stage_name,
+                available=None,
+                eligible_subjects=0,
+                stored_successes=0,
+                stored_failures=0,
+                stored_deferred_failures=0,
+                stored_permanent_failures=0,
+                computed_successes=0,
+                computed_failures=0,
+                computed_deferred_failures=0,
+                computed_permanent_failures=0,
+                missing_results=0,
+            )
+        names = {report.stage_name for report in reports}
+        combined_name = stage_name or reports[0].stage_name
+        if len(names) != 1 or combined_name not in names:
+            raise ValueError("Only reports for one stage can be combined")
+        availability_values = {report.available for report in reports}
+        available = (
+            False
+            if False in availability_values
+            else True
+            if True in availability_values
+            else None
+        )
+        return cls(
+            stage_name=combined_name,
+            available=available,
+            eligible_subjects=sum(report.eligible_subjects for report in reports),
+            stored_successes=sum(report.stored_successes for report in reports),
+            stored_failures=sum(report.stored_failures for report in reports),
+            stored_deferred_failures=sum(
+                report.stored_deferred_failures for report in reports
+            ),
+            stored_permanent_failures=sum(
+                report.stored_permanent_failures for report in reports
+            ),
+            computed_successes=sum(report.computed_successes for report in reports),
+            computed_failures=sum(report.computed_failures for report in reports),
+            computed_deferred_failures=sum(
+                report.computed_deferred_failures for report in reports
+            ),
+            computed_permanent_failures=sum(
+                report.computed_permanent_failures for report in reports
+            ),
+            missing_results=sum(report.missing_results for report in reports),
+        )
 
     @property
     def complete(self) -> bool:
         """Return whether every eligible subject has a successful result."""
 
         return self.missing_results == 0
+
+    @property
+    def healthy(self) -> bool:
+        """Return whether this run avoided actionable dependency failures."""
+
+        return (
+            self.available is not False
+            and self.computed_failures == self.computed_permanent_failures
+        )
 
     def to_dict(self) -> StageExecutionSummary:
         """Return a JSON-compatible operational summary."""
@@ -64,10 +149,15 @@ class StageExecutionReport:
             "eligible_subjects": self.eligible_subjects,
             "stored_successes": self.stored_successes,
             "stored_failures": self.stored_failures,
+            "stored_deferred_failures": self.stored_deferred_failures,
+            "stored_permanent_failures": self.stored_permanent_failures,
             "computed_successes": self.computed_successes,
             "computed_failures": self.computed_failures,
+            "computed_deferred_failures": self.computed_deferred_failures,
+            "computed_permanent_failures": self.computed_permanent_failures,
             "missing_results": self.missing_results,
             "complete": self.complete,
+            "healthy": self.healthy,
         }
 
 
@@ -79,8 +169,12 @@ class StageProgress:
     eligible_subjects: int
     stored_successes: int
     stored_failures: int
+    stored_deferred_failures: int
+    stored_permanent_failures: int
     computed_successes: int
     computed_failures: int
+    computed_deferred_failures: int
+    computed_permanent_failures: int
     elapsed_seconds: float
 
     @property
@@ -89,7 +183,12 @@ class StageProgress:
 
     @property
     def processed_subjects(self) -> int:
-        return self.stored_successes + self.computed_subjects
+        return (
+            self.stored_successes
+            + self.stored_deferred_failures
+            + self.stored_permanent_failures
+            + self.computed_subjects
+        )
 
     @property
     def remaining_subjects(self) -> int:
@@ -124,12 +223,18 @@ class StageProgressLogger:
         *,
         label: str,
         interval_seconds: float = 10.0,
+        success_label: str = "computed",
+        failure_label: str = "failed",
+        include_stage_name: bool = True,
     ) -> None:
         if interval_seconds < 0:
             raise ValueError("Progress interval must be non-negative")
         self.stage_logger = stage_logger
         self.label = label
         self.interval_seconds = interval_seconds
+        self.success_label = success_label
+        self.failure_label = failure_label
+        self.include_stage_name = include_stage_name
         self.last_logged_elapsed: float | None = None
 
     def __call__(self, progress: StageProgress) -> None:
@@ -143,21 +248,33 @@ class StageProgressLogger:
             return
         self.last_logged_elapsed = progress.elapsed_seconds
         rate = progress.computation_rate
+        progress_label = (
+            f"{self.label} {progress.stage_name}"
+            if self.include_stage_name
+            else self.label
+        )
         self.stage_logger.info(
-            "%s %s: %d/%d processed (%.1f%%); "
-            "restored=%d, stored_failures=%d, computed=%d, failed=%d; "
-            "rate=%s; ETA=%s",
-            self.label,
-            progress.stage_name,
+            "%s: %d/%d processed (%.1f%%); "
+            "restored=%d, stored_failures=%d (deferred=%d, permanent=%d), "
+            "%s=%d, %s=%d (deferred=%d, permanent=%d); "
+            "rate=%s; ETA=%s; RSS=%s",
+            progress_label,
             progress.processed_subjects,
             progress.eligible_subjects,
             progress.percent_complete,
             progress.stored_successes,
             progress.stored_failures,
+            progress.stored_deferred_failures,
+            progress.stored_permanent_failures,
+            self.success_label,
             progress.computed_successes,
+            self.failure_label,
             progress.computed_failures,
+            progress.computed_deferred_failures,
+            progress.computed_permanent_failures,
             f"{rate:.2f}/s" if rate is not None else "n/a",
             format_duration(progress.eta_seconds),
+            format_process_rss(),
         )
 
 
@@ -189,6 +306,10 @@ def execute_persisted_stage(
     pending: list[tuple[StageResultKey, SubjectT]] = []
     stored_successes = 0
     stored_failures = 0
+    stored_deferred_failures = 0
+    stored_permanent_failures = 0
+    missing_results = 0
+    now = datetime.now(UTC)
 
     for key, subject in subjects.items():
         stored = stored_results.get(key)
@@ -198,10 +319,20 @@ def execute_persisted_stage(
             continue
         if stored is not None:
             stored_failures += 1
+            if stored.permanent:
+                stored_permanent_failures += 1
+                missing_results += 1
+                continue
+            if stored.deferred(now):
+                stored_deferred_failures += 1
+                missing_results += 1
+                continue
         pending.append((key, subject))
 
     computed_successes = 0
     computed_failures = 0
+    computed_deferred_failures = 0
+    computed_permanent_failures = 0
 
     def notify_progress() -> None:
         if progress_callback is None:
@@ -212,8 +343,12 @@ def execute_persisted_stage(
                 eligible_subjects=len(keys),
                 stored_successes=stored_successes,
                 stored_failures=stored_failures,
+                stored_deferred_failures=stored_deferred_failures,
+                stored_permanent_failures=stored_permanent_failures,
                 computed_successes=computed_successes,
                 computed_failures=computed_failures,
+                computed_deferred_failures=computed_deferred_failures,
+                computed_permanent_failures=computed_permanent_failures,
                 elapsed_seconds=max(0.0, time.monotonic() - started),
             )
         )
@@ -221,9 +356,8 @@ def execute_persisted_stage(
     notify_progress()
 
     available: bool | None = None
-    missing_results = 0
     if pending and policy is StageExecutionPolicy.STORED_ONLY:
-        missing_results = len(pending)
+        missing_results += len(pending)
     elif pending:
         if availability_check is None:
             available = True
@@ -240,7 +374,7 @@ def execute_persisted_stage(
                 "%s unavailable; applying only stored successful results",
                 stage_name,
             )
-            missing_results = len(pending)
+            missing_results += len(pending)
         else:
             batch_size = compute_batch_size or min(100, len(pending))
             persist_size = checkpoint_size or len(pending)
@@ -266,9 +400,8 @@ def execute_persisted_stage(
                     except Exception as exc:
                         stage_logger.error("%s batch failed: %s", stage_name, exc)
                         computed = [
-                            StageResult(
-                                success=False,
-                                payload={
+                            StageResult.retryable_failure(
+                                {
                                     "error_type": "stage_error",
                                     "error": str(exc),
                                 },
@@ -284,6 +417,10 @@ def execute_persisted_stage(
                         else:
                             computed_failures += 1
                             missing_results += 1
+                            if result.permanent:
+                                computed_permanent_failures += 1
+                            elif result.deferred():
+                                computed_deferred_failures += 1
                         if len(checkpoint) >= persist_size:
                             persist_checkpoint()
                     notify_progress()
@@ -298,7 +435,11 @@ def execute_persisted_stage(
         eligible_subjects=len(keys),
         stored_successes=stored_successes,
         stored_failures=stored_failures,
+        stored_deferred_failures=stored_deferred_failures,
+        stored_permanent_failures=stored_permanent_failures,
         computed_successes=computed_successes,
         computed_failures=computed_failures,
+        computed_deferred_failures=computed_deferred_failures,
+        computed_permanent_failures=computed_permanent_failures,
         missing_results=missing_results,
     )

@@ -34,6 +34,7 @@ The Analytics API provides metrics and statistics about the knowledge graph and 
 - `GET /metrics/stages/error-types` - Stage error type breakdown
 - `GET /metrics/stages/domain-failures` - Document extraction failures by domain
 - `GET /metrics/stages/recent-activity` - Recent semantic-stage activity
+- `GET /metrics/stages/retry-queue` - Current deferred and permanent stage failures
 
 ### Knowledge Graph Metrics
 

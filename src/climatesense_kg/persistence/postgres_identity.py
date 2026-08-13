@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Iterator
 from contextlib import contextmanager
-import json
 from typing import Any
 from uuid import UUID
 
@@ -105,15 +104,8 @@ class PostgresIdentityBatch:
             organization_uris, urls, text_hashes
         )
 
-        claim_pairs = sorted(
-            {(organization.uri, record.claim.uri) for record, organization in records}
-        )
-        fuzzy_review_ids = self._claim_review_ids(
-            [pair[0] for pair in claim_pairs],
-            [pair[1] for pair in claim_pairs],
-        )
         review_rows = self._review_rows(
-            direct_review_ids | fuzzy_review_ids,
+            direct_review_ids,
             exact_document_ids,
         )
         document_ids = exact_document_ids | {row["document_id"] for row in review_rows}
@@ -181,9 +173,9 @@ class PostgresIdentityBatch:
                     INSERT INTO review_documents (
                         id, organization_uri, preferred_url, final_url,
                         canonical_url, extracted_text, normalized_text_hash,
-                        shingle_signature, word_count
+                        word_count
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     [
                         (
@@ -194,7 +186,6 @@ class PostgresIdentityBatch:
                             document_urls[document.id][1],
                             document.content,
                             document.normalized_text_hash,
-                            json.dumps(sorted(document.shingles)),
                             document.word_count,
                         )
                         for document in new_documents
@@ -230,12 +221,12 @@ class PostgresIdentityBatch:
                         observed_url, final_url, canonical_url,
                         claim_uri, rating_fingerprint,
                         source_text, extracted_text, normalized_text_hash,
-                        shingle_signature, word_count, payload_hash,
+                        word_count, payload_hash,
                         document_id, claim_review_id
                     )
                     VALUES (
                         %s, %s, %s, %s, %s, %s, %s, %s,
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s
+                        %s, %s, %s, %s, %s, %s, %s, %s
                     )
                     ON CONFLICT (record_key) DO UPDATE SET
                         observed_url = EXCLUDED.observed_url,
@@ -246,7 +237,6 @@ class PostgresIdentityBatch:
                         source_text = EXCLUDED.source_text,
                         extracted_text = EXCLUDED.extracted_text,
                         normalized_text_hash = EXCLUDED.normalized_text_hash,
-                        shingle_signature = EXCLUDED.shingle_signature,
                         word_count = EXCLUDED.word_count,
                         payload_hash = EXCLUDED.payload_hash,
                         document_id = EXCLUDED.document_id,
@@ -274,7 +264,6 @@ class PostgresIdentityBatch:
                                    source.extracted_text, source.source_text
                                ) AS content,
                                source.normalized_text_hash,
-                               source.shingle_signature,
                                source.word_count
                         FROM source_review_records AS source
                         WHERE source.document_id = ANY(%s::uuid[])
@@ -304,11 +293,6 @@ class PostgresIdentityBatch:
                             THEN document.normalized_text_hash
                             ELSE selected.normalized_text_hash
                         END,
-                        shingle_signature = CASE
-                            WHEN selected.document_id IS NULL
-                            THEN document.shingle_signature
-                            ELSE selected.shingle_signature
-                        END,
                         word_count = CASE
                             WHEN selected.document_id IS NULL
                             THEN document.word_count
@@ -323,7 +307,6 @@ class PostgresIdentityBatch:
                               document.final_url, document.canonical_url,
                               document.extracted_text,
                               document.normalized_text_hash,
-                              document.shingle_signature,
                               document.word_count
                     """,
                     (
@@ -354,33 +337,7 @@ class PostgresIdentityBatch:
                     document.preferred_url = row["preferred_url"]
                     document.content = row["extracted_text"]
                     document.normalized_text_hash = row["normalized_text_hash"]
-                    document.shingles = frozenset(row["shingle_signature"])
                     document.word_count = row["word_count"]
-
-            if plan.candidates:
-                cursor.executemany(
-                    """
-                    INSERT INTO identity_candidates (
-                        source_record_key, candidate_review_id,
-                        similarity, evidence
-                    )
-                    VALUES (%s, %s, %s, %s)
-                    ON CONFLICT (
-                        source_record_key, candidate_review_id
-                    ) DO UPDATE SET
-                        similarity = EXCLUDED.similarity,
-                        evidence = EXCLUDED.evidence
-                    """,
-                    [
-                        (
-                            planned.source_record_key,
-                            planned.candidate.candidate_review_id,
-                            planned.candidate.similarity,
-                            json.dumps(planned.candidate.evidence),
-                        )
-                        for planned in plan.candidates
-                    ],
-                )
         return plan.results
 
     def _direct_assignments(
@@ -505,7 +462,7 @@ class PostgresIdentityBatch:
                 """
                 SELECT id, organization_uri, preferred_url,
                        final_url, canonical_url, extracted_text,
-                       normalized_text_hash, shingle_signature, word_count
+                       normalized_text_hash, word_count
                 FROM review_documents
                 WHERE id = ANY(%s::uuid[])
                 """,
@@ -564,7 +521,6 @@ class PostgresIdentityBatch:
                 preferred_url=row["preferred_url"],
                 content=row["extracted_text"],
                 normalized_text_hash=row["normalized_text_hash"],
-                shingles=frozenset(row["shingle_signature"]),
                 word_count=row["word_count"],
             )
         return documents
@@ -600,7 +556,6 @@ class PostgresIdentityBatch:
             record.document.source_text,
             record.document.extracted_text,
             record.document.normalized_text_hash,
-            json.dumps(record.document.shingle_signature),
             record.document.word_count,
             record.payload_hash,
             source.assignment.review.document.id,

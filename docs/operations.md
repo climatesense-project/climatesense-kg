@@ -90,10 +90,10 @@ docker logs --tail 100 --follow <pipeline-container-name>
 Inspect durable extraction coverage at any time:
 
 ```sql
-SELECT success, COUNT(*)
+SELECT status, COUNT(*), MIN(retry_at) AS next_retry_at
 FROM stage_results
 WHERE stage_name = 'document.extract'
-GROUP BY success;
+GROUP BY status;
 ```
 
 Checkpoint size and progress-log frequency are operational settings and do not
@@ -101,15 +101,31 @@ invalidate reusable extraction results.
 Run with `--skip-extraction` to restore successful checkpoints without retrying
 stored failures or fetching missing documents.
 
+## Pipeline Memory
+
+Ingestion writes each source into run-scoped PostgreSQL observations inside one
+source transaction. Later stages read fixed-size batches, and N-Triples graphs are
+written incrementally to atomic temporary files. The observation rows are removed
+when the pipeline run finishes. Progress lines include process RSS; sustained growth
+across completed batches indicates a retained object and should be investigated.
+
+A PostgreSQL advisory lock permits one pipeline run at a time. If a process exits
+without finalizing its run, the database releases the session lock automatically;
+the next run marks that run failed and removes its abandoned observation rows before
+ingestion starts.
+
+Use N-Triples for complete production snapshots. Turtle, RDF/XML, JSON-LD, and the
+other supported serializers buffer their input and are intended for smaller exports.
+
 ## Identity-Resolution Progress
 
 Identity resolution logs committed source records, canonical reviews, batches,
 throughput, and estimated completion time. Each batch contains at most
 `identity_resolution.batch_size` records. The repository loads the relevant source
-assignments, document evidence, and similarity candidates with set-based queries.
-The resolver plans the complete batch in memory, and the repository persists the
-plan with bulk statements in one transaction. Interruption recovery remains
-bounded: committed batches stay durable and only the active batch is rolled back.
+assignments and exact document evidence with set-based queries. The resolver plans
+the complete batch in memory, and the repository persists the plan with bulk
+statements in one transaction. Interruption recovery remains bounded: committed
+batches stay durable and only the active batch is rolled back.
 
 Monitor durable identity progress directly:
 
@@ -120,6 +136,43 @@ FROM source_review_records;
 
 `identity_resolution.progress_interval_seconds` controls log frequency. Progress is
 reported after commits, so it always reflects durable work.
+
+Near-duplicate body comparison is a separate exact audit and does not participate in
+identity assignment:
+
+```bash
+uv run climatesense-kg audit-duplicates --config config/daily.yaml
+```
+
+It compares same-organization, same-claim groups in batches and replaces the manual
+review queue in `identity_candidates` without changing canonical identities.
+
+## Document-Extraction Retry Policy
+
+Document failures remain queryable in both stage-result tables. Retryable failures
+have a `retry_at` timestamp; permanent failures remain stored with a null retry time.
+The default scheduling policy is:
+
+- transient network and server failures: one hour;
+- DNS resolution failures: seven days;
+- access blocks and detected bot challenges: thirty days;
+- pages with no extractable text: thirty days;
+- invalid URLs, unsupported or oversized responses, and HTTP 404/410: permanent.
+
+Changing the observed URL or document-extraction stage version creates a distinct
+result identity. `--force-regenerate` explicitly bypasses stored retry decisions.
+`--skip-extraction` performs no external requests and only applies stored successes.
+
+Inspect the current retry queue with:
+
+```sql
+SELECT stage_name, status, payload->>'failure_category' AS category,
+       COUNT(*) AS results, MIN(retry_at) AS next_retry_at
+FROM stage_results
+WHERE stage_name = 'document.extract' AND status <> 'success'
+GROUP BY stage_name, status, category
+ORDER BY next_retry_at NULLS LAST;
+```
 
 ## Enrichment Completeness
 

@@ -90,6 +90,7 @@ class PostgresDatabase:
                 for migration in migrations:
                     if migration.name in applied:
                         continue
+                    logger.info("Applying database migration %s", migration.name)
                     sql = migration.read_text(encoding="utf-8")
                     cursor.execute(sql, prepare=False)
                     cursor.execute(

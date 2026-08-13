@@ -15,10 +15,9 @@ DEFAULT_SHINGLE_SIZE = 5
 
 @dataclass(frozen=True)
 class DocumentFingerprint:
-    """Normalized exact and near-duplicate representation of document content."""
+    """Bounded exact identity evidence derived from document content."""
 
     normalized_text_hash: str | None
-    shingles: frozenset[str]
     word_count: int
 
 
@@ -38,17 +37,10 @@ def fingerprint_text(
         raise ValueError("Shingle size must be at least one")
     normalized = normalize_identity_text(text or "")
     if not normalized:
-        return DocumentFingerprint(None, frozenset(), 0)
+        return DocumentFingerprint(None, 0)
     words = normalized.split()
-    shingles = frozenset(
-        hashlib.sha256(
-            " ".join(words[index : index + shingle_size]).encode()
-        ).hexdigest()
-        for index in range(len(words) - shingle_size + 1)
-    )
     return DocumentFingerprint(
         normalized_text_hash=hashlib.sha256(normalized.encode()).hexdigest(),
-        shingles=shingles,
         word_count=len(words),
     )
 
@@ -60,9 +52,22 @@ def fingerprint_document(
 
     fingerprint = fingerprint_text(document.content, shingle_size=shingle_size)
     document.normalized_text_hash = fingerprint.normalized_text_hash
-    document.shingle_signature = sorted(fingerprint.shingles)
     document.word_count = fingerprint.word_count
     return fingerprint
+
+
+def text_shingles(
+    text: str | None, *, shingle_size: int = DEFAULT_SHINGLE_SIZE
+) -> frozenset[str]:
+    """Build exact shingles for one bounded, on-demand comparison."""
+
+    if shingle_size < 1:
+        raise ValueError("Shingle size must be at least one")
+    words = normalize_identity_text(text or "").split()
+    return frozenset(
+        " ".join(words[index : index + shingle_size])
+        for index in range(len(words) - shingle_size + 1)
+    )
 
 
 def shingle_containment(

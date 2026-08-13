@@ -4,8 +4,8 @@ SELECT
     COUNT(*) AS recent_results,
     MIN(created_at) AS earliest,
     MAX(created_at) AS latest,
-    COUNT(*) FILTER (WHERE success) AS successful,
-    COUNT(*) FILTER (WHERE NOT success) AS failed
+    COUNT(*) FILTER (WHERE status = 'success') AS successful,
+    COUNT(*) FILTER (WHERE status <> 'success') AS failed
 FROM stage_result_attempts
 WHERE (:stage_name IS NULL OR stage_name = :stage_name)
   AND (:from_ts IS NULL OR created_at >= :from_ts)

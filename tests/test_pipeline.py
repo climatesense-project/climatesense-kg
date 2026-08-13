@@ -204,7 +204,7 @@ def test_skip_extraction_restores_stored_results_without_fetching(
     extractor = DocumentExtractor(store, rate_limit_delay=0)
     store.put(
         extractor._key(records[0]),
-        StageResult(success=True, payload={"content": "Stored extracted content"}),
+        StageResult.succeeded({"content": "Stored extracted content"}),
     )
     dependencies.document_extractor = extractor
     pipeline = Pipeline(_config(tmp_path, "source-a"), dependencies)
@@ -222,7 +222,7 @@ def test_skip_extraction_restores_stored_results_without_fetching(
     assert results["document_extraction"]["missing_results"] == 1
     assert records[0].document.extracted_text == "Stored extracted content"
     assert records[1].document.extracted_text is None
-    assert results["degraded"] is True
+    assert results["degraded"] is False
 
 
 def test_incomplete_document_extraction_marks_pipeline_degraded(
@@ -433,7 +433,6 @@ def test_deployment_replaces_every_full_snapshot_graph(tmp_path: Path) -> None:
         items=0,
         failed_items=0,
         file_size=0,
-        review_uris=[],
     )
 
     result = dependencies.artifact_deployer.deploy([artifact])

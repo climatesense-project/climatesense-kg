@@ -15,7 +15,6 @@ from .models import (
     IdentityBatchEvidence,
     IdentityBatchPlan,
     IdentityBatchRecord,
-    IdentityCandidate,
     RegisteredDocument,
     RegisteredReview,
 )
@@ -51,7 +50,6 @@ class InMemoryIdentityRegistry:
         self._source_documents: dict[str, SourceReviewRecord] = {}
         self._source_order: dict[str, int] = {}
         self._next_source_order = 0
-        self._candidates: dict[tuple[str, UUID], IdentityCandidate] = {}
 
     @contextmanager
     def batch(self, organization_uris: set[str]) -> Iterator[IdentityRepositoryBatch]:
@@ -133,20 +131,5 @@ class InMemoryIdentityRegistry:
                 )
                 document.content = selected.document.content
                 document.normalized_text_hash = selected.document.normalized_text_hash
-                document.shingles = frozenset(selected.document.shingle_signature)
                 document.word_count = selected.document.word_count
-        for planned in committed.candidates:
-            candidate = planned.candidate
-            self._candidates[
-                (planned.source_record_key, candidate.candidate_review_id)
-            ] = candidate
         return committed.results
-
-    @property
-    def candidates(self) -> list[tuple[str, IdentityCandidate]]:
-        """Return recorded candidates for acceptance-test assertions."""
-
-        return [
-            (source_record_key, candidate)
-            for (source_record_key, _review_id), candidate in self._candidates.items()
-        ]

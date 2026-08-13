@@ -1,5 +1,8 @@
 """RDF contract tests for resolved claim reviews."""
 
+from datetime import datetime
+from pathlib import Path
+from unittest.mock import Mock
 from uuid import UUID
 
 from rdflib import Graph, URIRef
@@ -12,6 +15,7 @@ from climatesense_kg.domain import (
     CanonicalRating,
     CanonicalReviewDocument,
 )
+from climatesense_kg.rdf_generation.artifacts import RdfArtifactBuilder
 from climatesense_kg.rdf_generation.generator import RDFGenerator
 
 SCHEMA = "http://schema.org/"
@@ -83,3 +87,73 @@ def test_source_rating_iri_is_scoped_to_organization() -> None:
         len(set(graph.objects(node, URIRef(f"{SCHEMA}author")))) == 1
         for node in rating_nodes
     )
+
+
+def test_streamed_ntriples_is_graph_equivalent_to_buffered_generation(
+    tmp_path: Path,
+) -> None:
+    organization = CanonicalOrganization(
+        uri=f"{BASE}/organization/factual",
+        name="Factual",
+        website="https://factual.ro",
+    )
+    first = _review(organization)
+    second = _review(organization)
+    second.id = UUID("550e8400-e29b-41d4-a716-446655440099")
+    second.document.id = UUID("550e8400-e29b-41d4-a716-446655440098")
+    second.document.urls = {"https://factual.ro/another"}
+    second.document.preferred_url = "https://factual.ro/another"
+
+    expected = Graph().parse(
+        data=RDFGenerator(BASE).generate([first, second], "nt"),
+        format="nt",
+    )
+    builder = RdfArtifactBuilder(
+        RDFGenerator(BASE),
+        output_path_template=str(tmp_path / "{SOURCE}.nt"),
+        output_format="nt",
+        enrichment_graphs={},
+    )
+    session = builder.start(
+        successful_sources=["claimreviewdata"],
+        run_datetime=datetime(2026, 8, 13),
+    )
+    session.add([first])
+    session.add([second])
+    report = session.finish()
+
+    actual = Graph().parse(report.artifacts[0].path, format="nt")
+    assert set(actual) == set(expected)
+    assert report.input_items == 2
+    assert report.successful_items == 2
+    assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_streaming_projection_errors_are_summarized_per_graph(tmp_path: Path) -> None:
+    organization = CanonicalOrganization(
+        uri=f"{BASE}/organization/factual",
+        name="Factual",
+        website="https://factual.ro",
+    )
+    generator = RDFGenerator(BASE)
+    generator.project_claim_review_nt = Mock(  # type: ignore[method-assign]
+        side_effect=ValueError("invalid review")
+    )
+    builder = RdfArtifactBuilder(
+        generator,
+        output_path_template=str(tmp_path / "{SOURCE}.nt"),
+        output_format="nt",
+        enrichment_graphs={},
+    )
+    session = builder.start(
+        successful_sources=["claimreviewdata"],
+        run_datetime=datetime(2026, 8, 13),
+    )
+
+    session.add([_review(organization) for _index in range(100)])
+    report = session.finish()
+
+    assert report.failed_items == 100
+    assert report.source_errors == [
+        "claimreviewdata: 100 reviews failed projection; first error: invalid review"
+    ]

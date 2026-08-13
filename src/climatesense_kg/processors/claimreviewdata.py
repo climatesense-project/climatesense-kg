@@ -1,8 +1,10 @@
 """ClaimReviewData data processor."""
 
+import codecs
 from collections.abc import Iterator
+from io import BytesIO
 import json
-from typing import Any
+from typing import Any, BinaryIO
 
 from ..domain import (
     CanonicalClaim,
@@ -18,12 +20,13 @@ class ClaimReviewDataProcessor(BaseProcessor):
 
     def process(self, raw_data: bytes) -> Iterator[SourceReviewRecord]:
         """Process ClaimReviewData raw data into source observations."""
-        try:
-            data = json.loads(raw_data.decode("utf-8"))
-            if not isinstance(data, list):
-                raise ValueError("ClaimReviewData payload must be a list")
+        yield from self.process_stream(BytesIO(raw_data))
 
-            for item in data:
+    def process_stream(self, raw_data: BinaryIO) -> Iterator[SourceReviewRecord]:
+        """Incrementally decode the top-level JSON array."""
+
+        try:
+            for item in self._iter_json_array(raw_data):
                 try:
                     is_valid, errors = self._validate_item(item)
                     if not is_valid:
@@ -51,10 +54,76 @@ class ClaimReviewDataProcessor(BaseProcessor):
                     )
                     continue
 
-        except json.JSONDecodeError as e:
-            self.logger.error(f"Invalid JSON data: {e}")
-        except Exception as e:
-            self.logger.error(f"Error processing ClaimReviewData data: {e}")
+        except json.JSONDecodeError as exc:
+            self.logger.error("Invalid JSON data: %s", exc)
+            raise
+        except Exception as exc:
+            self.logger.error("Error processing ClaimReviewData data: %s", exc)
+            raise
+
+    @staticmethod
+    def _iter_json_array(raw_data: BinaryIO) -> Iterator[Any]:
+        """Yield values from a UTF-8 JSON array with bounded buffering."""
+
+        reader = codecs.getreader("utf-8")(raw_data)
+        decoder = json.JSONDecoder()
+        buffer = ""
+        eof = False
+        state = "start"
+
+        def fill() -> bool:
+            nonlocal buffer, eof
+            chunk = reader.read(64 * 1024)
+            if not chunk:
+                eof = True
+                return False
+            buffer += chunk
+            return True
+
+        def finish() -> None:
+            nonlocal buffer
+            while not eof and fill():
+                pass
+            if buffer[1:].strip():
+                raise ValueError("Unexpected data after ClaimReviewData JSON array")
+
+        while True:
+            buffer = buffer.lstrip()
+            if not buffer and not eof:
+                fill()
+                continue
+            if state == "start":
+                if not buffer:
+                    raise ValueError("ClaimReviewData payload is empty")
+                if buffer[0] != "[":
+                    raise ValueError("ClaimReviewData payload must be a list")
+                buffer = buffer[1:]
+                state = "value"
+                continue
+            if state == "value":
+                if buffer.startswith("]"):
+                    finish()
+                    return
+                try:
+                    item, end = decoder.raw_decode(buffer)
+                except json.JSONDecodeError:
+                    if not eof and fill():
+                        continue
+                    raise
+                yield item
+                buffer = buffer[end:]
+                state = "separator"
+                continue
+            if buffer.startswith(","):
+                buffer = buffer[1:]
+                state = "value"
+                continue
+            if buffer.startswith("]"):
+                finish()
+                return
+            if not eof and fill():
+                continue
+            raise ValueError("ClaimReviewData JSON array is missing a separator")
 
     def _normalize_item(self, item: dict[str, Any]) -> list[SourceReviewRecord]:
         """Convert every unambiguous claim/rating pair in one source item."""
@@ -85,7 +154,12 @@ class ClaimReviewDataProcessor(BaseProcessor):
         for index, (claim_text, source_review) in enumerate(claim_review_pairs):
             try:
                 claim = CanonicalClaim(
-                    text=claim_text, appearances=item.get("appearances", [])
+                    text=claim_text,
+                    appearances=[
+                        appearance
+                        for appearance in item.get("appearances", [])
+                        if isinstance(appearance, str) and appearance
+                    ],
                 )
             except ValueError as exc:
                 self.logger.warning(

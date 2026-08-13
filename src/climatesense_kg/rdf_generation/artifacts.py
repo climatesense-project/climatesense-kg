@@ -5,13 +5,20 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
+import fcntl
+import logging
+import os
 from pathlib import Path
-from typing import Literal
+import stat
+import tempfile
+from typing import BinaryIO, Literal
 
 from ..domain import CanonicalClaimReview
+from ..utils.memory import format_process_rss
 from .generator import RDFGenerator
 
 ArtifactKind = Literal["source", "enrichment"]
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -24,7 +31,6 @@ class RdfArtifact:
     items: int
     failed_items: int
     file_size: int
-    review_uris: list[str]
     incomplete_stages: tuple[str, ...] = ()
 
     @property
@@ -144,6 +150,31 @@ class RdfArtifactBuilder:
             enrichment_errors=enrichment_errors,
         )
 
+    def start(
+        self,
+        *,
+        successful_sources: list[str],
+        run_datetime: datetime,
+    ) -> RdfBuildSession:
+        """Start a bounded artifact build for the configured output format."""
+
+        graph_count = len(successful_sources) + len(self.enrichment_graphs)
+        if graph_count > 1 and "{SOURCE}" not in self.output_path_template:
+            raise ValueError(
+                "Multi-graph RDF output requires {SOURCE} in output.output_path"
+            )
+        if self.output_format == "nt":
+            return _StreamingNTriplesSession(
+                self,
+                successful_sources=successful_sources,
+                run_datetime=run_datetime,
+            )
+        return _BufferedRdfSession(
+            self,
+            successful_sources=successful_sources,
+            run_datetime=run_datetime,
+        )
+
     def _build_graph(
         self,
         graph_name: str,
@@ -174,7 +205,6 @@ class RdfArtifactBuilder:
                 items=len(successful),
                 failed_items=len(failed),
                 file_size=path.stat().st_size,
-                review_uris=successful,
                 incomplete_stages=tuple(sorted(incomplete_stages)),
             ),
             failed,
@@ -193,3 +223,240 @@ class RdfArtifactBuilder:
         for placeholder, value in replacements.items():
             path = path.replace(placeholder, value)
         return Path(path)
+
+
+class RdfBuildSession:
+    """Incremental artifact build contract used by the pipeline."""
+
+    def add(self, reviews: list[CanonicalClaimReview]) -> None:
+        raise NotImplementedError
+
+    def finish(
+        self, *, incomplete_stages_by_graph: dict[str, set[str]] | None = None
+    ) -> RdfBuildReport:
+        raise NotImplementedError
+
+    def abort(self) -> None:
+        raise NotImplementedError
+
+
+class _BufferedRdfSession(RdfBuildSession):
+    """Buffer RDF formats whose documents cannot be safely concatenated."""
+
+    def __init__(
+        self,
+        builder: RdfArtifactBuilder,
+        *,
+        successful_sources: list[str],
+        run_datetime: datetime,
+    ) -> None:
+        self.builder = builder
+        self.successful_sources = successful_sources
+        self.run_datetime = run_datetime
+        self.reviews: list[CanonicalClaimReview] = []
+
+    def add(self, reviews: list[CanonicalClaimReview]) -> None:
+        self.reviews.extend(reviews)
+
+    def finish(
+        self, *, incomplete_stages_by_graph: dict[str, set[str]] | None = None
+    ) -> RdfBuildReport:
+        return self.builder.build(
+            self.reviews,
+            successful_sources=self.successful_sources,
+            run_datetime=self.run_datetime,
+            incomplete_stages_by_graph=incomplete_stages_by_graph,
+        )
+
+    def abort(self) -> None:
+        self.reviews.clear()
+
+
+@dataclass
+class _GraphStream:
+    graph_name: str
+    kind: ArtifactKind
+    path: Path
+    temp_path: Path
+    handle: BinaryIO
+    items: int = 0
+    failed_items: int = 0
+    first_error: str | None = None
+
+
+class _StreamingNTriplesSession(RdfBuildSession):
+    """Write independent review fragments to atomic graph snapshots."""
+
+    def __init__(
+        self,
+        builder: RdfArtifactBuilder,
+        *,
+        successful_sources: list[str],
+        run_datetime: datetime,
+    ) -> None:
+        self.builder = builder
+        self.successful_sources = successful_sources
+        self.run_datetime = run_datetime
+        self.streams = {
+            graph_name: self._open_stream(graph_name, "source")
+            for graph_name in successful_sources
+        }
+        self.streams.update(
+            {
+                graph_name: self._open_stream(graph_name, "enrichment")
+                for graph_name in builder.enrichment_graphs
+            }
+        )
+        self.input_items = 0
+        self.successful_items = 0
+        self.failed_items = 0
+        self.source_errors: list[str] = []
+        self.enrichment_errors: list[str] = []
+        self.closed = False
+
+    def _open_stream(self, graph_name: str, kind: ArtifactKind) -> _GraphStream:
+        path = self.builder._output_path(graph_name, self.run_datetime)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        output_mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
+        handle = tempfile.NamedTemporaryFile(
+            mode="wb",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        )
+        os.fchmod(handle.fileno(), output_mode)
+        return _GraphStream(
+            graph_name=graph_name,
+            kind=kind,
+            path=path,
+            temp_path=Path(handle.name),
+            handle=handle,
+        )
+
+    def add(self, reviews: list[CanonicalClaimReview]) -> None:
+        if self.closed:
+            raise RuntimeError("RDF build session is already closed")
+        for review in reviews:
+            self.input_items += 1
+            failed = False
+            for source in review.source_graphs():
+                stream = self.streams.get(source)
+                if stream is None:
+                    continue
+                try:
+                    fragment = self.builder.generator.project_claim_review_nt(
+                        review.for_source(source)
+                    )
+                    stream.handle.write(fragment)
+                    stream.items += 1
+                except Exception as exc:
+                    stream.failed_items += 1
+                    stream.first_error = stream.first_error or str(exc)
+                    failed = True
+
+            for graph_name, entity_sources in self.builder.enrichment_graphs.items():
+                if not self.builder.generator.has_entity_enrichment(
+                    review, entity_sources
+                ):
+                    continue
+                stream = self.streams[graph_name]
+                try:
+                    fragment = self.builder.generator.project_entity_enrichment_nt(
+                        review,
+                        entity_sources,
+                    )
+                    stream.handle.write(fragment)
+                    stream.items += 1
+                except Exception as exc:
+                    stream.failed_items += 1
+                    stream.first_error = stream.first_error or str(exc)
+                    failed = True
+            if failed:
+                self.failed_items += 1
+            else:
+                self.successful_items += 1
+
+    def finish(
+        self, *, incomplete_stages_by_graph: dict[str, set[str]] | None = None
+    ) -> RdfBuildReport:
+        if self.closed:
+            raise RuntimeError("RDF build session is already closed")
+        incomplete_stages_by_graph = incomplete_stages_by_graph or {}
+        artifacts: list[RdfArtifact] = []
+        try:
+            for stream in self.streams.values():
+                stream.handle.flush()
+                os.fsync(stream.handle.fileno())
+                stream.handle.close()
+                lock_path = stream.path.with_suffix(f"{stream.path.suffix}.lock")
+                with lock_path.open("a+b") as lock_file:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+                    os.replace(stream.temp_path, stream.path)
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                artifacts.append(
+                    RdfArtifact(
+                        graph_name=stream.graph_name,
+                        kind=stream.kind,
+                        path=stream.path,
+                        items=stream.items,
+                        failed_items=stream.failed_items,
+                        file_size=stream.path.stat().st_size,
+                        incomplete_stages=tuple(
+                            sorted(
+                                incomplete_stages_by_graph.get(stream.graph_name, set())
+                            )
+                        ),
+                    )
+                )
+        except Exception:
+            self.abort()
+            raise
+        self.closed = True
+        self.source_errors = [
+            self._error_summary(stream)
+            for stream in self.streams.values()
+            if stream.kind == "source" and stream.failed_items
+        ]
+        self.enrichment_errors = [
+            self._error_summary(stream)
+            for stream in self.streams.values()
+            if stream.kind == "enrichment" and stream.failed_items
+        ]
+        logger.info(
+            "RDF projection finished: %d reviews, %d failed; RSS=%s",
+            self.input_items,
+            self.failed_items,
+            format_process_rss(),
+        )
+        return RdfBuildReport(
+            artifacts=artifacts,
+            input_items=self.input_items,
+            successful_items=self.successful_items,
+            failed_items=self.failed_items,
+            output_format="nt",
+            total_file_size=sum(artifact.file_size for artifact in artifacts),
+            source_errors=self.source_errors,
+            enrichment_errors=self.enrichment_errors,
+        )
+
+    @staticmethod
+    def _error_summary(stream: _GraphStream) -> str:
+        summary = (
+            f"{stream.graph_name}: {stream.failed_items} reviews failed projection"
+        )
+        return (
+            f"{summary}; first error: {stream.first_error}"
+            if stream.first_error
+            else summary
+        )
+
+    def abort(self) -> None:
+        if self.closed:
+            return
+        for stream in self.streams.values():
+            try:
+                stream.handle.close()
+            finally:
+                stream.temp_path.unlink(missing_ok=True)
+        self.closed = True

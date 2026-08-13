@@ -57,6 +57,7 @@ class Enricher(ABC):
         policy: StageExecutionPolicy = StageExecutionPolicy.COMPUTE,
         force: bool = False,
         availability_check: Callable[[], bool] | None = None,
+        report_progress: bool = True,
     ) -> StageExecutionReport:
         """Apply successful results and report semantic-subject completeness."""
 
@@ -86,13 +87,17 @@ class Enricher(ABC):
             stage_logger=self.logger,
             compute_batch_size=self.compute_batch_size,
             checkpoint_size=self.checkpoint_size,
-            progress_callback=StageProgressLogger(
-                self.logger,
-                label="Enrichment",
-                interval_seconds=self.progress_interval_seconds,
+            progress_callback=(
+                StageProgressLogger(
+                    self.logger,
+                    label="Enrichment",
+                    interval_seconds=self.progress_interval_seconds,
+                )
+                if report_progress
+                else None
             ),
         )
-        if items:
+        if items and report_progress:
             self.logger.info(
                 "%s completeness: %d eligible, %d stored, %d computed, %d missing",
                 self.name,
@@ -123,9 +128,8 @@ class Enricher(ABC):
             except Exception as exc:
                 self.logger.error("%s failed for %s: %s", self.name, item.uri, exc)
                 results.append(
-                    StageResult(
-                        success=False,
-                        payload={"error_type": "stage_error", "error": str(exc)},
+                    StageResult.retryable_failure(
+                        {"error_type": "stage_error", "error": str(exc)}
                     )
                 )
         return results

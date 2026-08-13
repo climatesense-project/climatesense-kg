@@ -12,7 +12,6 @@ CREATE TABLE source_review_records (
     source_text TEXT,
     extracted_text TEXT,
     normalized_text_hash TEXT,
-    shingle_signature JSONB NOT NULL DEFAULT '[]'::jsonb,
     word_count INTEGER NOT NULL DEFAULT 0 CHECK (word_count >= 0),
     payload_hash TEXT NOT NULL,
     document_id UUID,
@@ -33,7 +32,6 @@ CREATE TABLE review_documents (
     canonical_url TEXT,
     extracted_text TEXT,
     normalized_text_hash TEXT,
-    shingle_signature JSONB NOT NULL DEFAULT '[]'::jsonb,
     word_count INTEGER NOT NULL DEFAULT 0 CHECK (word_count >= 0),
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP

@@ -230,6 +230,26 @@ class RDFGenerator:
         self._save_graph(output_path, output_format)
         return successful_review_uris
 
+    def project_claim_review_nt(self, claim_review: CanonicalClaimReview) -> bytes:
+        """Project one review as an independent N-Triples fragment."""
+
+        self._reset_graph()
+        self._generate_claim_review_rdf(claim_review, set())
+        serialized = self.graph.serialize(format="nt", encoding="utf-8")
+        return serialized if isinstance(serialized, bytes) else serialized.encode()
+
+    def project_entity_enrichment_nt(
+        self,
+        claim_review: CanonicalClaimReview,
+        entity_sources: frozenset[str],
+    ) -> bytes:
+        """Project one review's provider-owned enrichment as N-Triples."""
+
+        self._reset_graph()
+        self._generate_entity_enrichment_rdf(claim_review, entity_sources)
+        serialized = self.graph.serialize(format="nt", encoding="utf-8")
+        return serialized if isinstance(serialized, bytes) else serialized.encode()
+
     def _save_graph(self, output_path: str | Path, output_format: str) -> None:
         """Serialize the current graph directly into an atomic temporary file."""
         output_path = Path(output_path)

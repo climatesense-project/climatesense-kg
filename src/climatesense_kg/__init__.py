@@ -9,4 +9,8 @@ to a Triple Store.
 
 __version__ = "0.1.0"
 __author__ = "ClimateSense"
-USER_AGENT = "ClimateSense-Pipeline (+https://github.com/climatesense-project)"
+USER_AGENT = (
+    f"ClimateSense-KG/{__version__} "
+    "(+https://github.com/climatesense-project/climatesense-kg; "
+    "climatesense@lists.eurecom.fr)"
+)

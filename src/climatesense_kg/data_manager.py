@@ -77,50 +77,64 @@ class DataManager:
 
             # 2. Check cache
             cache_key_config = provider.get_cache_key_fields(provider_config)
-            raw_data = self.cache.get(
+            fallback_key_config = provider.get_cache_fallback_key_fields(
+                provider_config
+            )
+            processor = self._create_processor(source_name, source_type)
+            with self.cache.open_stream(
                 source_name,
                 cache_key_config,
                 cache_ttl_hours,
                 ignore_expiry=skip_download,
-            )
+            ) as cached:
+                if cached is not None:
+                    if skip_download:
+                        self.logger.info(
+                            "Using cached data for %s (--skip-download enabled, "
+                            "ignoring expiry)",
+                            source_name,
+                        )
+                    yield from processor.process_stream(cached)
+                    return
 
-            fallback_key_config = provider.get_cache_fallback_key_fields(
-                provider_config
-            )
-            if skip_download and raw_data is None and fallback_key_config:
-                raw_data = self.cache.get(
+            if skip_download and fallback_key_config:
+                with self.cache.open_stream(
                     source_name,
                     fallback_key_config,
                     cache_ttl_hours,
                     ignore_expiry=True,
+                ) as cached:
+                    if cached is not None:
+                        self.logger.info(
+                            "Using fallback cached data for %s (--skip-download enabled)",
+                            source_name,
+                        )
+                        yield from processor.process_stream(cached)
+                        return
+
+            if skip_download:
+                raise RuntimeError(
+                    f"No cached data found for {source_name} and --skip-download is enabled. "
+                    "The source cannot be ingested completely."
                 )
 
-            if skip_download and raw_data is not None:
-                self.logger.info(
-                    f"Using cached data for {source_name} (--skip-download enabled, ignoring expiry)"
-                )
-
-            # 3. If cache miss, fetch from provider (unless skip_download is True)
-            if raw_data is None:
-                if skip_download:
+            self.logger.info("Cache miss for %s, fetching from provider", source_name)
+            raw_data = provider.fetch(provider_config)
+            self.cache.put(source_name, cache_key_config, raw_data)
+            if fallback_key_config and fallback_key_config != cache_key_config:
+                self.cache.put(source_name, fallback_key_config, raw_data)
+            del raw_data
+            with self.cache.open_stream(
+                source_name,
+                cache_key_config,
+                cache_ttl_hours,
+                ignore_expiry=True,
+            ) as cached:
+                if cached is None:  # pragma: no cover - validated by cache.put
                     raise RuntimeError(
-                        f"No cached data found for {source_name} and --skip-download is enabled. "
-                        "The source cannot be ingested completely."
+                        f"Failed to reopen cached data for {source_name}"
                     )
-                else:
-                    self.logger.info(
-                        f"Cache miss for {source_name}, fetching from provider"
-                    )
-                    raw_data = provider.fetch(provider_config)
-
-                    # Store in cache
-                    self.cache.put(source_name, cache_key_config, raw_data)
-                    if fallback_key_config and fallback_key_config != cache_key_config:
-                        self.cache.put(source_name, fallback_key_config, raw_data)
-
-            # 4. Process data
-            processor = self._create_processor(source_name, source_type)
-            yield from processor.process(raw_data)
+                yield from processor.process_stream(cached)
 
         except Exception as e:
             self.logger.error(f"Failed to get data for {source_name}: {e}")

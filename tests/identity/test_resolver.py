@@ -270,7 +270,7 @@ def test_one_document_can_have_two_claim_reviews() -> None:
     assert second.id != first.id
 
 
-def test_similarity_only_records_candidate_without_merging() -> None:
+def test_similarity_only_does_not_affect_online_identity_assignment() -> None:
     registry = InMemoryIdentityRegistry()
     resolver = IdentityResolver(registry)
     shared = [f"shared{index}" for index in range(70)]
@@ -285,11 +285,6 @@ def test_similarity_only_records_candidate_without_merging() -> None:
     )
 
     assert second.id != first.id
-    assert registry.candidates
-    _, candidate = registry.candidates[0]
-    assert candidate.candidate_review_id == first.id
-    assert candidate.evidence["kind"] == "body_similarity"
-    assert candidate.similarity >= 0.9
 
 
 def test_cross_organization_similarity_does_not_create_candidate() -> None:
@@ -312,7 +307,6 @@ def test_cross_organization_similarity_does_not_create_candidate() -> None:
     second = resolver.resolve(second_record, other)
 
     assert second.id != first.id
-    assert not registry.candidates
 
 
 def test_rating_change_does_not_change_deterministically_matched_identity() -> None:
@@ -341,7 +335,6 @@ def test_rating_change_does_not_change_deterministically_matched_identity() -> N
 
     assert second.id == first.id
     assert second.document.id == first.document.id
-    assert not registry.candidates
 
 
 def test_resolve_many_commits_bounded_batches_and_logs_progress(

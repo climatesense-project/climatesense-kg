@@ -19,15 +19,29 @@ class StageSuccessRate(BaseModel):
 class StageErrorBreakdown(BaseModel):
     stage_name: str
     stage_version: str
+    status: str
     error_type: str | None
+    failure_category: str | None
+    http_status: int | None
     error_count: int = Field(ge=0)
 
 
 class StageDomainFailure(BaseModel):
     stage_name: str
     stage_version: str
+    status: str
     domain: str
     failure_count: int = Field(ge=0)
+
+
+class StageRetryQueue(BaseModel):
+    stage_name: str
+    stage_version: str
+    status: str
+    failure_category: str | None
+    http_status: int | None
+    result_count: int = Field(ge=0)
+    next_retry_at: datetime | None
 
 
 class StageRecentActivity(BaseModel):

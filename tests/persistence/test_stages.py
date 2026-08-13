@@ -39,7 +39,7 @@ def test_stage_store_preserves_explicit_failure_results() -> None:
         input_value="https://example.test/review",
         config_value={"timeout": 10},
     )
-    failure = StageResult(success=False, payload={"error": "timeout"})
+    failure = StageResult.retryable_failure({"error": "timeout"})
 
     store.put(key, failure)
 
@@ -55,7 +55,7 @@ def test_stage_result_flush_preserves_a_separate_identity_boundary() -> None:
         input_value="claim",
         config_value={},
     )
-    store.put(key, StageResult(success=True, payload={}))
+    store.put(key, StageResult.succeeded({}))
 
     assert store.clear() == 1
     assert store.get(key) is None

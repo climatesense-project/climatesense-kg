@@ -1,6 +1,9 @@
 """Tests for ClaimReviewData normalization."""
 
+from io import BytesIO
 import json
+
+import pytest
 
 from climatesense_kg.processors.claimreviewdata import ClaimReviewDataProcessor
 
@@ -103,3 +106,64 @@ def test_skips_only_the_invalid_pair_in_a_multi_claim_record() -> None:
     assert [(result.claim.text, result.rating.label) for result in results] == [
         ("A meaningful claim", "credible")
     ]
+
+
+def test_ignores_null_values_in_optional_appearances() -> None:
+    payload = [
+        {
+            "claim_text": ["A meaningful claim"],
+            "appearances": [None, "https://social.example/post/1"],
+            "review_url": "https://example.test/review",
+            "reviews": [{"original_label": "True", "label": "credible"}],
+            "fact_checker": {
+                "name": "Example",
+                "website": "https://example.test",
+            },
+        }
+    ]
+
+    results = list(
+        ClaimReviewDataProcessor("claimreviewdata").process(
+            json.dumps(payload).encode()
+        )
+    )
+
+    assert results[0].claim.appearances == ["https://social.example/post/1"]
+
+
+def test_streaming_parser_handles_values_across_read_boundaries() -> None:
+    claim = "a" * (64 * 1024)
+    payload = json.dumps(
+        [
+            {
+                "claim_text": [claim],
+                "review_url": "https://example.test/review",
+                "reviews": [{"original_label": "True", "label": "credible"}],
+                "fact_checker": {
+                    "name": "Example",
+                    "website": "https://example.test",
+                },
+            }
+        ]
+    ).encode()
+
+    results = list(
+        ClaimReviewDataProcessor("claimreviewdata").process_stream(BytesIO(payload))
+    )
+
+    assert [result.claim.text for result in results] == [claim]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        b'[{"claim_text": []}',
+        b"[] trailing-data",
+        b'{"not": "an array"}',
+    ],
+)
+def test_invalid_top_level_payload_aborts_the_source(payload: bytes) -> None:
+    processor = ClaimReviewDataProcessor("claimreviewdata")
+
+    with pytest.raises((json.JSONDecodeError, ValueError)):
+        list(processor.process_stream(BytesIO(payload)))

@@ -1,6 +1,6 @@
 """Typed application stages used by the pipeline."""
 
-from .document_extractor import DocumentExtractor
+from .document_extractor import DocumentExtractor, DocumentRetryPolicy
 from .enrichment import (
     EnrichmentRunner,
     EnrichmentRunReport,
@@ -15,6 +15,7 @@ from .persisted import (
 
 __all__ = [
     "DocumentExtractor",
+    "DocumentRetryPolicy",
     "EnrichmentRunReport",
     "EnrichmentRunner",
     "EnrichmentStage",

@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
 import logging
-from typing import Any
+from typing import Any, BinaryIO
 
 from ..domain import (
     CanonicalClaim,
@@ -39,6 +39,11 @@ class BaseProcessor(ABC):
             SourceReviewRecord objects
         """
         pass
+
+    def process_stream(self, raw_data: BinaryIO) -> Iterator[SourceReviewRecord]:
+        """Process a stream; processors may override to avoid full materialization."""
+
+        yield from self.process(raw_data.read())
 
     def _validate_item(self, item: dict[str, Any]) -> tuple[bool, list[str]]:
         """Validate an individual raw item and return any validation errors.

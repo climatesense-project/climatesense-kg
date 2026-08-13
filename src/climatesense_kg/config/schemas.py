@@ -111,15 +111,32 @@ class DocumentExtractionConfig:
     """Configuration for pre-identity document extraction."""
 
     enabled: bool = True
+    max_workers: int = 32
     rate_limit_delay: float = 0.5
     timeout: int = 15
     max_retries: int = 2
+    transient_retry_delay_hours: float = 1
+    blocked_retry_delay_hours: float = 24 * 30
+    dns_retry_delay_hours: float = 24 * 7
+    content_retry_delay_hours: float = 24 * 30
     checkpoint_size: int = 25
     progress_interval_seconds: float = 10.0
 
     def __post_init__(self) -> None:
+        if self.max_workers <= 0:
+            raise ValueError("Document extraction max_workers must be positive")
         if self.checkpoint_size <= 0:
             raise ValueError("Document extraction checkpoint_size must be positive")
+        if any(
+            delay < 0
+            for delay in (
+                self.transient_retry_delay_hours,
+                self.blocked_retry_delay_hours,
+                self.dns_retry_delay_hours,
+                self.content_retry_delay_hours,
+            )
+        ):
+            raise ValueError("Document extraction retry delays must be non-negative")
         if self.progress_interval_seconds < 0:
             raise ValueError(
                 "Document extraction progress_interval_seconds must be non-negative"
@@ -140,6 +157,23 @@ class IdentityResolutionConfig:
             raise ValueError(
                 "Identity resolution progress_interval_seconds must be non-negative"
             )
+
+
+@dataclass
+class DuplicateAuditConfig:
+    """Settings for the optional exact near-duplicate audit."""
+
+    similarity_threshold: float = 0.9
+    minimum_similarity_words: int = 50
+    group_batch_size: int = 100
+
+    def __post_init__(self) -> None:
+        if not 0 <= self.similarity_threshold <= 1:
+            raise ValueError("Duplicate audit threshold must be between zero and one")
+        if self.minimum_similarity_words <= 0:
+            raise ValueError("Duplicate audit minimum words must be positive")
+        if self.group_batch_size <= 0:
+            raise ValueError("Duplicate audit group_batch_size must be positive")
 
 
 @dataclass
@@ -251,6 +285,7 @@ class PipelineConfig:
     identity_resolution: IdentityResolutionConfig = field(
         default_factory=IdentityResolutionConfig
     )
+    duplicate_audit: DuplicateAuditConfig = field(default_factory=DuplicateAuditConfig)
     enrichment: EnrichmentConfig = field(default_factory=EnrichmentConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)

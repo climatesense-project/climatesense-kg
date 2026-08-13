@@ -363,7 +363,7 @@ def test_stored_failure_is_retried_and_not_applied_as_success() -> None:
     enricher = DBpediaSpotlightEnricher(target="claim", store=store, rate_limit_delay=0)
     store.put(
         enricher.result_key(review),
-        StageResult(success=False, payload={"error": "temporarily unavailable"}),
+        StageResult.retryable_failure({"error": "temporarily unavailable"}),
     )
 
     with patch.object(enricher, "_extract_entities", return_value=[]) as extract:

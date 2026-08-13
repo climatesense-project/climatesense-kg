@@ -4,14 +4,17 @@ from unittest.mock import Mock, patch
 
 import pytest
 import requests
+from src.climatesense_kg import USER_AGENT
 from src.climatesense_kg.utils.text_processing import (
     ExtractionErrorType,
+    _document_headers_for_url,
     _fetch_public_url,
     _request_url_at_address,
     _UnsafeURLError,
     canonicalize_text,
     fetch_and_extract_text,
     normalize_analysis_text,
+    normalize_document_url,
     normalize_organization_url,
     sanitize_url,
 )
@@ -37,7 +40,11 @@ class TestExtractionErrorType:
         non_retryable = [
             ExtractionErrorType.INVALID_INPUT,
             ExtractionErrorType.INVALID_URL,
+            ExtractionErrorType.DNS,
             ExtractionErrorType.HTTP_ERROR,
+            ExtractionErrorType.ACCESS_CHALLENGE,
+            ExtractionErrorType.RESPONSE_TOO_LARGE,
+            ExtractionErrorType.UNSUPPORTED_CONTENT,
             ExtractionErrorType.EXTRACTION_FAILED,
         ]
         for error_type in non_retryable:
@@ -256,6 +263,14 @@ class TestSanitizeUrl:
             assert result is None
 
 
+def test_document_url_identity_ignores_fragments_and_default_ports() -> None:
+    assert (
+        normalize_document_url("https://EXAMPLE.com:443/review#section")
+        == "https://example.com/review"
+    )
+    assert normalize_document_url("https://example.com") == "https://example.com/"
+
+
 class TestFetchAndExtractText:
     """Test fetch_and_extract_text function."""
 
@@ -375,6 +390,47 @@ class TestFetchAndExtractText:
 
         mock_request.assert_called_once()
 
+    @patch("src.climatesense_kg.utils.text_processing._request_url_at_address")
+    @patch("socket.getaddrinfo")
+    def test_recalculates_headers_after_cross_domain_redirect(
+        self, mock_getaddrinfo: Mock, mock_request: Mock
+    ) -> None:
+        """A host-specific request profile must not leak to a redirect target."""
+        mock_getaddrinfo.return_value = [
+            (2, 1, 6, "", ("93.184.216.34", 443)),
+        ]
+        redirect_response = Mock(
+            status_code=302,
+            headers={"Location": "https://reviews.example/final"},
+        )
+        final_response = Mock(status_code=200, headers={})
+        mock_request.side_effect = [redirect_response, final_response]
+
+        result = _fetch_public_url(
+            "https://factuel.afp.com/article",
+            timeout=10,
+            header_provider=_document_headers_for_url,
+        )
+
+        assert result is final_response
+        first_headers = mock_request.call_args_list[0].args[2]
+        redirected_headers = mock_request.call_args_list[1].args[2]
+        assert "Mozilla" in first_headers["User-Agent"]
+        assert redirected_headers["User-Agent"] == USER_AGENT
+        assert "Sec-CH-UA" not in redirected_headers
+        redirect_response.close.assert_called_once_with()
+
+    def test_requires_one_header_source(self) -> None:
+        with pytest.raises(ValueError, match="exactly one"):
+            _fetch_public_url("https://example.com", timeout=10)
+        with pytest.raises(ValueError, match="exactly one"):
+            _fetch_public_url(
+                "https://example.com",
+                headers={"Accept": "text/html"},
+                timeout=10,
+                header_provider=_document_headers_for_url,
+            )
+
     @patch("src.climatesense_kg.utils.text_processing.requests.Session")
     def test_request_is_pinned_and_redirects_are_disabled(
         self, mock_session_factory: Mock
@@ -484,6 +540,43 @@ class TestFetchAndExtractText:
 
     @patch("src.climatesense_kg.utils.text_processing._fetch_public_url")
     @patch("src.climatesense_kg.utils.text_processing.sanitize_url")
+    def test_identifies_as_pipeline_without_browser_headers(
+        self, mock_sanitize: Mock, mock_fetch: Mock
+    ) -> None:
+        mock_sanitize.return_value = "https://example.com"
+        mock_fetch.return_value = Mock(
+            headers={"Content-Type": "text/html"},
+            encoding="utf-8",
+            iter_content=Mock(return_value=[]),
+        )
+
+        fetch_and_extract_text("https://example.com")
+
+        header_provider = mock_fetch.call_args.kwargs["header_provider"]
+        headers = header_provider("https://example.com")
+        assert headers == {
+            "Accept": "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.1",
+            "User-Agent": USER_AGENT,
+        }
+        assert "Mozilla" not in headers["User-Agent"]
+
+    def test_uses_browser_compatibility_headers_only_for_afp_hosts(self) -> None:
+        afp_headers = _document_headers_for_url(
+            "https://Factuel.AFP.com./doc.afp.com.339Q36F"
+        )
+        lookalike_headers = _document_headers_for_url(
+            "https://factuel.fakeafp.com/article"
+        )
+
+        assert "Chrome/139" in afp_headers["User-Agent"]
+        assert afp_headers["Sec-Fetch-Mode"] == "navigate"
+        assert "Sec-CH-UA" in afp_headers
+        assert "Accept-Encoding" not in afp_headers
+        assert lookalike_headers["User-Agent"] == USER_AGENT
+        assert "Sec-CH-UA" not in lookalike_headers
+
+    @patch("src.climatesense_kg.utils.text_processing._fetch_public_url")
+    @patch("src.climatesense_kg.utils.text_processing.sanitize_url")
     def test_connection_error(self, mock_sanitize: Mock, mock_fetch: Mock) -> None:
         """Test connection error handling."""
         mock_sanitize.return_value = "https://example.com"
@@ -510,7 +603,48 @@ class TestFetchAndExtractText:
 
         assert result.success is False
         assert result.error_type == ExtractionErrorType.HTTP_ERROR
+        assert result.http_status == 404
         assert "404" in result.error_message
+
+    @patch("src.climatesense_kg.utils.text_processing._fetch_public_url")
+    @patch("src.climatesense_kg.utils.text_processing.sanitize_url")
+    def test_http_retry_after_is_parsed(
+        self, mock_sanitize: Mock, mock_fetch: Mock
+    ) -> None:
+        mock_sanitize.return_value = "https://example.com"
+        response = Mock(status_code=429, headers={"Retry-After": "3600"})
+        http_error = requests.HTTPError("Too Many Requests", response=response)
+        mock_fetch.side_effect = http_error
+
+        result = fetch_and_extract_text("https://example.com")
+
+        assert result.http_status == 429
+        assert result.retry_at is not None
+
+    @patch("src.climatesense_kg.utils.text_processing._fetch_public_url")
+    @patch("src.climatesense_kg.utils.text_processing.trafilatura")
+    @patch("src.climatesense_kg.utils.text_processing.sanitize_url")
+    def test_http_200_access_challenge_is_not_accepted_as_content(
+        self, mock_sanitize: Mock, mock_trafilatura: Mock, mock_fetch: Mock
+    ) -> None:
+        mock_sanitize.return_value = "https://example.com"
+        mock_fetch.return_value = Mock(
+            headers={"Content-Type": "text/html"},
+            encoding="utf-8",
+            iter_content=Mock(
+                return_value=[
+                    b'<html><form id="challenge-form">'
+                    b'<script src="/cdn-cgi/challenge-platform/run"></script>'
+                    b"</form></html>"
+                ]
+            ),
+        )
+
+        result = fetch_and_extract_text("https://example.com")
+
+        assert result.success is False
+        assert result.error_type == ExtractionErrorType.ACCESS_CHALLENGE
+        mock_trafilatura.extract.assert_not_called()
 
     @patch("src.climatesense_kg.utils.text_processing._fetch_public_url")
     @patch("src.climatesense_kg.utils.text_processing.trafilatura")
@@ -566,7 +700,7 @@ class TestFetchAndExtractText:
         result = fetch_and_extract_text("https://example.com/file")
 
         assert result.success is False
-        assert result.error_type == ExtractionErrorType.DOWNLOAD_FAILED
+        assert result.error_type == ExtractionErrorType.UNSUPPORTED_CONTENT
         mock_fetch.return_value.iter_content.assert_not_called()
 
     @patch("src.climatesense_kg.utils.text_processing._fetch_public_url")
@@ -584,5 +718,5 @@ class TestFetchAndExtractText:
         result = fetch_and_extract_text("https://example.com/large")
 
         assert result.success is False
-        assert result.error_type == ExtractionErrorType.DOWNLOAD_FAILED
+        assert result.error_type == ExtractionErrorType.RESPONSE_TOO_LARGE
         assert "download limit" in result.error_message

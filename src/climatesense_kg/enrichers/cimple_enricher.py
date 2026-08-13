@@ -99,9 +99,8 @@ class CimpleModelEnricher(Enricher):
                         f"Unexpected result count for CIMPLE model {self.model}"
                     )
                 results.extend(
-                    StageResult(
-                        success=True,
-                        payload={
+                    StageResult.succeeded(
+                        {
                             "value": self._extract_model_value(response),
                         },
                     )
@@ -110,9 +109,8 @@ class CimpleModelEnricher(Enricher):
             except Exception as exc:
                 self.logger.error("CIMPLE model %s failed: %s", self.model, exc)
                 results.extend(
-                    StageResult(
-                        success=False,
-                        payload={
+                    StageResult.retryable_failure(
+                        {
                             "error_type": "model_error",
                             "model": self.model,
                             "error": str(exc),

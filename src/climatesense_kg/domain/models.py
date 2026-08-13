@@ -246,7 +246,6 @@ class ReviewDocument:
     description: str | None = None
     abstract: str | None = None
     normalized_text_hash: str | None = None
-    shingle_signature: list[str] = field(default_factory=list)
     word_count: int = 0
 
     @property
@@ -298,7 +297,6 @@ class CanonicalReviewDocument:
     preferred_url: str
     content: str | None = None
     normalized_text_hash: str | None = None
-    shingle_signature: list[str] = field(default_factory=list)
     word_count: int = 0
 
 

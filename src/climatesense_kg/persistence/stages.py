@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from enum import StrEnum
 import hashlib
 import json
 from threading import RLock
@@ -54,12 +56,74 @@ class StageResultKey:
         )
 
 
+class StageResultStatus(StrEnum):
+    """Durable outcome and retry disposition for a stage result."""
+
+    SUCCESS = "success"
+    RETRYABLE_FAILURE = "retryable_failure"
+    PERMANENT_FAILURE = "permanent_failure"
+
+
 @dataclass(frozen=True)
 class StageResult:
-    """Stored stage outcome including explicit failure state."""
+    """Stored stage outcome including its retry schedule."""
 
-    success: bool
+    status: StageResultStatus
     payload: dict[str, Any]
+    retry_at: datetime | None = None
+
+    def __post_init__(self) -> None:
+        if (
+            self.status is not StageResultStatus.RETRYABLE_FAILURE
+            and self.retry_at is not None
+        ):
+            raise ValueError("Only retryable failures may define retry_at")
+        if self.retry_at is not None and self.retry_at.tzinfo is None:
+            raise ValueError("retry_at must include timezone information")
+
+    @property
+    def success(self) -> bool:
+        """Return whether this result can be restored and applied."""
+
+        return self.status is StageResultStatus.SUCCESS
+
+    @property
+    def permanent(self) -> bool:
+        """Return whether normal execution must retain rather than retry this result."""
+
+        return self.status is StageResultStatus.PERMANENT_FAILURE
+
+    def deferred(self, at: datetime | None = None) -> bool:
+        """Return whether a retry is scheduled after the supplied instant."""
+
+        return bool(self.retry_at and self.retry_at > (at or datetime.now(UTC)))
+
+    @classmethod
+    def succeeded(cls, payload: dict[str, Any]) -> StageResult:
+        """Construct a successful reusable result."""
+
+        return cls(status=StageResultStatus.SUCCESS, payload=payload)
+
+    @classmethod
+    def retryable_failure(
+        cls,
+        payload: dict[str, Any],
+        *,
+        retry_at: datetime | None = None,
+    ) -> StageResult:
+        """Construct a failure that may be attempted again."""
+
+        return cls(
+            status=StageResultStatus.RETRYABLE_FAILURE,
+            payload=payload,
+            retry_at=retry_at,
+        )
+
+    @classmethod
+    def permanent_failure(cls, payload: dict[str, Any]) -> StageResult:
+        """Construct a failure that requires explicit invalidation to retry."""
+
+        return cls(status=StageResultStatus.PERMANENT_FAILURE, payload=payload)
 
 
 class StageResultStore(Protocol):
@@ -138,7 +202,8 @@ class PostgresStageResultStore:
                     )
                     SELECT results.subject_key, results.stage_name,
                            results.stage_version, results.input_hash,
-                           results.config_hash, results.success, results.payload
+                           results.config_hash, results.status, results.retry_at,
+                           results.payload
                     FROM stage_results AS results
                     JOIN requested USING (
                         subject_key, stage_name, stage_version,
@@ -161,7 +226,11 @@ class PostgresStageResultStore:
                 stage_version=row["stage_version"],
                 input_hash=row["input_hash"],
                 config_hash=row["config_hash"],
-            ): StageResult(success=row["success"], payload=row["payload"])
+            ): StageResult(
+                status=StageResultStatus(row["status"]),
+                payload=row["payload"],
+                retry_at=row["retry_at"],
+            )
             for row in rows
         }
 
@@ -178,7 +247,8 @@ class PostgresStageResultStore:
                 key.stage_version,
                 key.input_hash,
                 key.config_hash,
-                result.success,
+                result.status.value,
+                result.retry_at,
                 json.dumps(result.payload),
             )
             for key, result in results.items()
@@ -189,14 +259,15 @@ class PostgresStageResultStore:
                     """
                     INSERT INTO stage_results (
                         subject_key, stage_name, stage_version,
-                        input_hash, config_hash, success, payload
+                        input_hash, config_hash, status, retry_at, payload
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (
                         subject_key, stage_name, stage_version,
                         input_hash, config_hash
                     ) DO UPDATE SET
-                        success = EXCLUDED.success,
+                        status = EXCLUDED.status,
+                        retry_at = EXCLUDED.retry_at,
                         payload = EXCLUDED.payload,
                         updated_at = CURRENT_TIMESTAMP
                     """,
@@ -206,9 +277,9 @@ class PostgresStageResultStore:
                     """
                     INSERT INTO stage_result_attempts (
                         subject_key, stage_name, stage_version,
-                        input_hash, config_hash, success, payload
+                        input_hash, config_hash, status, retry_at, payload
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     rows,
                 )

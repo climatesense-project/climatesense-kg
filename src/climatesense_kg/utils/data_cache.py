@@ -14,7 +14,7 @@ import shutil
 import tempfile
 import threading
 import time
-from typing import Any
+from typing import Any, BinaryIO
 
 logger = logging.getLogger(__name__)
 
@@ -113,34 +113,56 @@ class DataCache:
         Returns:
             Cached data as bytes, or None if not available/expired
         """
+        with self.open_stream(
+            source_name,
+            config,
+            ttl_hours,
+            ignore_expiry=ignore_expiry,
+        ) as stream:
+            return stream.read() if stream is not None else None
+
+    @contextmanager
+    def open_stream(
+        self,
+        source_name: str,
+        config: dict[str, Any],
+        ttl_hours: float | None = None,
+        *,
+        ignore_expiry: bool = False,
+    ) -> Iterator[BinaryIO | None]:
+        """Open one cache entry as a decompressed stream under a shared lock."""
+
         if ttl_hours is None:
             ttl_hours = self.default_ttl_hours
         cache_key = self._generate_cache_key(source_name, config)
-        self.logger.debug(f"Looking for cache key: {cache_key}")
-
+        self.logger.debug("Looking for cache key: %s", cache_key)
         with self._lock, self._cache_file_lock(source_name, cache_key, exclusive=False):
             if not ignore_expiry and self._is_expired(
                 source_name, cache_key, ttl_hours
             ):
-                self.logger.info(f"Cache miss/expired for {source_name}")
-                return None
-
+                self.logger.info("Cache miss/expired for %s", source_name)
+                yield None
+                return
             cache_path = self._get_cache_path(source_name, cache_key)
-
             if not cache_path.exists():
-                self.logger.info(f"Cache miss for {source_name}")
-                return None
-
+                self.logger.info("Cache miss for %s", source_name)
+                yield None
+                return
             try:
-                with gzip.open(cache_path, "rb") as f:
-                    data = f.read()
-
-                self.logger.info(f"Cache hit for {source_name} ({len(data)} bytes)")
-                return data
-
-            except Exception as e:
-                self.logger.warning(f"Failed to read cache for {source_name}: {e}")
-                return None
+                stream = gzip.open(cache_path, "rb")
+            except Exception as exc:
+                self.logger.warning("Failed to read cache for %s: %s", source_name, exc)
+                yield None
+                return
+            try:
+                self.logger.info(
+                    "Cache hit for %s (%d compressed bytes)",
+                    source_name,
+                    cache_path.stat().st_size,
+                )
+                yield stream
+            finally:
+                stream.close()
 
     def put(self, source_name: str, config: dict[str, Any], data: bytes) -> None:
         """Store data in cache.
@@ -171,9 +193,11 @@ class DataCache:
                     raw_cache.flush()
                     os.fsync(raw_cache.fileno())
 
+                expected_digest = hashlib.sha256(data).digest()
                 with gzip.open(cache_temp_path, "rb") as compressed:
-                    if compressed.read() != data:
-                        raise OSError("Temporary cache validation failed")
+                    cached_digest = hashlib.file_digest(compressed, "sha256").digest()
+                if cached_digest != expected_digest:
+                    raise OSError("Temporary cache validation failed")
 
                 metadata: dict[str, Any] = {
                     "timestamp": time.time(),

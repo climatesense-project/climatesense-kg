@@ -27,8 +27,6 @@ class IdentityResolver:
         self,
         registry: IdentityRegistry,
         *,
-        similarity_threshold: float = 0.9,
-        minimum_similarity_words: int = 50,
         batch_size: int = 500,
         progress_interval_seconds: float = 10.0,
     ) -> None:
@@ -37,10 +35,7 @@ class IdentityResolver:
         if progress_interval_seconds < 0:
             raise ValueError("Identity progress interval must be non-negative")
         self.registry = registry
-        self.planner = IdentityPlanner(
-            similarity_threshold=similarity_threshold,
-            minimum_similarity_words=minimum_similarity_words,
-        )
+        self.planner = IdentityPlanner()
         self.batch_size = batch_size
         self.progress_interval_seconds = progress_interval_seconds
 
@@ -56,6 +51,8 @@ class IdentityResolver:
     def resolve_many(
         self,
         records: list[IdentityBatchRecord],
+        *,
+        report_progress: bool = True,
     ) -> list[CanonicalClaimReview]:
         """Resolve and merge repeated canonical identities within one pipeline batch."""
 
@@ -72,7 +69,7 @@ class IdentityResolver:
                 or committed == total
                 or elapsed - last_logged_elapsed >= self.progress_interval_seconds
             )
-            if not should_log:
+            if not report_progress or not should_log:
                 return
             last_logged_elapsed = elapsed
             rate = committed / elapsed if committed and elapsed > 0 else None
@@ -133,7 +130,6 @@ class IdentityResolver:
                 preferred_url=document.preferred_url,
                 content=document.content,
                 normalized_text_hash=document.normalized_text_hash,
-                shingle_signature=sorted(document.shingles),
                 word_count=document.word_count,
             ),
             source_record_keys=set(assignment.source_record_keys),
@@ -158,7 +154,6 @@ class IdentityResolver:
         existing.document.preferred_url = current.document.preferred_url
         existing.document.content = current.document.content
         existing.document.normalized_text_hash = current.document.normalized_text_hash
-        existing.document.shingle_signature = list(current.document.shingle_signature)
         existing.document.word_count = current.document.word_count
         for keyword in current.keywords:
             if keyword not in existing.keywords:

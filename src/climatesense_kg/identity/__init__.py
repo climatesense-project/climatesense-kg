@@ -1,12 +1,13 @@
 """Claim-review identity resolution."""
 
+from .audit import DuplicateAuditor, DuplicateAuditReport
 from .fingerprints import (
     DocumentFingerprint,
     fingerprint_document,
     normalize_identity_text,
     shingle_containment,
 )
-from .models import IdentityAssignment, IdentityCandidate, RegisteredDocument
+from .models import IdentityAssignment, RegisteredDocument
 from .planner import IdentityPlanner
 from .registry import (
     IdentityRegistry,
@@ -17,8 +18,9 @@ from .resolver import IdentityResolver
 
 __all__ = [
     "DocumentFingerprint",
+    "DuplicateAuditReport",
+    "DuplicateAuditor",
     "IdentityAssignment",
-    "IdentityCandidate",
     "IdentityPlanner",
     "IdentityRegistry",
     "IdentityRepositoryBatch",

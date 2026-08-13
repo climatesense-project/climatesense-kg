@@ -63,7 +63,7 @@ def test_evidence_loading_uses_a_fixed_number_of_set_queries() -> None:
     evidence = repository.load_evidence(records)
 
     assert evidence == _empty_evidence()
-    assert cursor.execute.call_count == 3
+    assert cursor.execute.call_count == 2
     direct_query, direct_parameters = cursor.execute.call_args_list[0].args
     assert "unnest(%s::text[], %s::text[])" in direct_query
     assert len(direct_parameters[2]) == 50
@@ -71,9 +71,6 @@ def test_evidence_loading_uses_a_fixed_number_of_set_queries() -> None:
     assert "normalized_text_hash = ANY(%s::text[])" in exact_query
     assert "%s IS NOT NULL" not in exact_query
     assert exact_parameters[1] == []
-    claim_query, claim_parameters = cursor.execute.call_args_list[2].args
-    assert "unnest(%s::text[], %s::text[])" in claim_query
-    assert len(claim_parameters[0]) == 50
 
 
 def test_commit_bulk_writes_each_plan_collection() -> None:

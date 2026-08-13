@@ -1,6 +1,9 @@
 """Text processing utilities."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from email.utils import parsedate_to_datetime
 from enum import Enum
 import html
 from html.parser import HTMLParser
@@ -14,6 +17,8 @@ from urllib.parse import quote, urljoin, urlparse, urlunparse
 import requests
 from requests.adapters import HTTPAdapter
 import trafilatura  # pyright: ignore[reportMissingTypeStubs]
+
+from .. import USER_AGENT
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +34,29 @@ _ALLOWED_TEXT_CONTENT_TYPES = {
 }
 _INVALID_PERCENT_ESCAPE = re.compile(r"%(?![0-9A-Fa-f]{2})")
 
+_DEFAULT_DOCUMENT_HEADERS = {
+    "Accept": "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.1",
+    "User-Agent": USER_AGENT,
+}
+
+# AFP's edge rejects generic HTTP clients, but accepts a coherent browser
+# navigation request. Keep this compatibility profile limited to AFP-owned
+# hosts instead of impersonating a browser for every extracted document.
+_AFP_DOCUMENT_HEADERS = {
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.7",
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
+    ),
+    "Sec-CH-UA": ('"Chromium";v="139", "Not=A?Brand";v="24", "Google Chrome";v="139"'),
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-User": "?1",
+    "Sec-Fetch-Dest": "document",
+    "Upgrade-Insecure-Requests": "1",
+}
+
 
 class _UnsafeURLError(ValueError):
     """Raised when a URL could reach a non-public network address."""
@@ -36,6 +64,14 @@ class _UnsafeURLError(ValueError):
 
 class _ResponseTooLargeError(ValueError):
     """Raised when a response exceeds the bounded extraction size."""
+
+
+class _UnsupportedContentError(ValueError):
+    """Raised when a response cannot contain supported review text."""
+
+
+class _DNSResolutionError(requests.ConnectionError):
+    """Raised when a public hostname cannot be resolved."""
 
 
 class _PinnedHTTPSAdapter(HTTPAdapter):
@@ -62,11 +98,15 @@ class ExtractionErrorType(Enum):
 
     INVALID_INPUT = "invalid_input"
     INVALID_URL = "invalid_url"
+    DNS = "dns"
     TIMEOUT = "timeout"
     CONNECTION = "connection"
     HTTP_ERROR = "http"
+    ACCESS_CHALLENGE = "access_challenge"
     REQUEST_ERROR = "request"
     DOWNLOAD_FAILED = "download_failed"
+    RESPONSE_TOO_LARGE = "response_too_large"
+    UNSUPPORTED_CONTENT = "unsupported_content"
     EXTRACTION_FAILED = "extraction_failed"
     UNKNOWN = "unknown"
 
@@ -93,6 +133,18 @@ class TextExtractionResult:
     error_type: ExtractionErrorType | None = None
     final_url: str | None = None
     canonical_url: str | None = None
+    http_status: int | None = None
+    retry_at: datetime | None = None
+
+    @property
+    def retryable_immediately(self) -> bool:
+        """Return whether another request is useful during the current run."""
+
+        if self.error_type is ExtractionErrorType.HTTP_ERROR:
+            return self.http_status == 408 or bool(
+                self.http_status is not None and self.http_status >= 500
+            )
+        return bool(self.error_type and self.error_type.is_retryable)
 
 
 class _CanonicalLinkParser(HTMLParser):
@@ -308,6 +360,33 @@ def sanitize_url(url: str) -> str | None:
     return sanitized if sanitized else None
 
 
+def normalize_document_url(url: str) -> str | None:
+    """Return the HTTP resource identity used for extraction checkpoints."""
+
+    sanitized = sanitize_url(url)
+    if sanitized is None:
+        return None
+    parsed = urlparse(sanitized)
+    hostname = parsed.hostname
+    if hostname is None:  # pragma: no cover - guaranteed by sanitize_url
+        return None
+    try:
+        port = parsed.port
+    except ValueError:  # pragma: no cover - guaranteed by sanitize_url
+        return None
+    default_port = (parsed.scheme == "http" and port == 80) or (
+        parsed.scheme == "https" and port == 443
+    )
+    netloc = hostname if port is None or default_port else f"{hostname}:{port}"
+    return urlunparse(
+        parsed._replace(
+            netloc=netloc,
+            path=parsed.path or "/",
+            fragment="",
+        )
+    )
+
+
 def _quote_url_component(value: str, *, safe: str) -> str:
     """Quote a URL component while preserving only valid existing escapes."""
     normalized = _INVALID_PERCENT_ESCAPE.sub("%25", value)
@@ -335,7 +414,7 @@ def _resolve_public_address(hostname: str, port: int) -> str:
             type=socket.SOCK_STREAM,
         )
     except socket.gaierror as exc:
-        raise requests.ConnectionError(f"Unable to resolve host: {hostname}") from exc
+        raise _DNSResolutionError(f"Unable to resolve host: {hostname}") from exc
 
     addresses: list[str] = []
     for (
@@ -354,7 +433,7 @@ def _resolve_public_address(hostname: str, port: int) -> str:
             addresses.append(address)
 
     if not addresses:
-        raise requests.ConnectionError(f"No IP addresses found for host: {hostname}")
+        raise _DNSResolutionError(f"No IP addresses found for host: {hostname}")
 
     for address in addresses:
         if not ip_address(address).is_global:
@@ -404,11 +483,16 @@ def _request_url_at_address(
 
 def _fetch_public_url(
     url: str,
-    headers: dict[str, str],
-    timeout: float,
+    headers: dict[str, str] | None = None,
+    timeout: float = 10,
     allowed_origin: str | None = None,
+    *,
+    header_provider: Callable[[str], dict[str, str]] | None = None,
 ) -> requests.Response:
     """Fetch a public HTTP(S) URL while validating and pinning every hop."""
+    if (headers is None) == (header_provider is None):
+        raise ValueError("Provide exactly one of headers or header_provider")
+
     current_url = url
     required_origin = _url_origin(allowed_origin) if allowed_origin else None
     if allowed_origin and required_origin is None:
@@ -426,10 +510,15 @@ def _fetch_public_url(
 
         port = parsed.port or (443 if parsed.scheme == "https" else 80)
         address = _resolve_public_address(hostname, port)
+        request_headers = (
+            header_provider(current_url) if header_provider is not None else headers
+        )
+        if request_headers is None:  # Guard for static type narrowing.
+            raise ValueError("Request headers are required")
         response = _request_url_at_address(
             current_url,
             address,
-            headers,
+            request_headers,
             timeout,
         )
 
@@ -452,6 +541,17 @@ def _fetch_public_url(
         current_url = redirected_url
 
     raise requests.TooManyRedirects(f"Exceeded {_MAX_REDIRECTS} redirects")
+
+
+def _document_headers_for_url(url: str) -> dict[str, str]:
+    """Return the request profile appropriate for a document URL."""
+    hostname = (urlparse(url).hostname or "").rstrip(".").casefold()
+    profile = (
+        _AFP_DOCUMENT_HEADERS
+        if hostname == "afp.com" or hostname.endswith(".afp.com")
+        else _DEFAULT_DOCUMENT_HEADERS
+    )
+    return dict(profile)
 
 
 def _url_origin(url: str) -> tuple[str, str, int] | None:
@@ -477,7 +577,7 @@ def _read_bounded_text_response(
     """Read an allowed textual response without exceeding the byte limit."""
     content_type = response.headers.get("Content-Type", "").split(";", 1)[0].strip()
     if content_type.lower() not in _ALLOWED_TEXT_CONTENT_TYPES:
-        raise ValueError(
+        raise _UnsupportedContentError(
             f"Unsupported response content type: {content_type or '<none>'}"
         )
 
@@ -506,6 +606,52 @@ def _read_bounded_text_response(
 
     encoding = response.encoding or "utf-8"
     return b"".join(chunks).decode(encoding, errors="replace")
+
+
+def _parse_retry_after(value: object) -> datetime | None:
+    """Parse an HTTP Retry-After value into an absolute UTC timestamp."""
+
+    if not isinstance(value, str) or not value.strip():
+        return None
+    candidate = value.strip()
+    now = datetime.now(UTC)
+    if candidate.isdigit():
+        return now + timedelta(seconds=int(candidate))
+    try:
+        parsed = parsedate_to_datetime(candidate)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return max(now, parsed.astimezone(UTC))
+
+
+def _looks_like_access_challenge(document: str, response_url: str) -> bool:
+    """Conservatively identify bot challenges returned with HTTP 200."""
+
+    lowered = document[:200_000].casefold()
+    url_path = urlparse(response_url).path.casefold()
+    strong_markers = (
+        "cf-chl-",
+        "/cdn-cgi/challenge-platform/",
+        'id="challenge-form"',
+        "id='challenge-form'",
+    )
+    if "/cdn-cgi/challenge-platform/" in url_path or any(
+        marker in lowered for marker in strong_markers
+    ):
+        return True
+
+    challenge_markers = (
+        "verify you are human",
+        "checking your browser",
+        "enable javascript and cookies",
+        "g-recaptcha",
+        "hcaptcha",
+        "cf-turnstile",
+        "attention required! | cloudflare",
+    )
+    return sum(marker in lowered for marker in challenge_markers) >= 2
 
 
 def fetch_and_extract_text(url: str, timeout: float = 10) -> TextExtractionResult:
@@ -538,21 +684,11 @@ def fetch_and_extract_text(url: str, timeout: float = 10) -> TextExtractionResul
         )
 
     try:
-        headers = {
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.7",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
-            "Sec-CH-UA": '"Chromium";v="139", "Not=A?Brand";v="24", "Google Chrome";v="139"',
-            "Upgrade-Insecure-Requests": "1",
-            "Sec-Fetch-Site": "same-origin",
-            "Sec-Fetch-Mode": "navigate",
-            "Sec-Fetch-User": "?1",
-            "Sec-Fetch-Dest": "document",
-            "DNT": "1",
-            "Connection": "keep-alive",
-            "Cache-Control": "max-age=0",
-        }
-        response = _fetch_public_url(sanitized_url, headers=headers, timeout=timeout)
+        response = _fetch_public_url(
+            sanitized_url,
+            timeout=timeout,
+            header_provider=_document_headers_for_url,
+        )
         try:
             response.raise_for_status()
             downloaded = _read_bounded_text_response(response)
@@ -567,6 +703,14 @@ def fetch_and_extract_text(url: str, timeout: float = 10) -> TextExtractionResul
 
         if downloaded:
             canonical_url = _extract_canonical_url(downloaded, final_url)
+            if _looks_like_access_challenge(downloaded, final_url):
+                logger.warning("Access challenge returned for URL: %s", sanitized_url)
+                return TextExtractionResult(
+                    success=False,
+                    error_message="Website returned an access challenge",
+                    error_type=ExtractionErrorType.ACCESS_CHALLENGE,
+                    final_url=final_url,
+                )
             main_text: str | None = trafilatura.extract(  # pyright: ignore[reportUnknownMemberType]
                 downloaded
             )
@@ -600,7 +744,21 @@ def fetch_and_extract_text(url: str, timeout: float = 10) -> TextExtractionResul
             error_message=str(e),
             error_type=ExtractionErrorType.INVALID_URL,
         )
-    except (_ResponseTooLargeError, ValueError) as e:
+    except _ResponseTooLargeError as e:
+        logger.warning("Rejected oversized URL response: %s", e)
+        return TextExtractionResult(
+            success=False,
+            error_message=str(e),
+            error_type=ExtractionErrorType.RESPONSE_TOO_LARGE,
+        )
+    except _UnsupportedContentError as e:
+        logger.warning("Rejected unsupported URL response: %s", e)
+        return TextExtractionResult(
+            success=False,
+            error_message=str(e),
+            error_type=ExtractionErrorType.UNSUPPORTED_CONTENT,
+        )
+    except ValueError as e:
         logger.warning("Rejected URL response during text extraction: %s", e)
         return TextExtractionResult(
             success=False,
@@ -612,6 +770,13 @@ def fetch_and_extract_text(url: str, timeout: float = 10) -> TextExtractionResul
         return TextExtractionResult(
             success=False, error_message=str(e), error_type=ExtractionErrorType.TIMEOUT
         )
+    except _DNSResolutionError as e:
+        logger.error("DNS error for URL %s: %s", sanitized_url, e)
+        return TextExtractionResult(
+            success=False,
+            error_message=str(e),
+            error_type=ExtractionErrorType.DNS,
+        )
     except requests.ConnectionError as e:
         logger.error(f"Connection error for URL {sanitized_url}: {e}")
         return TextExtractionResult(
@@ -621,11 +786,18 @@ def fetch_and_extract_text(url: str, timeout: float = 10) -> TextExtractionResul
         )
     except requests.HTTPError as e:
         logger.error(f"HTTP error for URL {sanitized_url}: {e}")
-        status_code = e.response.status_code if e.response else "unknown"
+        status_code = e.response.status_code if e.response is not None else None
+        retry_at = (
+            _parse_retry_after(e.response.headers.get("Retry-After"))
+            if e.response is not None
+            else None
+        )
         return TextExtractionResult(
             success=False,
-            error_message=f"HTTP {status_code}: {e}",
+            error_message=f"HTTP {status_code or 'unknown'}: {e}",
             error_type=ExtractionErrorType.HTTP_ERROR,
+            http_status=status_code,
+            retry_at=retry_at,
         )
     except requests.RequestException as e:
         logger.error(f"Request error for URL {sanitized_url}: {e}")

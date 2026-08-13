@@ -21,7 +21,7 @@ def test_file_cache_can_be_recovered_after_source_is_removed(
     )
     manager = DataManager(cache_dir=tmp_path / "cache")
     processor = Mock()
-    processor.process.side_effect = lambda data: iter([data])
+    processor.process_stream.side_effect = lambda data: iter([data.read()])
     monkeypatch.setattr(manager, "_create_processor", Mock(return_value=processor))
 
     assert list(manager.get_data(source)) == [b"cached source data"]

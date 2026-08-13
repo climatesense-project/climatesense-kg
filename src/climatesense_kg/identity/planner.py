@@ -7,14 +7,11 @@ from collections.abc import Iterable
 from uuid import UUID, uuid4
 
 from ..domain import SourceReviewRecord
-from .fingerprints import shingle_containment
 from .models import (
     IdentityAssignment,
     IdentityBatchEvidence,
     IdentityBatchPlan,
     IdentityBatchRecord,
-    IdentityCandidate,
-    PlannedIdentityCandidate,
     PlannedSourceAssignment,
     RegisteredDocument,
     RegisteredReview,
@@ -23,19 +20,6 @@ from .models import (
 
 class IdentityPlanner:
     """Plan identity assignments without performing persistence operations."""
-
-    def __init__(
-        self,
-        *,
-        similarity_threshold: float = 0.9,
-        minimum_similarity_words: int = 50,
-    ) -> None:
-        if not 0 <= similarity_threshold <= 1:
-            raise ValueError("Similarity threshold must be between zero and one")
-        if minimum_similarity_words < 1:
-            raise ValueError("Minimum similarity words must be positive")
-        self.similarity_threshold = similarity_threshold
-        self.minimum_similarity_words = minimum_similarity_words
 
     def plan(
         self,
@@ -56,9 +40,6 @@ class IdentityPlanner:
         reviews_by_document_claim: dict[tuple[UUID, str], list[RegisteredReview]] = (
             defaultdict(list)
         )
-        reviews_by_organization_claim: dict[tuple[str, str], list[RegisteredReview]] = (
-            defaultdict(list)
-        )
         for review in reviews.values():
             claims = review_claims.setdefault(review.id, {review.claim_uri})
             claims.add(review.claim_uri)
@@ -66,16 +47,12 @@ class IdentityPlanner:
                 reviews_by_document_claim[(review.document.id, claim_uri)].append(
                     review
                 )
-                reviews_by_organization_claim[
-                    (review.organization_uri, claim_uri)
-                ].append(review)
 
         results: list[IdentityAssignment] = []
         touched_documents: dict[UUID, RegisteredDocument] = {}
         new_document_ids: set[UUID] = set()
         new_reviews: dict[UUID, RegisteredReview] = {}
         planned_sources: list[PlannedSourceAssignment] = []
-        planned_candidates: list[PlannedIdentityCandidate] = []
 
         for record, organization in records:
             assignment = assignments_by_source.get(record.source.record_key)
@@ -124,21 +101,7 @@ class IdentityPlanner:
                         reviews_by_document_claim[
                             (document.id, record.claim.uri)
                         ].append(assignment.review)
-                        reviews_by_organization_claim[
-                            (organization.uri, record.claim.uri)
-                        ].append(assignment.review)
                 else:
-                    planned_candidates.extend(
-                        self._fuzzy_candidates(
-                            record.source.record_key,
-                            record.document.word_count,
-                            frozenset(record.document.shingle_signature),
-                            reviews_by_organization_claim.get(
-                                (organization.uri, record.claim.uri),
-                                [],
-                            ),
-                        )
-                    )
                     document = self._new_document(record, organization.uri)
                     documents[document.id] = document
                     new_document_ids.add(document.id)
@@ -154,9 +117,6 @@ class IdentityPlanner:
                     reviews_by_document_claim[(document.id, record.claim.uri)].append(
                         assignment.review
                     )
-                    reviews_by_organization_claim[
-                        (organization.uri, record.claim.uri)
-                    ].append(assignment.review)
 
             known_claims = review_claims.setdefault(
                 assignment.review.id, {assignment.review.claim_uri}
@@ -165,9 +125,6 @@ class IdentityPlanner:
                 known_claims.add(record.claim.uri)
                 reviews_by_document_claim[
                     (assignment.review.document.id, record.claim.uri)
-                ].append(assignment.review)
-                reviews_by_organization_claim[
-                    (assignment.review.organization_uri, record.claim.uri)
                 ].append(assignment.review)
             self._attach(record, assignment)
             assignments_by_source[record.source.record_key] = assignment
@@ -187,7 +144,6 @@ class IdentityPlanner:
             new_document_ids=new_document_ids,
             new_reviews=new_reviews,
             sources=planned_sources,
-            candidates=planned_candidates,
         )
 
     @staticmethod
@@ -233,7 +189,6 @@ class IdentityPlanner:
             preferred_url=document.preferred_url,
             content=document.content,
             normalized_text_hash=document.normalized_text_hash,
-            shingles=frozenset(document.shingle_signature),
             word_count=document.word_count,
         )
 
@@ -250,45 +205,6 @@ class IdentityPlanner:
             claim_uri=claim_uri,
         )
         return IdentityAssignment(review=review)
-
-    def _fuzzy_candidates(
-        self,
-        source_record_key: str,
-        word_count: int,
-        shingles: frozenset[str],
-        reviews: list[RegisteredReview],
-    ) -> list[PlannedIdentityCandidate]:
-        if word_count < self.minimum_similarity_words:
-            return []
-        candidates: list[PlannedIdentityCandidate] = []
-        seen: set[UUID] = set()
-        for review in reviews:
-            if review.id in seen:
-                continue
-            seen.add(review.id)
-            document = review.document
-            if document.word_count < self.minimum_similarity_words:
-                continue
-            similarity = shingle_containment(shingles, document.shingles)
-            if similarity < self.similarity_threshold:
-                continue
-            candidates.append(
-                PlannedIdentityCandidate(
-                    source_record_key=source_record_key,
-                    candidate=IdentityCandidate(
-                        candidate_review_id=review.id,
-                        similarity=similarity,
-                        evidence={
-                            "kind": "body_similarity",
-                            "same_organization": True,
-                            "same_claim": True,
-                            "left_word_count": word_count,
-                            "right_word_count": document.word_count,
-                        },
-                    ),
-                )
-            )
-        return candidates
 
     @staticmethod
     def _attach(record: SourceReviewRecord, assignment: IdentityAssignment) -> None:
@@ -311,7 +227,6 @@ class IdentityPlanner:
         ):
             document.content = observed_document.content
             document.normalized_text_hash = observed_document.normalized_text_hash
-            document.shingles = frozenset(observed_document.shingle_signature)
             document.word_count = observed_document.word_count
         assignment.source_record_keys.add(source.record_key)
         assignment.source_names.add(source.source_name)

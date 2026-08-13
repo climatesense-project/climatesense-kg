@@ -1,0 +1,293 @@
+@prefix cimple:  <http://data.cimple.eu/ontology/> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix owl:     <http://www.w3.org/2002/07/owl#> .
+@prefix rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix schema:  <http://schema.org/> .
+@prefix skos:    <http://www.w3.org/2004/02/skos/core#> .
+@prefix vann:    <http://purl.org/vocab/vann/> .
+@prefix xsd:     <http://www.w3.org/2001/XMLSchema#> .
+
+
+#################################################################
+#  Ontology Declaration
+#################################################################
+
+<http://data.cimple.eu/ontology#>
+    rdf:type owl:Ontology ;
+    dcterms:title "CIMPLE Ontology"@en ;
+    dcterms:description "Vocabulary for representing claim reviews and their analytical factors, including emotion, sentiment, political leaning, and conspiracy theory detection, as produced by the CIMPLE fact-checking knowledge graph pipeline."@en ;
+    dcterms:creator <http://data.cimple.eu> ;
+    dcterms:publisher <http://data.cimple.eu> ;
+    dcterms:created "2023-01-01"^^xsd:date ;
+    owl:versionInfo "1.0.0" ;
+    vann:preferredNamespaceUri "http://data.cimple.eu/ontology/" ;
+    vann:preferredNamespacePrefix "cimple" .
+
+
+#################################################################
+#  Object Properties
+#################################################################
+
+cimple:credibility_score
+    rdf:type owl:ObjectProperty ;
+    rdfs:label "credibility score"@en ;
+    rdfs:comment "Links a CreativeWork to a Rating that captures its assessed credibility."@en ;
+    rdfs:domain schema:CreativeWork ;
+    rdfs:range schema:Rating ;
+    rdfs:isDefinedBy <http://data.cimple.eu/ontology#> .
+
+cimple:hasEmotion
+    rdf:type owl:ObjectProperty ;
+    rdfs:label "has emotion"@en ;
+    rdfs:comment "Links a CreativeWork to the predominant emotion detected in its content."@en ;
+    rdfs:domain schema:CreativeWork ;
+    rdfs:range skos:Concept ;
+    rdfs:isDefinedBy <http://data.cimple.eu/ontology#> .
+
+cimple:hasSentiment
+    rdf:type owl:ObjectProperty ;
+    rdfs:label "has sentiment"@en ;
+    rdfs:comment "Links a CreativeWork to the predominant sentiment detected in its content."@en ;
+    rdfs:domain schema:CreativeWork ;
+    rdfs:range skos:Concept ;
+    rdfs:isDefinedBy <http://data.cimple.eu/ontology#> .
+
+cimple:hasPoliticalLeaning
+    rdf:type owl:ObjectProperty ;
+    rdfs:label "has political leaning"@en ;
+    rdfs:comment "Links a CreativeWork to its detected political orientation."@en ;
+    rdfs:domain schema:CreativeWork ;
+    rdfs:range skos:Concept ;
+    rdfs:isDefinedBy <http://data.cimple.eu/ontology#> .
+
+cimple:mentionsConspiracy
+    rdf:type owl:ObjectProperty ;
+    rdfs:label "mentions conspiracy"@en ;
+    rdfs:comment "Links a CreativeWork to a conspiracy theory that is referenced but not actively promoted in its content."@en ;
+    rdfs:domain schema:CreativeWork ;
+    rdfs:range skos:Concept ;
+    rdfs:isDefinedBy <http://data.cimple.eu/ontology#> .
+
+cimple:promotesConspiracy
+    rdf:type owl:ObjectProperty ;
+    rdfs:label "promotes conspiracy"@en ;
+    rdfs:comment "Links a CreativeWork to a conspiracy theory that is actively promoted in its content."@en ;
+    rdfs:domain schema:CreativeWork ;
+    rdfs:range skos:Concept ;
+    rdfs:isDefinedBy <http://data.cimple.eu/ontology#> .
+
+cimple:normalizedReviewRating
+    rdf:type owl:ObjectProperty ;
+    rdfs:label "normalized review rating"@en ;
+    rdfs:comment "Links a ClaimReview to its normalized CoInform verdict."@en ;
+    rdfs:domain schema:ClaimReview ;
+    rdfs:range schema:Rating ;
+    rdfs:isDefinedBy <http://data.cimple.eu/ontology#> .
+
+cimple:related
+    rdf:type owl:ObjectProperty, owl:SymmetricProperty ;
+    rdfs:label "related"@en ;
+    rdfs:comment "Links two CreativeWork instances that address the same or closely related claims."@en ;
+    rdfs:domain schema:CreativeWork ;
+    rdfs:range schema:CreativeWork ;
+    rdfs:isDefinedBy <http://data.cimple.eu/ontology#> .
+
+
+#################################################################
+#  Datatype Properties
+#################################################################
+
+cimple:readability_score
+    rdf:type owl:DatatypeProperty ;
+    rdfs:label "readability score"@en ;
+    rdfs:comment "A score representing the readability level of a CreativeWork."@en ;
+    rdfs:domain schema:CreativeWork ;
+    rdfs:range xsd:string ;
+    rdfs:isDefinedBy <http://data.cimple.eu/ontology#> .
+
+
+#################################################################
+#  Concept Schemes
+#################################################################
+
+<http://data.cimple.eu/emotion>
+    rdf:type skos:ConceptScheme ;
+    rdfs:label "CIMPLE Emotion Vocabulary"@en ;
+    skos:prefLabel "CIMPLE Emotion Vocabulary"@en ;
+    dcterms:description "Controlled vocabulary of emotions detectable in claims and creative works."@en ;
+    skos:hasTopConcept
+        <http://data.cimple.eu/emotion/happiness>,
+        <http://data.cimple.eu/emotion/anger>,
+        <http://data.cimple.eu/emotion/sadness>,
+        <http://data.cimple.eu/emotion/fear> .
+
+<http://data.cimple.eu/sentiment>
+    rdf:type skos:ConceptScheme ;
+    rdfs:label "CIMPLE Sentiment Vocabulary"@en ;
+    skos:prefLabel "CIMPLE Sentiment Vocabulary"@en ;
+    dcterms:description "Controlled vocabulary of sentiments detectable in claims and creative works."@en ;
+    skos:hasTopConcept
+        <http://data.cimple.eu/sentiment/negative>,
+        <http://data.cimple.eu/sentiment/neutral>,
+        <http://data.cimple.eu/sentiment/positive> .
+
+<http://data.cimple.eu/political-leaning>
+    rdf:type skos:ConceptScheme ;
+    rdfs:label "CIMPLE Political Leaning Vocabulary"@en ;
+    skos:prefLabel "CIMPLE Political Leaning Vocabulary"@en ;
+    dcterms:description "Controlled vocabulary of political orientations detectable in claims and creative works."@en ;
+    skos:hasTopConcept
+        <http://data.cimple.eu/political-leaning/left>,
+        <http://data.cimple.eu/political-leaning/other>,
+        <http://data.cimple.eu/political-leaning/right> .
+
+<http://data.cimple.eu/conspiracy>
+    rdf:type skos:ConceptScheme ;
+    rdfs:label "CIMPLE Conspiracy Theory Vocabulary"@en ;
+    skos:prefLabel "CIMPLE Conspiracy Theory Vocabulary"@en ;
+    dcterms:description "Controlled vocabulary of conspiracy theories that may be mentioned or promoted in claims and creative works."@en ;
+    skos:hasTopConcept
+        <http://data.cimple.eu/conspiracy/suppressed_cures>,
+        <http://data.cimple.eu/conspiracy/behaviour_and_mind_control>,
+        <http://data.cimple.eu/conspiracy/antivax>,
+        <http://data.cimple.eu/conspiracy/fake_virus>,
+        <http://data.cimple.eu/conspiracy/intentional_pandemic>,
+        <http://data.cimple.eu/conspiracy/harmful_radiation>,
+        <http://data.cimple.eu/conspiracy/population_reduction>,
+        <http://data.cimple.eu/conspiracy/new_world_order>,
+        <http://data.cimple.eu/conspiracy/satanism> .
+
+
+#################################################################
+#  Emotion Concepts
+#################################################################
+
+<http://data.cimple.eu/emotion/happiness>
+    rdf:type skos:Concept ;
+    skos:prefLabel "Happiness"@en ;
+    skos:topConceptOf <http://data.cimple.eu/emotion> ;
+    skos:inScheme <http://data.cimple.eu/emotion> .
+
+<http://data.cimple.eu/emotion/anger>
+    rdf:type skos:Concept ;
+    skos:prefLabel "Anger"@en ;
+    skos:topConceptOf <http://data.cimple.eu/emotion> ;
+    skos:inScheme <http://data.cimple.eu/emotion> .
+
+<http://data.cimple.eu/emotion/sadness>
+    rdf:type skos:Concept ;
+    skos:prefLabel "Sadness"@en ;
+    skos:topConceptOf <http://data.cimple.eu/emotion> ;
+    skos:inScheme <http://data.cimple.eu/emotion> .
+
+<http://data.cimple.eu/emotion/fear>
+    rdf:type skos:Concept ;
+    skos:prefLabel "Fear"@en ;
+    skos:topConceptOf <http://data.cimple.eu/emotion> ;
+    skos:inScheme <http://data.cimple.eu/emotion> .
+
+
+#################################################################
+#  Sentiment Concepts
+#################################################################
+
+<http://data.cimple.eu/sentiment/negative>
+    rdf:type skos:Concept ;
+    skos:prefLabel "Negative"@en ;
+    skos:topConceptOf <http://data.cimple.eu/sentiment> ;
+    skos:inScheme <http://data.cimple.eu/sentiment> .
+
+<http://data.cimple.eu/sentiment/neutral>
+    rdf:type skos:Concept ;
+    skos:prefLabel "Neutral"@en ;
+    skos:topConceptOf <http://data.cimple.eu/sentiment> ;
+    skos:inScheme <http://data.cimple.eu/sentiment> .
+
+<http://data.cimple.eu/sentiment/positive>
+    rdf:type skos:Concept ;
+    skos:prefLabel "Positive"@en ;
+    skos:topConceptOf <http://data.cimple.eu/sentiment> ;
+    skos:inScheme <http://data.cimple.eu/sentiment> .
+
+
+#################################################################
+#  Political Leaning Concepts
+#################################################################
+
+<http://data.cimple.eu/political-leaning/left>
+    rdf:type skos:Concept ;
+    skos:prefLabel "Left"@en ;
+    skos:topConceptOf <http://data.cimple.eu/political-leaning> ;
+    skos:inScheme <http://data.cimple.eu/political-leaning> .
+
+<http://data.cimple.eu/political-leaning/other>
+    rdf:type skos:Concept ;
+    skos:prefLabel "Other"@en ;
+    skos:topConceptOf <http://data.cimple.eu/political-leaning> ;
+    skos:inScheme <http://data.cimple.eu/political-leaning> .
+
+<http://data.cimple.eu/political-leaning/right>
+    rdf:type skos:Concept ;
+    skos:prefLabel "Right"@en ;
+    skos:topConceptOf <http://data.cimple.eu/political-leaning> ;
+    skos:inScheme <http://data.cimple.eu/political-leaning> .
+
+
+#################################################################
+#  Conspiracy Theory Concepts
+#################################################################
+
+<http://data.cimple.eu/conspiracy/suppressed_cures>
+    rdf:type skos:Concept ;
+    skos:prefLabel "Suppressed Cures"@en ;
+    skos:topConceptOf <http://data.cimple.eu/conspiracy> ;
+    skos:inScheme <http://data.cimple.eu/conspiracy> .
+
+<http://data.cimple.eu/conspiracy/behaviour_and_mind_control>
+    rdf:type skos:Concept ;
+    skos:prefLabel "Behaviour and Mind Control"@en ;
+    skos:topConceptOf <http://data.cimple.eu/conspiracy> ;
+    skos:inScheme <http://data.cimple.eu/conspiracy> .
+
+<http://data.cimple.eu/conspiracy/antivax>
+    rdf:type skos:Concept ;
+    skos:prefLabel "Antivax"@en ;
+    skos:topConceptOf <http://data.cimple.eu/conspiracy> ;
+    skos:inScheme <http://data.cimple.eu/conspiracy> .
+
+<http://data.cimple.eu/conspiracy/fake_virus>
+    rdf:type skos:Concept ;
+    skos:prefLabel "Fake Virus"@en ;
+    skos:topConceptOf <http://data.cimple.eu/conspiracy> ;
+    skos:inScheme <http://data.cimple.eu/conspiracy> .
+
+<http://data.cimple.eu/conspiracy/intentional_pandemic>
+    rdf:type skos:Concept ;
+    skos:prefLabel "Intentional Pandemic"@en ;
+    skos:topConceptOf <http://data.cimple.eu/conspiracy> ;
+    skos:inScheme <http://data.cimple.eu/conspiracy> .
+
+<http://data.cimple.eu/conspiracy/harmful_radiation>
+    rdf:type skos:Concept ;
+    skos:prefLabel "Harmful Radiation"@en ;
+    skos:topConceptOf <http://data.cimple.eu/conspiracy> ;
+    skos:inScheme <http://data.cimple.eu/conspiracy> .
+
+<http://data.cimple.eu/conspiracy/population_reduction>
+    rdf:type skos:Concept ;
+    skos:prefLabel "Population Reduction"@en ;
+    skos:topConceptOf <http://data.cimple.eu/conspiracy> ;
+    skos:inScheme <http://data.cimple.eu/conspiracy> .
+
+<http://data.cimple.eu/conspiracy/new_world_order>
+    rdf:type skos:Concept ;
+    skos:prefLabel "New World Order"@en ;
+    skos:topConceptOf <http://data.cimple.eu/conspiracy> ;
+    skos:inScheme <http://data.cimple.eu/conspiracy> .
+
+<http://data.cimple.eu/conspiracy/satanism>
+    rdf:type skos:Concept ;
+    skos:prefLabel "Satanism"@en ;
+    skos:topConceptOf <http://data.cimple.eu/conspiracy> ;
+    skos:inScheme <http://data.cimple.eu/conspiracy> .

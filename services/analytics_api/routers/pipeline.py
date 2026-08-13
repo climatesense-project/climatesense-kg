@@ -13,6 +13,7 @@ from ..schemas.pipeline import (
     StageDomainFailure,
     StageErrorBreakdown,
     StageRecentActivity,
+    StageRetryQueue,
     StageSuccessRate,
 )
 from ..services.sql import run_query
@@ -89,7 +90,10 @@ async def error_types(
         StageErrorBreakdown(
             stage_name=row["stage_name"],
             stage_version=row["stage_version"],
+            status=row["status"],
             error_type=row.get("error_type"),
+            failure_category=row.get("failure_category"),
+            http_status=row.get("http_status"),
             error_count=row["error_count"],
         )
         for row in rows
@@ -117,8 +121,38 @@ async def domain_failures(
         StageDomainFailure(
             stage_name=row["stage_name"],
             stage_version=row["stage_version"],
+            status=row["status"],
             domain=row.get("domain", "unknown"),
             failure_count=row["failure_count"],
+        )
+        for row in rows
+    ]
+
+
+@router.get("/retry-queue", response_model=list[StageRetryQueue])
+async def retry_queue(
+    stage_name: str | None = Query(default=None),
+    from_ts: datetime | None = Query(default=None),
+    to_ts: datetime | None = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=1000),
+    session: AsyncSession = Depends(get_session),
+) -> list[StageRetryQueue]:
+    params: StageParamsWithLimit = {
+        "stage_name": stage_name,
+        "from_ts": from_ts,
+        "to_ts": to_ts,
+        "limit": limit,
+    }
+    rows = await run_query(session, "pipeline", "stages_retry_queue.sql", dict(params))
+    return [
+        StageRetryQueue(
+            stage_name=row["stage_name"],
+            stage_version=row["stage_version"],
+            status=row["status"],
+            failure_category=row.get("failure_category"),
+            http_status=row.get("http_status"),
+            result_count=row["result_count"],
+            next_retry_at=row.get("next_retry_at"),
         )
         for row in rows
     ]

@@ -187,15 +187,25 @@ data_sources:
 
 document_extraction:
   enabled: true
+  max_workers: 32
   rate_limit_delay: 0.5
   timeout: 15
   max_retries: 2
+  transient_retry_delay_hours: 1
+  blocked_retry_delay_hours: 720
+  dns_retry_delay_hours: 168
+  content_retry_delay_hours: 720
   checkpoint_size: 25
   progress_interval_seconds: 10
 
 identity_resolution:
   batch_size: 500
   progress_interval_seconds: 10
+
+duplicate_audit:
+  similarity_threshold: 0.9
+  minimum_similarity_words: 50
+  group_batch_size: 100
 
 enrichment:
   checkpoint_size: 100
@@ -226,8 +236,8 @@ enrichment:
     rate_limit_delay: 0.1
 
 output:
-  format: "turtle"
-  output_path: "data/rdf/{DATE}/{SOURCE}.ttl"
+  format: "nt"
+  output_path: "data/rdf/{DATE}/{SOURCE}.nt"
   base_uri: "http://data.climatesense-project.eu"
 
 cache:
@@ -254,17 +264,26 @@ be recreated.
 input, stage implementation, and semantic configuration. `stage_result_attempts`
 retains immutable success and failure diagnostics. Claim-review UUID assignments
 live in separate identity tables and are not affected by stage-result flushing.
+Stage failures carry an explicit retry status and optional retry timestamp, allowing
+the pipeline to defer blocked resources and retain permanent failures without
+requesting them on every run.
 
 Semantic settings are part of result identity: Spotlight model, confidence and
 support, CIMPLE model versions and maximum input length, and the selected DBpedia
 properties. Endpoint URLs, timeouts, retry counts, rate limits, and batch sizes are
 operational settings and do not invalidate stored results.
 
-Document extraction persists newly fetched results every
+Document extraction fetches up to `document_extraction.max_workers` documents in
+parallel while allowing only one active request per hostname. Records sharing the
+same normalized document URL reuse one fetch. It persists newly fetched results every
 `document_extraction.checkpoint_size` documents and logs live progress at
 `document_extraction.progress_interval_seconds`. These operational settings do not
-change result identity. If a run is interrupted, completed checkpoints are restored
-on the next run instead of being fetched again.
+change result identity. Timeouts, temporary connection failures, HTTP 408/429 and
+server errors are retried; access blocks and DNS failures use configurable cooldowns;
+invalid URLs and HTTP 404/410 responses are retained as permanent failures. Known
+bot-challenge pages returned with HTTP 200 are treated as access blocks rather than
+document content. If a run is interrupted, completed checkpoints are restored on the
+next run instead of being fetched again.
 Use `--skip-extraction` to apply stored successful extractions without fetching
 failed or missing documents.
 
@@ -273,23 +292,30 @@ Identity resolution commits records in bounded
 reviews, throughput, and ETA at `identity_resolution.progress_interval_seconds`.
 Committed batches survive interruption; only the active batch is rolled back.
 
-Each enrichment stage announces when it starts and finishes, persists results every
-`enrichment.checkpoint_size` subjects, and logs restored, computed, failed, and
-remaining subjects with throughput and ETA at
-`enrichment.progress_interval_seconds`. Completed checkpoints are restored after an
-interruption.
+Source observations are streamed from the compressed download cache into
+run-scoped PostgreSQL rows. Extraction, identity resolution, enrichment, and RDF
+projection read those rows in bounded batches; the run-scoped rows are discarded
+when the run finishes. N-Triples output is written incrementally to one atomic
+temporary file per graph, so the pipeline never retains a corpus-sized RDF graph in
+memory. Other RDF formats are buffered and are intended for smaller exports. Long
+stage logs include process RSS so memory growth is visible during operation.
+
+Enrichment persists results every `enrichment.checkpoint_size` subjects. Pipeline
+runs log combined enrichment/RDF throughput, ETA, and RSS, followed by final restored,
+computed, failed, and missing totals for each stage. Completed checkpoints are
+restored after an interruption.
 
 ### Example SQL Queries
 
 ```sql
--- Current reusable coverage by stage and implementation version
-SELECT stage_name, stage_version, COUNT(*) AS total,
-       COUNT(*) FILTER (WHERE success) AS successes
-FROM stage_results GROUP BY stage_name, stage_version;
+-- Current reusable coverage and retry state by stage
+SELECT stage_name, stage_version, status, COUNT(*) AS total,
+       MIN(retry_at) AS next_retry_at
+FROM stage_results GROUP BY stage_name, stage_version, status;
 
 -- Historical attempt success rates, including failures that later recovered
 SELECT stage_name, stage_version, COUNT(*) AS attempts,
-       COUNT(*) FILTER (WHERE success) AS successes
+       COUNT(*) FILTER (WHERE status = 'success') AS successes
 FROM stage_result_attempts GROUP BY stage_name, stage_version;
 
 -- Highest-confidence identity candidates for offline auditing
@@ -297,12 +323,15 @@ SELECT source_record_key, candidate_review_id, similarity, evidence
 FROM identity_candidates ORDER BY similarity DESC;
 ```
 
-Every run reports dependency availability, eligible subjects, stored successes and
-failures, computed successes and failures, and missing results for each enrichment
-stage. A graph with missing required enrichment results is not deployed; its existing
-named graph is left untouched and the run is reported as degraded. Spotlight and
-DBpedia property stages govern the DBpedia enrichment graph, while enabled CIMPLE
-stages govern the source graphs that contain their claim-analysis triples.
+Every run reports dependency availability, eligible subjects, stored successes,
+deferred and permanent failures, computed outcomes, and missing results for each
+stage. Document-extraction coverage is reported separately from run health, so a
+known permanent dead link remains visible without making every later run
+operationally degraded. A graph with missing required enrichment results is not
+deployed; its existing named graph is left untouched and the run is reported as
+degraded. Spotlight and DBpedia property stages govern the DBpedia enrichment graph,
+while enabled CIMPLE stages govern the source graphs that contain their
+claim-analysis triples.
 
 ## Production operations
 
@@ -351,22 +380,20 @@ LIMIT 10
 
 ## Auditing near-duplicate claim reviews
 
-Use the read-only audit script on one generated N-Triples snapshot to find review
-bodies that are nearly identical but have distinct claim-review resources. Candidate
-pairs are limited to reviews attached to the same exact claim, keeping comparisons
-within small, semantically relevant groups.
+Run the exact audit after identity resolution to find nearly identical review bodies
+that still have distinct claim-review resources. Comparisons are limited to reviews
+from the same organization that are attached to the same exact claim, keeping each
+working set small and semantically relevant. The command replaces the diagnostic
+rows in `identity_candidates`; it never changes canonical identities or RDF.
 
 ```bash
-uv run python scripts/audit_similar_claim_reviews.py \
-  data/rdf/2026-08-07/claimreviewdata_2026-08-07_171335.nt \
-  --output output/similar-claim-reviews.csv
+uv run climatesense-kg audit-duplicates --config config/daily.yaml
 ```
 
 The default score is the containment overlap of normalized five-word shingles. A
 score of `0.9` means at least 90% of the smaller review's shingles also occur in the
-larger review. This catches extraction differences such as an added heading or a
-boilerplate paragraph while remaining easy to inspect. Reviews shorter than 50 words
-are excluded by default. Use the CSV as a manual review queue; a match can represent
+larger review. Reviews shorter than `duplicate_audit.minimum_similarity_words` are
+excluded. Query `identity_candidates` as a manual review queue: a match can represent
 a duplicate source record, a URL alias, or legitimate syndication. Require human
 confirmation before merging or deleting resources.
 

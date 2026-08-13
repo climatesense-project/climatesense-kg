@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import datetime
+from collections.abc import Iterator
+from dataclasses import asdict, dataclass, field
+from datetime import datetime, timedelta
 import logging
 import time
 from typing import TypedDict
+from uuid import UUID
 
 from dotenv import load_dotenv
 
@@ -19,7 +21,7 @@ from .config.organizations import ORGANIZATION_CATALOG_PATH, OrganizationCatalog
 from .data_manager import DataManager
 from .deployment import ArtifactDeployer, plan_artifact_deployment
 from .deployment.factory import create_deployment_handler
-from .domain import CanonicalClaimReview, SourceReviewRecord
+from .domain import CanonicalClaimReview, CanonicalOrganization, SourceReviewRecord
 from .enrichers import (
     CimpleModelEnricher,
     DBpediaPropertyEnricher,
@@ -27,18 +29,27 @@ from .enrichers import (
 )
 from .identity import IdentityResolver
 from .persistence import (
+    InMemoryObservationStore,
+    ObservationStore,
     PostgresDatabase,
     PostgresIdentityRegistry,
+    PostgresObservationStore,
+    PostgresPublicationReader,
     PostgresStageResultStore,
+    PublicationReader,
+    stable_hash,
 )
 from .rdf_generation import RdfArtifactBuilder, RdfBuildReport, RDFGenerator
 from .stages import (
     DocumentExtractor,
+    DocumentRetryPolicy,
     EnrichmentRunner,
     StageExecutionReport,
     StageExecutionSummary,
 )
 from .utils.logging import configure_external_loggers, setup_logging
+from .utils.memory import format_process_rss
+from .utils.progress import format_duration
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +63,8 @@ class DataSourceResults(TypedDict):
 
 
 class IngestionResults(TypedDict):
-    items: list[SourceReviewRecord]
+    run_id: UUID
+    total_items: int
     successful_sources: list[str]
     failed_sources: list[str]
 
@@ -71,7 +83,6 @@ class GeneratedFileInfo(TypedDict):
     items: int
     failed_items: int
     file_size: int
-    review_uris: list[str]
     complete: bool
     incomplete_stages: list[str]
 
@@ -122,6 +133,10 @@ class PipelineDependencies:
     enrichment_runner: EnrichmentRunner
     rdf_artifact_builder: RdfArtifactBuilder
     artifact_deployer: ArtifactDeployer
+    observation_store: ObservationStore = field(
+        default_factory=InMemoryObservationStore
+    )
+    publication_reader: PublicationReader | None = None
     database: PostgresDatabase | None = None
     source_graph_requirements: frozenset[str] = frozenset()
     enrichment_graph_requirements: dict[str, frozenset[str]] = field(
@@ -142,9 +157,24 @@ def build_pipeline_dependencies(config: PipelineConfig) -> PipelineDependencies:
     if config.document_extraction.enabled:
         document_extractor = DocumentExtractor(
             stage_store,
+            max_workers=config.document_extraction.max_workers,
             rate_limit_delay=config.document_extraction.rate_limit_delay,
             timeout=config.document_extraction.timeout,
             max_retries=config.document_extraction.max_retries,
+            retry_policy=DocumentRetryPolicy(
+                transient_delay=timedelta(
+                    hours=config.document_extraction.transient_retry_delay_hours
+                ),
+                blocked_delay=timedelta(
+                    hours=config.document_extraction.blocked_retry_delay_hours
+                ),
+                dns_delay=timedelta(
+                    hours=config.document_extraction.dns_retry_delay_hours
+                ),
+                content_delay=timedelta(
+                    hours=config.document_extraction.content_retry_delay_hours
+                ),
+            ),
             checkpoint_size=config.document_extraction.checkpoint_size,
             progress_interval_seconds=(
                 config.document_extraction.progress_interval_seconds
@@ -238,6 +268,8 @@ def build_pipeline_dependencies(config: PipelineConfig) -> PipelineDependencies:
         artifact_deployer=ArtifactDeployer(
             create_deployment_handler(config.deployment)
         ),
+        observation_store=PostgresObservationStore(database.pool),
+        publication_reader=PostgresPublicationReader(database.pool),
         database=database,
         source_graph_requirements=frozenset(source_graph_requirements),
         enrichment_graph_requirements=(
@@ -286,11 +318,17 @@ class Pipeline:
         started = time.time()
         self._run_datetime = datetime.now()
         results = self._empty_results(started)
+        observation_run = None
+        rdf_session = None
         try:
-            ingestion = self._run_ingestion(skip_download=skip_download)
-            records = ingestion["items"]
+            signature = stable_hash(asdict(self.config))
+            observation_run = self.dependencies.observation_store.start_run(signature)
+            ingestion = self._run_ingestion(
+                observation_run.id,
+                skip_download=skip_download,
+            )
             results["data_sources"] = {
-                "total_items": len(records),
+                "total_items": ingestion["total_items"],
                 "sources_processed": len(ingestion["successful_sources"]),
                 "sources_failed": len(ingestion["failed_sources"]),
                 "successful_sources": ingestion["successful_sources"],
@@ -301,42 +339,108 @@ class Pipeline:
                     "All enabled data sources failed ingestion: "
                     + ", ".join(ingestion["failed_sources"])
                 )
-            reviews, extraction_report = self._resolve_records(
-                records,
+            extraction_report = self._extract_observations(
+                observation_run.id,
                 force=force_regenerate,
                 skip_extraction=skip_extraction,
             )
             if extraction_report is not None:
                 results["document_extraction"] = extraction_report.to_dict()
-            results["data_sources"]["total_items"] = len(reviews)
+            fallback_reviews = self._resolve_observations(observation_run.id)
 
-            enrichment_report = self.dependencies.enrichment_runner.run(
-                reviews,
-                stored_only=skip_enrichment,
-                force=force_regenerate,
+            self.dependencies.enrichment_runner.start_run()
+            rdf_session = self.dependencies.rdf_artifact_builder.start(
+                successful_sources=ingestion["successful_sources"],
+                run_datetime=self._run_datetime,
             )
+            reports_by_stage: dict[str, StageExecutionReport] = {}
+            processed = 0
+            publication_total = self._publication_count(
+                observation_run.id,
+                fallback_reviews=fallback_reviews,
+            )
+            publication_started = time.monotonic()
+            publication_last_logged = publication_started
+            for reviews in self._publication_batches(
+                observation_run.id,
+                fallback_reviews=fallback_reviews,
+            ):
+                enrichment_report = self.dependencies.enrichment_runner.run(
+                    reviews,
+                    stored_only=skip_enrichment,
+                    force=force_regenerate,
+                    report_progress=False,
+                )
+                for report in enrichment_report.stages:
+                    previous = reports_by_stage.get(report.stage_name)
+                    reports_by_stage[report.stage_name] = (
+                        report
+                        if previous is None
+                        else StageExecutionReport.combine([previous, report])
+                    )
+                rdf_session.add(enrichment_report.items)
+                processed += len(enrichment_report.items)
+                now = time.monotonic()
+                if (
+                    processed == publication_total
+                    or now - publication_last_logged >= 10
+                ):
+                    elapsed = now - publication_started
+                    rate = processed / elapsed if elapsed > 0 else 0
+                    eta = (publication_total - processed) / rate if rate > 0 else None
+                    self.logger.info(
+                        "Enrichment and RDF projection: %d/%d reviews (%.1f%%); "
+                        "rate=%.2f/s; ETA=%s; RSS=%s",
+                        processed,
+                        publication_total,
+                        (
+                            100.0
+                            if not publication_total
+                            else 100 * processed / publication_total
+                        ),
+                        rate,
+                        format_duration(eta),
+                        format_process_rss(),
+                    )
+                    publication_last_logged = now
+
+            combined_enrichment = list(reports_by_stage.values())
+            for report in combined_enrichment:
+                self.logger.info(
+                    "Enrichment finished: %s; eligible=%d, restored=%d, "
+                    "computed=%d, failed=%d, missing=%d",
+                    report.stage_name,
+                    report.eligible_subjects,
+                    report.stored_successes,
+                    report.computed_successes,
+                    report.computed_failures,
+                    report.missing_results,
+                )
             results["enrichment"] = {
-                "input_items": len(reviews),
-                "output_items": len(enrichment_report.items),
-                "complete": enrichment_report.complete,
-                "stages": [stage.to_dict() for stage in enrichment_report.stages],
+                "input_items": processed,
+                "output_items": processed,
+                "complete": all(report.complete for report in combined_enrichment),
+                "stages": [stage.to_dict() for stage in combined_enrichment],
             }
-            results["total_processed"] = len(enrichment_report.items)
+            results["total_processed"] = processed
+            results["data_sources"]["total_items"] = processed
+            incomplete_stage_names = {
+                report.stage_name
+                for report in combined_enrichment
+                if not report.complete
+            }
             results["degraded"] = (
                 bool(ingestion["failed_sources"])
-                or (extraction_report is not None and not extraction_report.complete)
-                or not enrichment_report.complete
+                or (extraction_report is not None and not extraction_report.healthy)
+                or bool(incomplete_stage_names)
             )
 
             incomplete_by_graph = {
-                graph_name: requirements & enrichment_report.incomplete_stage_names
-                for graph_name, requirements in (
-                    self.dependencies.enrichment_graph_requirements.items()
-                )
+                graph_name: requirements & incomplete_stage_names
+                for graph_name, requirements in self.dependencies.enrichment_graph_requirements.items()
             }
             source_incomplete = (
-                self.dependencies.source_graph_requirements
-                & enrichment_report.incomplete_stage_names
+                self.dependencies.source_graph_requirements & incomplete_stage_names
             )
             incomplete_by_graph.update(
                 {
@@ -345,12 +449,10 @@ class Pipeline:
                 }
             )
 
-            build_report = self.dependencies.rdf_artifact_builder.build(
-                enrichment_report.items,
-                successful_sources=ingestion["successful_sources"],
-                run_datetime=self._run_datetime,
+            build_report = rdf_session.finish(
                 incomplete_stages_by_graph=incomplete_by_graph,
             )
+            rdf_session = None
             rdf_results = self._rdf_results(build_report)
             results["rdf_generation"] = rdf_results
             if rdf_results["error"]:
@@ -387,6 +489,20 @@ class Pipeline:
             self.logger.error("Pipeline failed: %s", exc)
             results["error"] = str(exc)
         finally:
+            if rdf_session is not None:
+                rdf_session.abort()
+            if observation_run is not None:
+                try:
+                    self.dependencies.observation_store.finish_run(
+                        observation_run.id,
+                        status="complete" if results["success"] else "failed",
+                        error=results["error"],
+                    )
+                except Exception as exc:
+                    self.logger.error("Failed to finalize pipeline run: %s", exc)
+                    if results["success"]:
+                        results["success"] = False
+                        results["error"] = f"Failed to finalize pipeline run: {exc}"
             ended = time.time()
             results["end_time"] = ended
             results["duration"] = ended - started
@@ -410,37 +526,155 @@ class Pipeline:
             "error": None,
         }
 
-    def _run_ingestion(self, *, skip_download: bool) -> IngestionResults:
-        records: list[SourceReviewRecord] = []
+    def _run_ingestion(self, run_id: UUID, *, skip_download: bool) -> IngestionResults:
+        total_items = 0
         successful_sources: list[str] = []
         failed_sources: list[str] = []
         for source in self.config.data_sources:
             if not source.enabled:
                 continue
             try:
-                source_records = list(
+                source_items = self.dependencies.observation_store.ingest_source(
+                    run_id,
+                    source.name,
                     self.dependencies.data_manager.get_data(
-                        source, skip_download=skip_download
-                    )
+                        source,
+                        skip_download=skip_download,
+                    ),
+                    batch_size=self.config.identity_resolution.batch_size,
                 )
-                records.extend(source_records)
+                total_items += source_items
                 successful_sources.append(source.name)
             except Exception as exc:
                 self.logger.error("Ingestion failed for %s: %s", source.name, exc)
                 failed_sources.append(source.name)
         return {
-            "items": records,
+            "run_id": run_id,
+            "total_items": total_items,
             "successful_sources": successful_sources,
             "failed_sources": failed_sources,
         }
 
-    def _resolve_records(
+    def _extract_observations(
         self,
-        records: list[SourceReviewRecord],
+        run_id: UUID,
         *,
         force: bool,
         skip_extraction: bool,
-    ) -> tuple[list[CanonicalClaimReview], StageExecutionReport | None]:
+    ) -> StageExecutionReport | None:
+        extractor = self.dependencies.document_extractor
+        if extractor is None:
+            return None
+        extractor.start_run()
+        combined: StageExecutionReport | None = None
+        total = self.dependencies.observation_store.count(run_id)
+        processed = 0
+        started = time.monotonic()
+        last_logged = started
+        for batch in self.dependencies.observation_store.iter_batches(
+            run_id,
+            batch_size=self.config.identity_resolution.batch_size,
+            order_by_url=True,
+        ):
+            report = extractor.extract_many(
+                batch,
+                force=force,
+                stored_only=skip_extraction,
+                report_progress=False,
+            )
+            combined = (
+                report
+                if combined is None
+                else StageExecutionReport.combine([combined, report])
+            )
+            processed += len(batch)
+            now = time.monotonic()
+            if processed == total or now - last_logged >= 10:
+                elapsed = now - started
+                rate = processed / elapsed if elapsed > 0 else 0
+                eta = (total - processed) / rate if rate > 0 else None
+                self.logger.info(
+                    "Document extraction pass: %d/%d observations (%.1f%%); "
+                    "unique=%d, restored=%d, fetched=%d, failed=%d; "
+                    "rate=%.2f/s; ETA=%s; RSS=%s",
+                    processed,
+                    total,
+                    100.0 if not total else 100 * processed / total,
+                    combined.eligible_subjects,
+                    combined.stored_successes,
+                    combined.computed_successes,
+                    combined.computed_failures,
+                    rate,
+                    format_duration(eta),
+                    format_process_rss(),
+                )
+                last_logged = now
+        if combined is None:
+            combined = StageExecutionReport.combine([], stage_name=extractor.name)
+        self.logger.info(
+            "Document extraction pass finished: eligible=%d, restored=%d, "
+            "fetched=%d, failed=%d; RSS=%s",
+            combined.eligible_subjects,
+            combined.stored_successes,
+            combined.computed_successes,
+            combined.computed_failures,
+            format_process_rss(),
+        )
+        return combined
+
+    def _resolve_observations(
+        self,
+        run_id: UUID,
+    ) -> dict[str, CanonicalClaimReview] | None:
+        fallback = {} if self.dependencies.publication_reader is None else None
+        total = self.dependencies.observation_store.count(run_id)
+        committed = 0
+        started = time.monotonic()
+        last_logged = started
+        for records in self.dependencies.observation_store.iter_batches(
+            run_id,
+            batch_size=self.config.identity_resolution.batch_size,
+        ):
+            if self.dependencies.document_extractor is not None:
+                self.dependencies.document_extractor.extract_many(
+                    records,
+                    stored_only=True,
+                    report_progress=False,
+                )
+            reviews = self.dependencies.identity_resolver.resolve_many(
+                self._resolvable_records(records),
+                report_progress=False,
+            )
+            if fallback is not None:
+                for review in reviews:
+                    existing = fallback.get(review.key)
+                    if existing is None:
+                        fallback[review.key] = review
+                    else:
+                        IdentityResolver._merge(existing, review)
+            committed += len(records)
+            now = time.monotonic()
+            if committed == total or now - last_logged >= 10:
+                elapsed = now - started
+                rate = committed / elapsed if elapsed > 0 else 0
+                remaining = max(0, total - committed)
+                eta = remaining / rate if rate > 0 else None
+                self.logger.info(
+                    "Identity resolution: %d/%d committed (%.1f%%); "
+                    "rate=%.2f/s; ETA=%s; RSS=%s",
+                    committed,
+                    total,
+                    100.0 if not total else 100 * committed / total,
+                    rate,
+                    format_duration(eta),
+                    format_process_rss(),
+                )
+                last_logged = now
+        return fallback
+
+    def _resolvable_records(
+        self, records: list[SourceReviewRecord]
+    ) -> list[tuple[SourceReviewRecord, CanonicalOrganization]]:
         resolvable = []
         unresolved: set[tuple[str, str, str]] = set()
         for record in records:
@@ -465,17 +699,37 @@ class Pipeline:
             raise RuntimeError(
                 "Organizations are missing from the curated catalog: " + details
             )
-        extraction_report = None
-        if self.dependencies.document_extractor is not None:
-            extraction_report = self.dependencies.document_extractor.extract_many(
-                [record for record, _organization in resolvable],
-                force=force,
-                stored_only=skip_extraction,
+        return resolvable
+
+    def _publication_batches(
+        self,
+        run_id: UUID,
+        *,
+        fallback_reviews: dict[str, CanonicalClaimReview] | None,
+    ) -> Iterator[list[CanonicalClaimReview]]:
+        reader = self.dependencies.publication_reader
+        if reader is not None:
+            yield from reader.iter_batches(
+                run_id,
+                batch_size=self.config.identity_resolution.batch_size,
+                resolve_organization=self.dependencies.organization_catalog.resolve,
             )
-        return (
-            self.dependencies.identity_resolver.resolve_many(resolvable),
-            extraction_report,
-        )
+            return
+        reviews = list((fallback_reviews or {}).values())
+        batch_size = self.config.identity_resolution.batch_size
+        for start in range(0, len(reviews), batch_size):
+            yield reviews[start : start + batch_size]
+
+    def _publication_count(
+        self,
+        run_id: UUID,
+        *,
+        fallback_reviews: dict[str, CanonicalClaimReview] | None,
+    ) -> int:
+        reader = self.dependencies.publication_reader
+        if reader is not None:
+            return reader.count(run_id)
+        return len(fallback_reviews or {})
 
     @staticmethod
     def _rdf_results(report: RdfBuildReport) -> RDFGenerationResults:
@@ -487,7 +741,6 @@ class Pipeline:
                 "items": artifact.items,
                 "failed_items": artifact.failed_items,
                 "file_size": artifact.file_size,
-                "review_uris": artifact.review_uris,
                 "complete": artifact.complete,
                 "incomplete_stages": list(artifact.incomplete_stages),
             }
