@@ -309,7 +309,7 @@
           <rect />
           <foreignObject width="133.656" height="36.059">
             <div xmlns="http://www.w3.org/1999/xhtml"
-              style="color:#bf360c!important;display:table-cell;white-space:normal;line-height:1.5;max-width:133.67px;text-align:center">
+              style="color:#bf360c!important;display:flex;align-items:center;justify-content:center;white-space:normal;line-height:1.5;width:100%;height:100%;text-align:center">
               <span class="nodeLabel" style="color:#bf360c!important">
                 <p>CIMPLE models</p>
               </span>
@@ -338,17 +338,17 @@
       <g id="flowchart-n2-30" class="node default" data-et="node" data-id="n2" data-look="neo"
         data-node="true">
         <path
-          d="M0 10.996a49.072 10.996 0 0 0 98.144 0 49.072 10.996 0 0 0-98.144 0v63.718a49.072 10.996 0 0 0 98.144 0V10.996"
+          d="M0 10.996a58 10.996 0 0 0 116 0 58 10.996 0 0 0-116 0v63.718a58 10.996 0 0 0 116 0V10.996"
           class="basic label-container outer-path"
           style="stroke-width:4px!important;fill:#264f82!important;stroke:#182757!important"
-          transform="translate(1166.524 215.158)" />
-        <g class="label" style="color:#fff!important" transform="translate(1185.424 255.013)">
+          transform="translate(1157.596 215.158)" />
+        <g class="label" style="color:#fff!important" transform="translate(1176.596 255.013)">
           <rect />
-          <foreignObject width="60.344" height="21">
+          <foreignObject width="78" height="21">
             <div xmlns="http://www.w3.org/1999/xhtml"
-              style="color:#fff!important;display:table-cell;white-space:normal;line-height:1.5;max-width:74.1444px;text-align:center">
+              style="color:#fff!important;display:table-cell;white-space:normal;line-height:1.5;max-width:78px;text-align:center">
               <span class="nodeLabel" style="color:#fff!important">
-                <p>Virtuoso</p>
+                <p>Triplestore</p>
               </span>
             </div>
           </foreignObject>
