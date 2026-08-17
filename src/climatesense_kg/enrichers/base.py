@@ -1,165 +1,125 @@
-"""Base class for persisted semantic enrichment stages."""
+"""Minimal enrichment extension contract."""
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
 from collections import defaultdict
-from collections.abc import Callable
+from dataclasses import dataclass
 import logging
 from typing import Any
 
 from ..domain import CanonicalClaimReview
-from ..persistence import StageResult, StageResultKey, StageResultStore
-from ..stages.persisted import (
-    StageExecutionPolicy,
-    StageExecutionReport,
-    StageProgressLogger,
-    execute_persisted_stage,
-)
+from ..processing import ProcessingResult, stable_hash
 
 
-class Enricher(ABC):
-    """Apply one semantic transformation with explicit persistent state."""
+@dataclass
+class EnrichmentSubject:
+    """One unique semantic subject and all batch-local projections using it."""
+
+    key: str
+    input_hash: str
+    targets: list[Any]
+
+
+class Enricher:
+    """Describe one external enrichment without owning persistence."""
 
     def __init__(
         self,
         name: str,
         *,
         version: str,
-        store: StageResultStore,
         semantic_config: dict[str, Any] | None = None,
         availability_key: str | None = None,
-        compute_batch_size: int = 25,
-        checkpoint_size: int = 100,
-        progress_interval_seconds: float = 10.0,
+        batch_size: int = 25,
+        max_workers: int = 1,
     ) -> None:
-        if compute_batch_size <= 0:
-            raise ValueError("Compute batch size must be positive")
-        if checkpoint_size <= 0:
-            raise ValueError("Checkpoint size must be positive")
-        if progress_interval_seconds < 0:
-            raise ValueError("Progress interval must be non-negative")
+        if batch_size <= 0:
+            raise ValueError("Enricher batch size must be positive")
+        if max_workers <= 0:
+            raise ValueError("Enricher worker count must be positive")
         self.name = name
-        self.stage_name = f"enrichment.{name}"
         self.version = version
-        self.store = store
         self.semantic_config = semantic_config or {}
-        self.availability_key = availability_key or self.stage_name
-        self.compute_batch_size = min(compute_batch_size, checkpoint_size)
-        self.checkpoint_size = checkpoint_size
-        self.progress_interval_seconds = progress_interval_seconds
+        self.config_hash = stable_hash(self.semantic_config)
+        self.availability_key = availability_key or name
+        self.batch_size = batch_size
+        self.max_workers = max_workers
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
-    def enrich(
+    def subjects(self, items: list[CanonicalClaimReview]) -> list[EnrichmentSubject]:
+        grouped: dict[str, list[CanonicalClaimReview]] = defaultdict(list)
+        inputs: dict[str, str] = {}
+        for item in self.eligible_items(items):
+            key = self.subject_key(item)
+            input_hash = stable_hash(self.input_value(item))
+            previous = inputs.setdefault(key, input_hash)
+            if previous != input_hash:
+                raise RuntimeError(
+                    f"Enricher {self.name} received conflicting input for {key}"
+                )
+            grouped[key].append(item)
+        return [
+            EnrichmentSubject(key, inputs[key], targets)
+            for key, targets in grouped.items()
+        ]
+
+    def compute_batch(
+        self,
+        subjects: list[EnrichmentSubject],
+    ) -> list[ProcessingResult]:
+        """Compute one bounded work unit in subject order."""
+
+        return self.compute_items([subject.targets[0] for subject in subjects])
+
+    def apply(self, subject: EnrichmentSubject, payload: dict[str, Any]) -> None:
+        for target in subject.targets:
+            self.apply_item(target, payload)
+
+    def eligible_items(
         self,
         items: list[CanonicalClaimReview],
-        *,
-        policy: StageExecutionPolicy = StageExecutionPolicy.COMPUTE,
-        force: bool = False,
-        availability_check: Callable[[], bool] | None = None,
-        report_progress: bool = True,
-    ) -> StageExecutionReport:
-        """Apply successful results and report semantic-subject completeness."""
-
-        items_by_key: dict[StageResultKey, list[CanonicalClaimReview]] = defaultdict(
-            list
-        )
-        for item in self._eligible_items(items):
-            items_by_key[self.result_key(item)].append(item)
-
-        def apply_group(
-            group: list[CanonicalClaimReview], payload: dict[str, Any]
-        ) -> None:
-            for item in group:
-                self._apply(item, payload)
-
-        report = execute_persisted_stage(
-            stage_name=self.stage_name,
-            subjects=dict(items_by_key),
-            store=self.store,
-            compute_many=lambda groups: self._compute_many(
-                [group[0] for group in groups], force=force
-            ),
-            apply_result=apply_group,
-            policy=policy,
-            force=force,
-            availability_check=availability_check,
-            stage_logger=self.logger,
-            compute_batch_size=self.compute_batch_size,
-            checkpoint_size=self.checkpoint_size,
-            progress_callback=(
-                StageProgressLogger(
-                    self.logger,
-                    label="Enrichment",
-                    interval_seconds=self.progress_interval_seconds,
-                )
-                if report_progress
-                else None
-            ),
-        )
-        if items and report_progress:
-            self.logger.info(
-                "%s completeness: %d eligible, %d stored, %d computed, %d missing",
-                self.name,
-                report.eligible_subjects,
-                report.stored_successes,
-                report.computed_successes,
-                report.missing_results,
-            )
-        return report
-
-    def _eligible_items(
-        self, items: list[CanonicalClaimReview]
     ) -> list[CanonicalClaimReview]:
         return items
 
-    def _compute_many(
+    def compute_items(
         self,
         items: list[CanonicalClaimReview],
-        *,
-        force: bool,
-    ) -> list[StageResult]:
-        """Compute results independently; batch stages can override this hook."""
-
-        results: list[StageResult] = []
+    ) -> list[ProcessingResult]:
+        results: list[ProcessingResult] = []
         for item in items:
             try:
-                results.append(self._compute(item, force=force))
+                results.append(self.compute_item(item))
             except Exception as exc:
-                self.logger.error("%s failed for %s: %s", self.name, item.uri, exc)
+                self.logger.error(
+                    "Enricher %s failed for %s: %s", self.name, item.uri, exc
+                )
                 results.append(
-                    StageResult.retryable_failure(
+                    ProcessingResult.retryable(
                         {"error_type": "stage_error", "error": str(exc)}
                     )
                 )
         return results
 
-    def result_key(self, item: CanonicalClaimReview) -> StageResultKey:
-        return StageResultKey.build(
-            subject_key=self._subject_key(item),
-            stage_name=self.stage_name,
-            stage_version=self.version,
-            input_value=self._input_value(item),
-            config_value=self.semantic_config,
-        )
-
-    def _subject_key(self, item: CanonicalClaimReview) -> str:
-        return item.key
-
-    @abstractmethod
     def is_available(self) -> bool:
         """Return whether the external dependency is ready."""
+        raise NotImplementedError
 
-    @abstractmethod
-    def _input_value(self, item: CanonicalClaimReview) -> Any:
-        """Return only semantic input consumed by this stage."""
+    def subject_key(self, item: CanonicalClaimReview) -> str:
+        """Return the durable identity of the semantic input."""
+        raise NotImplementedError
 
-    @abstractmethod
-    def _compute(
-        self, item: CanonicalClaimReview, *, force: bool = False
-    ) -> StageResult:
-        """Compute one stage result without mutating the review."""
+    def input_value(self, item: CanonicalClaimReview) -> Any:
+        """Return only the semantic input consumed by the enricher."""
+        raise NotImplementedError
 
-    @abstractmethod
-    def _apply(self, item: CanonicalClaimReview, payload: dict[str, Any]) -> None:
-        """Apply a successful stage payload to the typed domain model."""
+    def compute_item(self, item: CanonicalClaimReview) -> ProcessingResult:
+        """Compute one result without mutating the review."""
+        raise NotImplementedError
+
+    def apply_item(
+        self,
+        item: CanonicalClaimReview,
+        payload: dict[str, Any],
+    ) -> None:
+        """Apply one successful payload to a bounded projection."""
+        raise NotImplementedError

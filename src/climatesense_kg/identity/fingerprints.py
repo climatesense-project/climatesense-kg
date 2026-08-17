@@ -7,8 +7,6 @@ import hashlib
 import re
 import unicodedata
 
-from ..domain import ReviewDocument
-
 WORD_PATTERN = re.compile(r"\w+", flags=re.UNICODE)
 DEFAULT_SHINGLE_SIZE = 5
 
@@ -28,13 +26,9 @@ def normalize_identity_text(text: str) -> str:
     return " ".join(WORD_PATTERN.findall(normalized_unicode))
 
 
-def fingerprint_text(
-    text: str | None, *, shingle_size: int = DEFAULT_SHINGLE_SIZE
-) -> DocumentFingerprint:
-    """Build exact and near-duplicate evidence from document text."""
+def fingerprint_text(text: str | None) -> DocumentFingerprint:
+    """Build exact identity evidence from document text."""
 
-    if shingle_size < 1:
-        raise ValueError("Shingle size must be at least one")
     normalized = normalize_identity_text(text or "")
     if not normalized:
         return DocumentFingerprint(None, 0)
@@ -43,17 +37,6 @@ def fingerprint_text(
         normalized_text_hash=hashlib.sha256(normalized.encode()).hexdigest(),
         word_count=len(words),
     )
-
-
-def fingerprint_document(
-    document: ReviewDocument, *, shingle_size: int = DEFAULT_SHINGLE_SIZE
-) -> DocumentFingerprint:
-    """Fingerprint and annotate one source document observation."""
-
-    fingerprint = fingerprint_text(document.content, shingle_size=shingle_size)
-    document.normalized_text_hash = fingerprint.normalized_text_hash
-    document.word_count = fingerprint.word_count
-    return fingerprint
 
 
 def text_shingles(

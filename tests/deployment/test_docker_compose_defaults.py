@@ -23,14 +23,12 @@ def test_pipeline_requires_reachable_factors_api_url() -> None:
     )
 
 
-def test_daily_pipeline_and_analytics_share_qlever_endpoint_default() -> None:
+def test_qlever_index_deployment_is_separate_from_pipeline() -> None:
     services = _compose_services()
     daily_config = yaml.safe_load(_DAILY_CONFIG_PATH.read_text())
 
-    assert daily_config["deployment"]["backend"] == "qlever"
-    assert services["pipeline"]["environment"]["QLEVER_ENDPOINT"] == (
-        "${QLEVER_ENDPOINT:-http://qlever:7019}"
-    )
+    assert daily_config["deployment"]["backend"] == "none"
+    assert "QLEVER_ENDPOINT" not in services["pipeline"]["environment"]
     assert services["analytics-api"]["environment"]["ANALYTICS_SPARQL_ENDPOINT"] == (
         "${ANALYTICS_SPARQL_ENDPOINT:-${QLEVER_ENDPOINT:-http://qlever:7019}}"
     )

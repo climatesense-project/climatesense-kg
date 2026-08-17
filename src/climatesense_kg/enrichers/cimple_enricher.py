@@ -12,7 +12,7 @@ import requests
 from .. import USER_AGENT
 from ..config.enrichment import CIMPLE_MODELS, CimpleModelName
 from ..domain import CanonicalClaimReview
-from ..persistence import StageResult, StageResultStore
+from ..processing import ProcessingResult
 from .base import Enricher
 
 
@@ -25,14 +25,12 @@ class CimpleModelEnricher(Enricher):
         self,
         *,
         model: CimpleModelName,
-        store: StageResultStore,
         model_version: str = "1",
         batch_size: int = 32,
         max_length: int = 128,
         timeout: int = 60,
         rate_limit_delay: float = 0.1,
-        checkpoint_size: int = 100,
-        progress_interval_seconds: float = 10.0,
+        max_workers: int = 1,
     ) -> None:
         if model not in CIMPLE_MODELS:
             raise ValueError(f"Unknown CIMPLE model: {model}")
@@ -41,16 +39,14 @@ class CimpleModelEnricher(Enricher):
         super().__init__(
             f"cimple.{model}",
             version="1",
-            store=store,
             semantic_config={
                 "model_id": f"cimple-factors/{endpoint}",
                 "model_version": model_version,
                 "max_length": max_length,
             },
             availability_key="cimple_factors",
-            compute_batch_size=effective_batch_size,
-            checkpoint_size=checkpoint_size,
-            progress_interval_seconds=progress_interval_seconds,
+            batch_size=effective_batch_size,
+            max_workers=max_workers,
         )
         self.model = model
         self.api_url = os.environ.get("CIMPLE_FACTORS_API_URL", "http://localhost:8000")
@@ -74,59 +70,49 @@ class CimpleModelEnricher(Enricher):
             self.logger.warning("CIMPLE Factors API unavailable: %s", exc)
             return False
 
-    def _subject_key(self, item: CanonicalClaimReview) -> str:
+    def subject_key(self, item: CanonicalClaimReview) -> str:
         return item.claim.uri
 
-    def _input_value(self, item: CanonicalClaimReview) -> Any:
+    def input_value(self, item: CanonicalClaimReview) -> Any:
         return {"claim_text": item.claim.analysis_text}
 
-    def _compute_many(
+    def compute_items(
         self,
         items: list[CanonicalClaimReview],
-        *,
-        force: bool,
-    ) -> list[StageResult]:
-        del force
-        results: list[StageResult] = []
-        for start in range(0, len(items), self.batch_size):
-            batch = items[start : start + self.batch_size]
-            try:
-                responses = self._call_model(
-                    [item.claim.analysis_text for item in batch]
+    ) -> list[ProcessingResult]:
+        try:
+            responses = self._call_model([item.claim.analysis_text for item in items])
+            if len(responses) != len(items):
+                raise ValueError(
+                    f"Unexpected result count for CIMPLE model {self.model}"
                 )
-                if len(responses) != len(batch):
-                    raise ValueError(
-                        f"Unexpected result count for CIMPLE model {self.model}"
-                    )
-                results.extend(
-                    StageResult.succeeded(
-                        {
-                            "value": self._extract_model_value(response),
-                        },
-                    )
-                    for response in responses
+            return [
+                ProcessingResult.success(
+                    {
+                        "value": self._extract_model_value(response),
+                    },
                 )
-            except Exception as exc:
-                self.logger.error("CIMPLE model %s failed: %s", self.model, exc)
-                results.extend(
-                    StageResult.retryable_failure(
-                        {
-                            "error_type": "model_error",
-                            "model": self.model,
-                            "error": str(exc),
-                        },
-                    )
-                    for _item in batch
+                for response in responses
+            ]
+        except Exception as exc:
+            self.logger.error("CIMPLE model %s failed: %s", self.model, exc)
+            return [
+                ProcessingResult.retryable(
+                    {
+                        "error_type": "model_error",
+                        "model": self.model,
+                        "error": str(exc),
+                    },
                 )
+                for _item in items
+            ]
+        finally:
             time.sleep(self.rate_limit_delay)
-        return results
 
-    def _compute(
-        self, item: CanonicalClaimReview, *, force: bool = False
-    ) -> StageResult:
-        return self._compute_many([item], force=force)[0]
+    def compute_item(self, item: CanonicalClaimReview) -> ProcessingResult:
+        return self.compute_items([item])[0]
 
-    def _apply(self, item: CanonicalClaimReview, payload: dict[str, Any]) -> None:
+    def apply_item(self, item: CanonicalClaimReview, payload: dict[str, Any]) -> None:
         value = payload.get("value")
         analysis = item.claim.analysis
         if self.model == "emotion":

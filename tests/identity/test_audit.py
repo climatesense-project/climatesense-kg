@@ -1,6 +1,5 @@
 """Tests for exact, on-demand duplicate comparison."""
 
-import json
 from unittest.mock import Mock
 from uuid import UUID
 
@@ -12,20 +11,17 @@ def test_duplicate_comparison_is_exact_and_excludes_short_reviews() -> None:
     reviews = [
         {
             "id": UUID("00000000-0000-0000-0000-000000000001"),
-            "record_key": "first",
-            "extracted_text": " ".join([*shared, "first ending"]),
+            "content": " ".join([*shared, "first ending"]),
             "word_count": 72,
         },
         {
             "id": UUID("00000000-0000-0000-0000-000000000002"),
-            "record_key": "second",
-            "extracted_text": " ".join([*shared, "second ending"]),
+            "content": " ".join([*shared, "second ending"]),
             "word_count": 72,
         },
         {
             "id": UUID("00000000-0000-0000-0000-000000000003"),
-            "record_key": "short",
-            "extracted_text": "too short for comparison",
+            "content": "too short for comparison",
             "word_count": 4,
         },
     ]
@@ -40,11 +36,11 @@ def test_duplicate_comparison_is_exact_and_excludes_short_reviews() -> None:
     assert candidate_pairs == 3
     assert eligible_pairs == 1
     assert len(matches) == 1
-    source_record_key, candidate_review_id, similarity, evidence_json = matches[0]
-    assert source_record_key == "second"
-    assert candidate_review_id == reviews[0]["id"]
+    left_review_id, right_review_id, similarity, evidence = matches[0]
+    assert left_review_id == reviews[0]["id"]
+    assert right_review_id == reviews[1]["id"]
     assert similarity >= 0.9
-    assert json.loads(evidence_json) == {
+    assert evidence.obj == {
         "kind": "body_similarity",
         "same_organization": True,
         "same_claim": True,

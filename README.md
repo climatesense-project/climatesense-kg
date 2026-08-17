@@ -25,7 +25,7 @@
   - Entity linking using [DBpedia Spotlight](https://www.dbpedia-spotlight.org/)
   - [Factors classification](https://github.com/climatesense-project/cimple-factors-server) using fine-tuned BERT models
 - RDF output using [Schema.org](https://schema.org/) and [CIMPLE ontology](https://github.com/CIMPLE-project/knowledge-base)
-- Triple store deployment supporting Virtuoso and QLever
+- Triple store deployment through Virtuoso uploads or complete QLever indexes
 - [YAML-based configuration](#configuration)
 
 ### Documentation & Resources
@@ -90,17 +90,17 @@ just run config/minimal.yaml
 
 **Initial Setup:**
 
-1. Clone the repository and navigate to the docker directory:
+1. Clone the repository and navigate to the project directory:
 
    ```bash
    git clone https://github.com/climatesense-project/climatesense-kg.git
-   cd climatesense-kg/docker
+   cd climatesense-kg
    ```
 
 2. Copy and configure environment variables:
 
    ```bash
-   cp .env.example .env
+   cp docker/.env.example docker/.env
    ```
 
    Edit `.env` to configure:
@@ -113,15 +113,13 @@ just run config/minimal.yaml
    - `VIRTUOSO_PASSWORD`: Virtuoso database password (required; no default)
    - `VIRTUOSO_ISQL_SERVICE_URL`: Virtuoso ISQL HTTP endpoint (default `http://isql-service:8080`)
    - `ISQL_SERVICE_TOKEN`: Required bearer token shared by the pipeline and the internal ISQL helper
-   - `QLEVER_ENDPOINT`: QLever Graph Store/SPARQL endpoint (default `http://qlever:7019`)
+   - `QLEVER_ENDPOINT`: Internal QLever SPARQL endpoint used by analytics (default `http://qlever:7019`)
    - `QLEVER_PORT`: Published QLever port (default `7019`)
-   - `QLEVER_ACCESS_TOKEN`: Required token for QLever updates and maintenance
-   - `QLEVER_UPLOAD_TIMEOUT_SECONDS`: RDF upload timeout (default `7200`)
-   - `QLEVER_INDEX_MEMORY`: Memory available to initial index builds (default `1G`)
+   - `QLEVER_ACCESS_TOKEN`: Token for QLever administrative operations
+   - `QLEVER_INDEX_MEMORY`: Memory available to index builds (default `1G`)
    - `QLEVER_MEMORY_FOR_QUERIES`: Memory available to queries (default `5G`)
    - `QLEVER_CACHE_MAX_SIZE`: Query-result cache size (default `2G`)
    - `QLEVER_QUERY_TIMEOUT`: Default query timeout (default `30s`)
-   - `QLEVER_REQUEST_BODY_LIMIT`: Maximum request body size, including RDF uploads (default `3G`)
    - `QLEVER_UI_PORT`: Published QLever UI port (default `7018`)
    - `QLEVERUI_SECRET_KEY`: Required Django signing key for QLever UI
    - `QLEVERUI_ALLOWED_HOSTS`: Hosts accepted by QLever UI
@@ -144,7 +142,7 @@ just run config/minimal.yaml
    - `ANALYTICS_API_PORT`: Published port for the analytics API container (default `8000`)
    - `ANALYTICS_UI_PORT`: Published port for the analytics UI container (default `3000`)
 
-3. Start the services with either Virtuoso or QLever:
+3. Start the required services. Virtuoso can receive RDF directly from the pipeline:
 
    - **Option 1. Virtuoso**
 
@@ -154,18 +152,20 @@ just run config/minimal.yaml
      just virtuoso-up
      ```
 
-   - **Option 2. QLever**
-
-     Build the initial QLever index and start the QLever stack:
-
-     ```bash
-     just qlever-init
-     just qlever-up
-     ```
+   QLever is started after the complete RDF snapshot has been generated in step 4.
 
 4. Run the pipeline with minimal configuration to verify the setup:
+
    ```bash
-   docker compose run --rm pipeline run -c config/minimal.yaml
+   docker compose -f docker/docker-compose.yml run --rm pipeline \
+     run --config config/minimal.yaml --skip-deployment
+   ```
+
+   A complete daily snapshot can then be indexed and served by QLever:
+
+   ```bash
+   just qlever-deploy
+   just qlever-up
    ```
 
 ## Configuration
@@ -178,12 +178,15 @@ data_sources:
     type: "claimreviewdata"
     provider:
       provider_type: "file"
-      file_path: "samples/claimreviewdata-data.json"
+      file_path: "samples/claimreviewdata-data/claim_reviews.json"
   - name: "euroclimatecheck_sample"
     type: "euroclimatecheck"
     provider:
       provider_type: "file"
-      file_path: "samples/euroclimatecheck-data.json"
+      file_path: "samples/euroclimatecheck-data/all_articles.json"
+
+batch_size: 500
+progress_interval_seconds: 10
 
 document_extraction:
   enabled: true
@@ -195,11 +198,6 @@ document_extraction:
   blocked_retry_delay_hours: 720
   dns_retry_delay_hours: 168
   content_retry_delay_hours: 720
-  checkpoint_size: 25
-  progress_interval_seconds: 10
-
-identity_resolution:
-  batch_size: 500
   progress_interval_seconds: 10
 
 duplicate_audit:
@@ -208,17 +206,16 @@ duplicate_audit:
   group_batch_size: 100
 
 enrichment:
-  checkpoint_size: 100
   progress_interval_seconds: 10
 
   dbpedia_spotlight:
     enabled: true
-    api_url: "https://api.dbpedia-spotlight.org/en/annotate"
+    api_url: "https://dbpedia-spotlight.tools.eurecom.fr/rest/annotate"
     model_id: "dbpedia-spotlight-en"
     confidence: 0.6
     support: 30
     timeout: 20
-    rate_limit_delay: 0.2
+    max_workers: 8
 
   cimple:
     enabled: true
@@ -234,10 +231,10 @@ enrichment:
     max_length: 128
     timeout: 30
     rate_limit_delay: 0.1
+    max_workers: 1
 
 output:
-  format: "nt"
-  output_path: "data/rdf/{DATE}/{SOURCE}.nt"
+  output_path: "data/rdf/{DATETIME}/{SOURCE}.nt.gz"
   base_uri: "http://data.climatesense-project.eu"
 
 cache:
@@ -245,9 +242,12 @@ cache:
   default_ttl_hours: 24.0
 
 deployment:
-  backend: "qlever" # none, virtuoso, or qlever
+  backend: "none" # none or virtuoso
   graph_template: "http://data.climatesense-project.eu/graph/{SOURCE}"
 ```
+
+QLever consumes completed RDF snapshots through `just qlever-deploy`; it is not an
+HTTP deployment backend of the pipeline.
 
 `data/organizations.ttl` is the fixed, manually maintained source of truth for fact-checker identity and metadata. Each entry has an explicit stable ClimateSense IRI, one curated name, one or more website URLs, country-level location, and memberships or parent relationships where applicable. Every processor must provide an organization website, and extracted organizations resolve exclusively by normalized URL.
 
@@ -255,55 +255,59 @@ deployment:
 
 ## Querying pipeline state
 
-PostgreSQL is authoritative for canonical identity and versioned semantic-stage
-results. It is durable application state and must be included in normal backup and
-restore procedures. The filesystem cache stores downloaded source artifacts and may
-be recreated.
+PostgreSQL is the pipeline's authoritative working state and must be included in
+normal backup and restore procedures. `source_observations` contains the active
+normalized source snapshots. `documents`, `document_urls`, `document_text_hashes`,
+and `claim_reviews` preserve canonical identity and the random UUIDs used by review
+URIs. `document_extractions` and `enrichment_results` contain the current reusable
+outcome for each external computation. The filesystem cache stores downloaded source
+artifacts and may be recreated.
 
-`stage_results` contains the current reusable outcome for each semantic subject,
-input, stage implementation, and semantic configuration. `stage_result_attempts`
-retains immutable success and failure diagnostics. Claim-review UUID assignments
-live in separate identity tables and are not affected by stage-result flushing.
-Stage failures carry an explicit retry status and optional retry timestamp, allowing
-the pipeline to defer blocked resources and retain permanent failures without
-requesting them on every run.
+Processing failures have either a retry time or a permanent status. The next run
+reuses current successes, defers failures whose retry time has not arrived, retries
+due failures, and retains permanent failures until explicitly forced. The
+`processing_results` view exposes extraction and enrichment state through one
+read-only shape for analytics.
 
 Semantic settings are part of result identity: Spotlight model, confidence and
 support, CIMPLE model versions and maximum input length, and the selected DBpedia
-properties. Endpoint URLs, timeouts, retry counts, rate limits, and batch sizes are
-operational settings and do not invalidate stored results.
+properties. Endpoint URLs, timeouts, retry counts, rate limits, batch sizes, and
+worker counts are operational settings and do not invalidate stored results.
 
 Document extraction fetches up to `document_extraction.max_workers` documents in
 parallel while allowing only one active request per hostname. Records sharing the
-same normalized document URL reuse one fetch. It persists newly fetched results every
-`document_extraction.checkpoint_size` documents and logs live progress at
-`document_extraction.progress_interval_seconds`. These operational settings do not
-change result identity. Timeouts, temporary connection failures, HTTP 408/429 and
-server errors are retried; access blocks and DNS failures use configurable cooldowns;
-invalid URLs and HTTP 404/410 responses are retained as permanent failures. Known
-bot-challenge pages returned with HTTP 200 are treated as access blocks rather than
-document content. If a run is interrupted, completed checkpoints are restored on the
-next run instead of being fetched again.
+same normalized document URL reuse one fetch. Results are committed after each
+bounded pipeline batch, and progress is logged at
+`document_extraction.progress_interval_seconds`. Timeouts, temporary connection
+failures, HTTP 408/429 and server errors are retried; access blocks and DNS failures
+use configurable cooldowns; invalid URLs and HTTP 404/410 responses are retained as
+permanent failures. Known bot-challenge pages returned with HTTP 200 are treated as
+access blocks rather than document content. If a run is interrupted, already
+committed results are reused on the next run.
 Use `--skip-extraction` to apply stored successful extractions without fetching
 failed or missing documents.
 
-Identity resolution commits records in bounded
-`identity_resolution.batch_size` transactions and logs committed records, canonical
-reviews, throughput, and ETA at `identity_resolution.progress_interval_seconds`.
-Committed batches survive interruption; only the active batch is rolled back.
+Enrichment work is divided into bounded, independently committed work units.
+Spotlight annotates texts with up to `enrichment.dbpedia_spotlight.max_workers`
+concurrent requests. CIMPLE sends batches of `enrichment.cimple.batch_size` texts
+with up to `enrichment.cimple.max_workers` requests in flight for each model.
+Progress identifies the active enricher and reports work-unit completion within the
+current review batch. An interrupted run reuses every committed work unit.
 
-Source observations are streamed from the compressed download cache into
-run-scoped PostgreSQL rows. Extraction, identity resolution, enrichment, and RDF
-projection read those rows in bounded batches; the run-scoped rows are discarded
-when the run finishes. N-Triples output is written incrementally to one atomic
-temporary file per graph, so the pipeline never retains a corpus-sized RDF graph in
-memory. Other RDF formats are buffered and are intended for smaller exports. Long
-stage logs include process RSS so memory growth is visible during operation.
+Each source is installed in one transaction. A failed download or parse leaves that
+source's previous active snapshot intact. Extraction, identity resolution,
+enrichment, and RDF projection read fixed-size database batches controlled by
+`batch_size`. Exact identity resolution preserves existing source assignments, then
+matches documents by organization-scoped URL and text-hash aliases. Fuzzy text
+similarity is reserved for the manual duplicate audit.
 
-Enrichment persists results every `enrichment.checkpoint_size` subjects. Pipeline
-runs log combined enrichment/RDF throughput, ETA, and RSS, followed by final restored,
-computed, failed, and missing totals for each stage. Completed checkpoints are
-restored after an interruption.
+The exporter writes N-Triples incrementally to one temporary file per graph. Complete
+files are externally sorted and deduplicated on disk before atomic replacement, so
+the published snapshots contain no repeated statements. An incomplete run preserves
+both the existing file and the deployed graph. Export finalization temporarily needs
+space for the raw file, external-sort working files, the deduplicated file, and any
+previous snapshot. Long-running stages log throughput, ETA, counters, and process
+RSS.
 
 ### Example SQL Queries
 
@@ -311,27 +315,27 @@ restored after an interruption.
 -- Current reusable coverage and retry state by stage
 SELECT stage_name, stage_version, status, COUNT(*) AS total,
        MIN(retry_at) AS next_retry_at
-FROM stage_results GROUP BY stage_name, stage_version, status;
+FROM processing_results GROUP BY stage_name, stage_version, status;
 
--- Historical attempt success rates, including failures that later recovered
-SELECT stage_name, stage_version, COUNT(*) AS attempts,
-       COUNT(*) FILTER (WHERE status = 'success') AS successes
-FROM stage_result_attempts GROUP BY stage_name, stage_version;
+-- Current extraction failures by category and HTTP status
+SELECT failure_category, http_status, COUNT(*) AS results,
+       MIN(retry_at) AS next_retry_at
+FROM document_extractions
+WHERE status <> 'success'
+GROUP BY failure_category, http_status;
 
 -- Highest-confidence identity candidates for offline auditing
-SELECT source_record_key, candidate_review_id, similarity, evidence
-FROM identity_candidates ORDER BY similarity DESC;
+SELECT left_review_id, right_review_id, similarity, evidence
+FROM duplicate_candidates ORDER BY similarity DESC;
 ```
 
 Every run reports dependency availability, eligible subjects, stored successes,
 deferred and permanent failures, computed outcomes, and missing results for each
-stage. Document-extraction coverage is reported separately from run health, so a
-known permanent dead link remains visible without making every later run
-operationally degraded. A graph with missing required enrichment results is not
-deployed; its existing named graph is left untouched and the run is reported as
-degraded. Spotlight and DBpedia property stages govern the DBpedia enrichment graph,
-while enabled CIMPLE stages govern the source graphs that contain their
-claim-analysis triples.
+external processor. A graph with missing required enrichment results is neither
+published to its final output path nor deployed; its existing snapshots remain
+untouched and the run is reported as degraded. Spotlight and DBpedia property
+processing govern the DBpedia enrichment graph, while enabled CIMPLE models govern
+the source graphs that contain their claim-analysis triples.
 
 ## Production operations
 
@@ -384,7 +388,7 @@ Run the exact audit after identity resolution to find nearly identical review bo
 that still have distinct claim-review resources. Comparisons are limited to reviews
 from the same organization that are attached to the same exact claim, keeping each
 working set small and semantically relevant. The command replaces the diagnostic
-rows in `identity_candidates`; it never changes canonical identities or RDF.
+rows in `duplicate_candidates`; it never changes canonical identities or RDF.
 
 ```bash
 uv run climatesense-kg audit-duplicates --config config/daily.yaml
@@ -393,7 +397,7 @@ uv run climatesense-kg audit-duplicates --config config/daily.yaml
 The default score is the containment overlap of normalized five-word shingles. A
 score of `0.9` means at least 90% of the smaller review's shingles also occur in the
 larger review. Reviews shorter than `duplicate_audit.minimum_similarity_words` are
-excluded. Query `identity_candidates` as a manual review queue: a match can represent
+excluded. Query `duplicate_candidates` as a manual review queue: a match can represent
 a duplicate source record, a URL alias, or legitimate syndication. Require human
 confirmation before merging or deleting resources.
 
@@ -422,17 +426,23 @@ uv run climatesense-kg --help
 # Run minimal pipeline with debug logging
 uv run climatesense-kg run --config config/minimal.yaml --debug
 
-# Run daily pipeline skipping data download and forcing full RDF regeneration
+# Recompute extraction and enrichment results while using cached source data
 uv run climatesense-kg run --config config/daily.yaml --skip-download --force-regenerate
 
 # Restore stored extractions without fetching fact-check documents
 uv run climatesense-kg run --config config/daily.yaml --skip-extraction
 
-# Replace the organization catalog and redeploy existing RDF to the selected backend
+# Replace the organization catalog and redeploy existing RDF to Virtuoso
 uv run climatesense-kg redeploy --config config/daily.yaml --rdf-dir data/rdf
 
-# Delete recomputable stage results without deleting identity assignments
-uv run climatesense-kg flush-stage-results --yes
+# Build and activate QLever from the latest complete RDF snapshot
+just qlever-deploy
+
+# Or select a snapshot explicitly
+just qlever-deploy data/rdf/2026-08-15_143734
+
+# Delete recomputable extraction and enrichment results without deleting identities
+uv run climatesense-kg flush-processing-results --yes
 ```
 
 ### QLever UI

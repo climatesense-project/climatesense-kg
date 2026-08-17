@@ -361,7 +361,7 @@ def sanitize_url(url: str) -> str | None:
 
 
 def normalize_document_url(url: str) -> str | None:
-    """Return the HTTP resource identity used for extraction checkpoints."""
+    """Return the normalized HTTP resource identity used by the pipeline."""
 
     sanitized = sanitize_url(url)
     if sanitized is None:

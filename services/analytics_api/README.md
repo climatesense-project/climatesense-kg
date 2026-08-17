@@ -67,8 +67,9 @@ Environment variables:
 - `POSTGRES_*` - Durable pipeline-state PostgreSQL connection settings
 - `ANALYTICS_RESULT_CACHE_TTL` - Analytics query-result cache TTL in seconds
 
-Pipeline activity endpoints read immutable rows from `stage_result_attempts`, so a
-failure remains visible after a later retry succeeds.
+Pipeline endpoints read the `processing_results` view, which combines the current
+document-extraction and enrichment outcomes. Results represent current retry and
+coverage state; recomputation replaces the previous outcome for that subject.
 
 Use `http://virtuoso:8890/sparql` for Virtuoso or `http://qlever:7019` for QLever.
 

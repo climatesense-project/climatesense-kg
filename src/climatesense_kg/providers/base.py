@@ -45,9 +45,3 @@ class BaseProvider(ABC, Generic[ProviderConfigT]):
             Dict of cache-relevant field names and their values
         """
         pass
-
-    def get_cache_fallback_key_fields(
-        self, config: ProviderConfigT
-    ) -> dict[str, Any] | None:
-        """Return a stable cache-only lookup key when a provider supports one."""
-        return None

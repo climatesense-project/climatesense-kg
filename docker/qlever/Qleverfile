@@ -1,23 +1,26 @@
-# QLever configuration for the ClimateSense knowledge graph.
-# Run the one-shot qlever-index Compose service before starting QLever.
+# QLever index template used by deploy-index.sh.
+# The deployment script replaces the snapshot directory placeholder before indexing.
 
 [data]
 NAME = climatesense
 DESCRIPTION = ClimateSense climate misinformation knowledge graph
+SNAPSHOT_DIRECTORY = __SNAPSHOT_DIRECTORY__
 
 [index]
-INPUT_FILES = source/rdf/*/*.nt source/vocabularies/*.ttl source/organizations.ttl source/graphs.ttl
-MULTI_INPUT_JSON = [{ "cmd": "cat {}", "format": "nt", "graph": "http://data.climatesense-project.eu/graph/claimreviewdata", "for-each": "source/rdf/*/claimreviewdata_*.nt", "parallel": "true" },
-                    { "cmd": "cat {}", "format": "nt", "graph": "http://data.climatesense-project.eu/graph/euroclimatecheck", "for-each": "source/rdf/*/euroclimatecheck_*.nt", "parallel": "true" },
-                    { "cmd": "cat {}", "format": "nt", "graph": "http://data.climatesense-project.eu/graph/defacto", "for-each": "source/rdf/*/defacto_*.nt", "parallel": "true" },
-                    { "cmd": "cat {}", "format": "nt", "graph": "http://data.climatesense-project.eu/graph/dbkf", "for-each": "source/rdf/*/dbkf_*.nt", "parallel": "true" },
-                    { "cmd": "cat {}", "format": "nt", "graph": "http://data.climatesense-project.eu/graph/desmog", "for-each": "source/rdf/*/desmog_*.nt", "parallel": "true" },
-                    { "cmd": "cat {}", "format": "nt", "graph": "http://data.climatesense-project.eu/graph/climafacts", "for-each": "source/rdf/*/climafacts_*.nt", "parallel": "true" },
-                    { "cmd": "cat {}", "format": "nt", "graph": "http://data.climatesense-project.eu/graph/climate-fever", "for-each": "source/rdf/*/climate-fever_*.nt", "parallel": "true" },
-                    { "cmd": "cat {}", "format": "nt", "graph": "http://data.climatesense-project.eu/graph/dbpedia-enricher", "for-each": "source/rdf/*/dbpedia-enricher_*.nt", "parallel": "true" },
-                    { "cmd": "cat {}", "format": "ttl", "graph": "http://data.climatesense-project.eu/graph/vocabularies", "for-each": "source/vocabularies/*.ttl", "parallel": "false" },
-                    { "cmd": "cat {}", "format": "ttl", "graph": "http://data.climatesense-project.eu/graph/organizations", "for-each": "source/organizations.ttl", "parallel": "false" },
-                    { "cmd": "cat {}", "format": "ttl", "graph": "http://data.climatesense-project.eu/graph/catalog", "for-each": "source/graphs.ttl", "parallel": "false" }]
+INPUT_FILES = ${data:SNAPSHOT_DIRECTORY}/*.nt.gz ../source/vocabularies/*.ttl ../source/organizations.ttl ../source/graphs.ttl
+
+MULTI_INPUT_JSON = [{ "cmd": "gunzip -c {}", "format": "nt", "graph": "http://data.climatesense-project.eu/graph/claimreviewdata", "for-each": "${data:SNAPSHOT_DIRECTORY}/claimreviewdata.nt.gz", "parallel": "true" },
+                    { "cmd": "gunzip -c {}", "format": "nt", "graph": "http://data.climatesense-project.eu/graph/euroclimatecheck", "for-each": "${data:SNAPSHOT_DIRECTORY}/euroclimatecheck.nt.gz", "parallel": "true" },
+                    { "cmd": "gunzip -c {}", "format": "nt", "graph": "http://data.climatesense-project.eu/graph/defacto", "for-each": "${data:SNAPSHOT_DIRECTORY}/defacto.nt.gz", "parallel": "true" },
+                    { "cmd": "gunzip -c {}", "format": "nt", "graph": "http://data.climatesense-project.eu/graph/dbkf", "for-each": "${data:SNAPSHOT_DIRECTORY}/dbkf.nt.gz", "parallel": "true" },
+                    { "cmd": "gunzip -c {}", "format": "nt", "graph": "http://data.climatesense-project.eu/graph/desmog", "for-each": "${data:SNAPSHOT_DIRECTORY}/desmog.nt.gz", "parallel": "true" },
+                    { "cmd": "gunzip -c {}", "format": "nt", "graph": "http://data.climatesense-project.eu/graph/climafacts", "for-each": "${data:SNAPSHOT_DIRECTORY}/climafacts.nt.gz", "parallel": "true" },
+                    { "cmd": "gunzip -c {}", "format": "nt", "graph": "http://data.climatesense-project.eu/graph/climate-fever", "for-each": "${data:SNAPSHOT_DIRECTORY}/climate-fever.nt.gz", "parallel": "true" },
+                    { "cmd": "gunzip -c {}", "format": "nt", "graph": "http://data.climatesense-project.eu/graph/dbpedia-enricher", "for-each": "${data:SNAPSHOT_DIRECTORY}/dbpedia-enricher.nt.gz", "parallel": "true" },
+                    { "cmd": "cat {}", "format": "ttl", "graph": "http://data.climatesense-project.eu/graph/vocabularies", "for-each": "../source/vocabularies/*.ttl", "parallel": "false" },
+                    { "cmd": "cat {}", "format": "ttl", "graph": "http://data.climatesense-project.eu/graph/organizations", "for-each": "../source/organizations.ttl", "parallel": "false" },
+                    { "cmd": "cat {}", "format": "ttl", "graph": "http://data.climatesense-project.eu/graph/catalog", "for-each": "../source/graphs.ttl", "parallel": "false" }]
+
 STXXL_MEMORY = 1G
 VOCABULARY_TYPE = on-disk-compressed
 

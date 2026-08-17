@@ -9,7 +9,7 @@ SELECT
     END AS http_status,
     COUNT(*) AS result_count,
     MIN(retry_at) AS next_retry_at
-FROM stage_results
+FROM processing_results
 WHERE status <> 'success'
   AND (:stage_name IS NULL OR stage_name = :stage_name)
   AND (:from_ts IS NULL OR updated_at >= :from_ts)

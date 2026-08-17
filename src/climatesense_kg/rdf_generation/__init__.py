@@ -1,11 +1,5 @@
-"""RDF projection and graph-artifact construction."""
+"""RDF vocabulary projection."""
 
-from .artifacts import RdfArtifact, RdfArtifactBuilder, RdfBuildReport
 from .generator import RDFGenerator
 
-__all__ = [
-    "RDFGenerator",
-    "RdfArtifact",
-    "RdfArtifactBuilder",
-    "RdfBuildReport",
-]
+__all__ = ["RDFGenerator"]

@@ -37,20 +37,6 @@ class FileProvider(BaseProvider[FileProviderConfig]):
         return data
 
     def get_cache_key_fields(self, config: FileProviderConfig) -> dict[str, Any]:
-        """File path and modification time affect cache."""
+        """Use the configured path as the stable file-cache identity."""
         file_path = config.file_path
-        cache_fields = {"file_path": str(file_path) if file_path else None}
-
-        if file_path and Path(file_path).exists():
-            cache_fields["file_mtime"] = str(Path(file_path).stat().st_mtime)
-
-        return cache_fields
-
-    def get_cache_fallback_key_fields(
-        self, config: FileProviderConfig
-    ) -> dict[str, Any] | None:
-        """Use the configured path as a stable cache-only recovery key."""
-        file_path = config.file_path
-        if not file_path:
-            return None
         return {"file_path": str(file_path)}

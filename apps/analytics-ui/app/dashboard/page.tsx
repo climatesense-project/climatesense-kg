@@ -142,7 +142,7 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{totals?.totalResults ?? 0}</div>
-              <CardDescription>Versioned results observed</CardDescription>
+              <CardDescription>Current processing results</CardDescription>
             </CardContent>
           </Card>
 
@@ -192,7 +192,7 @@ export default function DashboardPage() {
                     <div className="flex items-center justify-between text-sm">
                       <span className="font-medium">{label}</span>
                       <span className="text-muted-foreground">
-                        {total} runs · {item.success_rate_percent.toFixed(2)}% success
+                        {total} results · {item.success_rate_percent.toFixed(2)}% success
                       </span>
                     </div>
                     <StackedBar success={item.successful} failure={item.failed} />
@@ -232,7 +232,7 @@ export default function DashboardPage() {
         <Card>
           <CardHeader>
             <CardTitle>Error breakdown</CardTitle>
-            <CardDescription>Most frequent error types per enricher</CardDescription>
+            <CardDescription>Most frequent error types per processor</CardDescription>
           </CardHeader>
           <CardContent>
             {errorLoading ? (
@@ -275,7 +275,7 @@ export default function DashboardPage() {
         <Card>
           <CardHeader>
             <CardTitle>Recent activity</CardTitle>
-            <CardDescription>Most active enrichers in the last 24h</CardDescription>
+            <CardDescription>Results updated in the last 24h</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {activityLoading ? (

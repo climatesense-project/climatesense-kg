@@ -80,9 +80,12 @@ docker-build:
 virtuoso-up:
     COMPOSE_PROFILES=virtuoso docker compose -f docker/docker-compose.yml up -d
 
-# Build the initial QLever index from historical RDF and vocabularies
-qlever-init:
-    COMPOSE_PROFILES=qlever-init docker compose -f docker/docker-compose.yml run --rm qlever-index
+# Build and activate a complete QLever index. Defaults to the latest RDF snapshot.
+qlever-deploy SNAPSHOT="":
+    ./docker/qlever/deploy-index.sh "{{SNAPSHOT}}"
+
+# Build the first QLever index
+qlever-init: qlever-deploy
 
 # Start the stack with QLever as the triplestore
 qlever-up:
@@ -104,11 +107,6 @@ qlever-stats:
     @just qlever-sparql "SELECT ?g (COUNT(*) AS ?triples) WHERE { GRAPH ?g { ?s ?p ?o } } GROUP BY ?g ORDER BY DESC(?triples)" | \
     jq -r '.results.bindings[] | [.g.value, .triples.value] | @tsv' | \
     awk 'BEGIN {printf "%-80s %10s\n", "Graph", "Triples"; printf "%-80s %10s\n", "-----", "-------"} {printf "%-80s %10s\n", $1, $2}'
-
-# Fold persisted QLever updates into a fresh optimized index, then restart
-qlever-rebuild:
-    COMPOSE_PROFILES=qlever docker compose -f docker/docker-compose.yml exec -T qlever bash -lc 'qlever rebuild-index --access-token "$$QLEVER_ACCESS_TOKEN" --keep-old-index-dirs newest'
-    COMPOSE_PROFILES=qlever docker compose -f docker/docker-compose.yml restart qlever
 
 # ============================================================================
 # Semantic Stage State Commands

@@ -22,8 +22,8 @@ entities supply absolute URIs, which the RDF generator uses directly.
 
 The pipeline uses three identifier strategies:
 
-1. Claim reviews receive random UUIDs that are assigned once and persisted by the
-   identity registry.
+1. Claim reviews receive random UUIDs that are assigned once and persisted in
+   PostgreSQL.
 2. Claims, people, and source ratings receive deterministic SHA-256 hashes derived
    from their immutable identifying values.
 3. Organizations and normalized ratings use curated, human-readable identifiers.
@@ -39,19 +39,19 @@ collisions caused by ambiguous string concatenation.
 
 **Pattern**: `{base_uri}/claim-review/{uuid}`
 
-**Assignment**: The identity registry assigns and persists one UUID for each canonical
+**Assignment**: Identity resolution assigns and persists one UUID for each canonical
 claim review.
 
 **Example**:
 `http://data.climatesense-project.eu/claim-review/550e8400-e29b-41d4-a716-446655440000`
 
-The registry UUID is the complete identifier component. Claim text, rating,
+The persisted UUID is the complete identifier component. Claim text, rating,
 publication date, and document content are RDF attributes. The review's known URLs
 are emitted as `schema:url` aliases on the same resource.
 
 Claim-review UUIDs are not recomputed from review content. A PostgreSQL backup and
 restore therefore preserves the same identifiers across deployments; initializing a
-fresh identity registry creates an independent set of claim-review identifiers.
+fresh database creates an independent set of claim-review identifiers.
 
 ### Claims
 
@@ -217,8 +217,9 @@ Each published graph IRI is described in the curated
 
 Deterministic URI generation is implemented in the canonical
 [`domain models`](../src/climatesense_kg/domain/models.py). Claim-review UUIDs are
-assigned by the [`identity resolver`](../src/climatesense_kg/identity/resolver.py) and
-persisted by the identity registry. Organization resolution is implemented by the
+assigned and persisted by the
+[`identity service`](../src/climatesense_kg/identity/service.py). Organization
+resolution is implemented by the
 [`organization catalog`](../src/climatesense_kg/config/organizations.py).
 
 The [`RDFGenerator`](../src/climatesense_kg/rdf_generation/generator.py) resolves

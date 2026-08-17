@@ -5,7 +5,7 @@
 /cache/
 /config/dev.yaml
 *.ttl
-*.nt
+*.nt.gz
 *.rdf
 *.jsonld
 !/data/vocabularies/*.ttl

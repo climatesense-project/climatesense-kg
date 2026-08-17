@@ -8,7 +8,7 @@ from typing import Literal
 
 from ..config.graphs import GRAPH_CATALOG_PATH, GRAPH_CATALOG_SOURCE_NAME
 from ..config.organizations import ORGANIZATION_CATALOG_PATH, ORGANIZATION_SOURCE_NAME
-from ..rdf_generation.artifacts import RdfArtifact
+from ..export import RdfArtifact
 from .base import DeploymentHandler
 
 

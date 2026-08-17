@@ -5,11 +5,11 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from itertools import combinations
-import json
 import logging
 from typing import Any
 
 from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
 from psycopg_pool import ConnectionPool
 
 from .fingerprints import shingle_containment, text_shingles
@@ -62,33 +62,35 @@ class DuplicateAuditor:
                     setup_cursor.execute(
                         """
                         CREATE TEMP TABLE duplicate_audit_candidates (
-                            source_record_key TEXT NOT NULL,
-                            candidate_review_id UUID NOT NULL,
+                            left_review_id UUID NOT NULL,
+                            right_review_id UUID NOT NULL,
                             similarity DOUBLE PRECISION NOT NULL,
                             evidence JSONB NOT NULL,
-                            PRIMARY KEY (source_record_key, candidate_review_id)
+                            PRIMARY KEY (left_review_id, right_review_id),
+                            CHECK (left_review_id < right_review_id)
                         ) ON COMMIT DROP
                         """
                     )
                 with connection.cursor(name="duplicate_audit_groups") as cursor:
                     cursor.execute(
                         """
-                        SELECT identity.organization_uri, source.claim_uri
-                        FROM source_review_records AS source
-                        JOIN claim_review_identities AS identity
-                          ON identity.id = source.claim_review_id
-                        JOIN review_documents AS document
-                          ON document.id = identity.document_id
-                        WHERE document.extracted_text IS NOT NULL
-                        GROUP BY identity.organization_uri, source.claim_uri
-                        HAVING COUNT(DISTINCT identity.id) > 1
-                        ORDER BY identity.organization_uri, source.claim_uri
+                        SELECT review.organization_uri, observation.claim_uri
+                        FROM claim_reviews AS review
+                        JOIN documents AS document
+                          ON document.id = review.document_id
+                        JOIN source_observations AS observation
+                          ON observation.claim_review_id = review.id
+                         AND observation.active
+                        WHERE document.content IS NOT NULL
+                        GROUP BY review.organization_uri, observation.claim_uri
+                        HAVING COUNT(DISTINCT review.id) > 1
+                        ORDER BY review.organization_uri, observation.claim_uri
                         """
                     )
                     while rows := cursor.fetchmany(self.group_batch_size):
                         batch_groups = [(row[0], row[1]) for row in rows]
                         batch = self._load_groups(connection, batch_groups)
-                        planned: list[tuple[str, object, float, str]] = []
+                        planned: list[tuple[object, object, float, Jsonb]] = []
                         for group in batch_groups:
                             group_pairs, group_eligible, group_matches = (
                                 self._compare_group(batch[group])
@@ -106,14 +108,14 @@ class DuplicateAuditor:
                             matches,
                         )
                 with connection.cursor() as publish_cursor:
-                    publish_cursor.execute("DELETE FROM identity_candidates")
+                    publish_cursor.execute("DELETE FROM duplicate_candidates")
                     publish_cursor.execute(
                         """
-                        INSERT INTO identity_candidates (
-                            source_record_key, candidate_review_id,
+                        INSERT INTO duplicate_candidates (
+                            left_review_id, right_review_id,
                             similarity, evidence
                         )
-                        SELECT source_record_key, candidate_review_id,
+                        SELECT left_review_id, right_review_id,
                                similarity, evidence
                         FROM duplicate_audit_candidates
                         """
@@ -127,11 +129,11 @@ class DuplicateAuditor:
 
     def _compare_group(
         self, reviews: list[dict[str, Any]]
-    ) -> tuple[int, int, list[tuple[str, object, float, str]]]:
-        features = {row["id"]: text_shingles(row["extracted_text"]) for row in reviews}
+    ) -> tuple[int, int, list[tuple[object, object, float, Jsonb]]]:
+        features = {row["id"]: text_shingles(row["content"]) for row in reviews}
         candidate_pairs = 0
         eligible_pairs = 0
-        matches: list[tuple[str, object, float, str]] = []
+        matches: list[tuple[object, object, float, Jsonb]] = []
         for left, right in combinations(reviews, 2):
             candidate_pairs += 1
             if (
@@ -146,12 +148,13 @@ class DuplicateAuditor:
             )
             if similarity < self.similarity_threshold:
                 continue
+            left_id, right_id = sorted((left["id"], right["id"]))
             matches.append(
                 (
-                    right["record_key"],
-                    left["id"],
+                    left_id,
+                    right_id,
                     similarity,
-                    json.dumps(
+                    Jsonb(
                         {
                             "kind": "body_similarity",
                             "same_organization": True,
@@ -176,22 +179,21 @@ class DuplicateAuditor:
                     SELECT * FROM unnest(%s::text[], %s::text[])
                 )
                 SELECT requested.organization_uri, requested.claim_uri,
-                       identity.id, document.extracted_text,
-                       document.word_count, MIN(source.record_key) AS record_key
+                       review.id, document.content, document.word_count
                 FROM requested
-                JOIN claim_review_identities AS identity
-                  ON identity.organization_uri = requested.organization_uri
-                JOIN source_review_records AS source
-                  ON source.claim_review_id = identity.id
-                 AND source.claim_uri = requested.claim_uri
-                JOIN review_documents AS document
-                  ON document.id = identity.document_id
-                WHERE document.extracted_text IS NOT NULL
+                JOIN claim_reviews AS review
+                  ON review.organization_uri = requested.organization_uri
+                JOIN source_observations AS observation
+                  ON observation.claim_review_id = review.id
+                 AND observation.active
+                 AND observation.claim_uri = requested.claim_uri
+                JOIN documents AS document
+                  ON document.id = review.document_id
+                WHERE document.content IS NOT NULL
                 GROUP BY requested.organization_uri, requested.claim_uri,
-                         identity.id, document.extracted_text,
-                         document.word_count
+                         review.id, document.content, document.word_count
                 ORDER BY requested.organization_uri, requested.claim_uri,
-                         identity.id
+                         review.id
                 """,
                 ([group[0] for group in groups], [group[1] for group in groups]),
             )
@@ -201,7 +203,8 @@ class DuplicateAuditor:
 
     @staticmethod
     def _store_candidates(
-        connection: Any, candidates: list[tuple[str, object, float, str]]
+        connection: Any,
+        candidates: list[tuple[object, object, float, Jsonb]],
     ) -> None:
         if not candidates:
             return
@@ -209,12 +212,12 @@ class DuplicateAuditor:
             cursor.executemany(
                 """
                 INSERT INTO duplicate_audit_candidates (
-                    source_record_key, candidate_review_id,
+                    left_review_id, right_review_id,
                     similarity, evidence
                 )
                 VALUES (%s, %s, %s, %s)
                 ON CONFLICT (
-                    source_record_key, candidate_review_id
+                    left_review_id, right_review_id
                 ) DO UPDATE SET
                     similarity = EXCLUDED.similarity,
                     evidence = EXCLUDED.evidence

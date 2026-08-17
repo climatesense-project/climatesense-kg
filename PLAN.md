@@ -95,11 +95,12 @@ The run summary must distinguish results computed during the run, results restor
 
 ### 6. Make deployment completeness-aware
 
-- Replace an enrichment graph only when all required results for that graph are complete.
-- If Spotlight is unavailable and stored results are incomplete, leave the deployed DBpedia enrichment graph unchanged and mark the run as degraded.
-- Permit complete source graphs to deploy even when an enrichment graph cannot safely be replaced.
+- Publish an RDF graph only when all results required by that graph are complete.
+- If Spotlight is unavailable and stored results are incomplete, preserve the existing RDF snapshot and mark the run as degraded.
+- Build QLever only from a complete cohort of graph snapshots produced by one run.
+- Activate the completed QLever index with a short directory switch and retain the previous index for rollback.
 - Do not interpret a disabled enrichment stage as an instruction to clear its deployed graph.
-- Make deployment decisions from the completeness report rather than from whether a stage process exited successfully.
+- Keep Virtuoso's per-graph deployment decisions tied to the completeness report.
 
 ### 7. Align code and documentation
 

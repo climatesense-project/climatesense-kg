@@ -1,10 +1,12 @@
 """RDF contract tests for resolved claim reviews."""
 
 from datetime import datetime
+import gzip
 from pathlib import Path
 from unittest.mock import Mock
 from uuid import UUID
 
+import pytest
 from rdflib import Graph, URIRef
 from rdflib.namespace import RDF
 
@@ -14,8 +16,10 @@ from climatesense_kg.domain import (
     CanonicalOrganization,
     CanonicalRating,
     CanonicalReviewDocument,
+    EntityMention,
+    EntityPropertyValue,
 )
-from climatesense_kg.rdf_generation.artifacts import RdfArtifactBuilder
+from climatesense_kg.export import RdfExporter
 from climatesense_kg.rdf_generation.generator import RDFGenerator
 
 SCHEMA = "http://schema.org/"
@@ -108,25 +112,83 @@ def test_streamed_ntriples_is_graph_equivalent_to_buffered_generation(
         data=RDFGenerator(BASE).generate([first, second], "nt"),
         format="nt",
     )
-    builder = RdfArtifactBuilder(
+    reader = Mock()
+    reader.count.return_value = 2
+    reader.iter_batches.return_value = iter([[first], [second]])
+    enrichment = Mock()
+    exporter = RdfExporter(
+        reader,
+        enrichment,
         RDFGenerator(BASE),
-        output_path_template=str(tmp_path / "{SOURCE}.nt"),
-        output_format="nt",
+        output_path_template=str(tmp_path / "{SOURCE}.nt.gz"),
         enrichment_graphs={},
+        batch_size=1,
     )
-    session = builder.start(
-        successful_sources=["claimreviewdata"],
-        run_datetime=datetime(2026, 8, 13),
+    report = exporter.run(
+        ("claimreviewdata",),
+        datetime(2026, 8, 13),
     )
-    session.add([first])
-    session.add([second])
-    report = session.finish()
 
-    actual = Graph().parse(report.artifacts[0].path, format="nt")
+    serialized = gzip.decompress(report.artifacts[0].path.read_bytes()).decode("utf-8")
+    actual = Graph().parse(data=serialized, format="nt")
+    output_lines = serialized.splitlines()
     assert set(actual) == set(expected)
-    assert report.input_items == 2
-    assert report.successful_items == 2
+    assert output_lines == sorted(set(output_lines))
+    assert report.reviews == 2
+    assert report.successful_reviews == 2
     assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_entity_properties_can_be_projected_once_without_losing_mentions() -> None:
+    organization = CanonicalOrganization(
+        uri=f"{BASE}/organization/factual",
+        name="Factual",
+        website="https://factual.ro",
+    )
+    review = _review(organization)
+    entity_uri = "http://dbpedia.org/resource/Colombia"
+    latitude = "http://www.w3.org/2003/01/geo/wgs84_pos#lat"
+    review.claim.analysis.entities.append(
+        EntityMention(
+            uri=entity_uri,
+            source="dbpedia_spotlight",
+            properties={
+                latitude: [
+                    EntityPropertyValue(
+                        value="4.583333492279053",
+                        value_type="literal",
+                        datatype="http://www.w3.org/2001/XMLSchema#float",
+                    )
+                ]
+            },
+        )
+    )
+    generator = RDFGenerator(BASE)
+    sources = frozenset({"dbpedia_spotlight"})
+    without_properties = Graph().parse(
+        data=generator.project_entity_enrichment_nt(
+            review,
+            sources,
+            property_entity_uris=frozenset(),
+        ),
+        format="nt",
+    )
+    with_properties = Graph().parse(
+        data=generator.project_entity_enrichment_nt(
+            review,
+            sources,
+            property_entity_uris=frozenset({entity_uri}),
+        ),
+        format="nt",
+    )
+    claim_uri = URIRef(f"{BASE}/{review.claim.uri}")
+    entity = URIRef(entity_uri)
+    mention = (claim_uri, URIRef(f"{SCHEMA}mentions"), entity)
+
+    assert mention in without_properties
+    assert mention in with_properties
+    assert not list(without_properties.objects(entity, URIRef(latitude)))
+    assert list(with_properties.objects(entity, URIRef(latitude)))
 
 
 def test_streaming_projection_errors_are_summarized_per_graph(tmp_path: Path) -> None:
@@ -139,21 +201,81 @@ def test_streaming_projection_errors_are_summarized_per_graph(tmp_path: Path) ->
     generator.project_claim_review_nt = Mock(  # type: ignore[method-assign]
         side_effect=ValueError("invalid review")
     )
-    builder = RdfArtifactBuilder(
+    reviews = [_review(organization) for _index in range(100)]
+    reader = Mock()
+    reader.count.return_value = 100
+    reader.iter_batches.return_value = iter([reviews])
+    exporter = RdfExporter(
+        reader,
+        Mock(),
         generator,
-        output_path_template=str(tmp_path / "{SOURCE}.nt"),
-        output_format="nt",
+        output_path_template=str(tmp_path / "{SOURCE}.nt.gz"),
         enrichment_graphs={},
     )
-    session = builder.start(
-        successful_sources=["claimreviewdata"],
-        run_datetime=datetime(2026, 8, 13),
+    report = exporter.run(("claimreviewdata",), datetime(2026, 8, 13))
+
+    assert report.failed_reviews == 100
+    assert report.errors == (
+        "claimreviewdata: 100 reviews failed projection; first error: invalid review",
+    )
+    assert not (tmp_path / "claimreviewdata.nt.gz").exists()
+
+
+def test_incomplete_export_preserves_previous_complete_snapshot(tmp_path: Path) -> None:
+    output = tmp_path / "claimreviewdata.nt.gz"
+    output.write_bytes(gzip.compress(b"previous complete graph\n"))
+    organization = CanonicalOrganization(
+        uri=f"{BASE}/organization/factual",
+        name="Factual",
+        website="https://factual.ro",
+    )
+    reader = Mock()
+    reader.count.return_value = 1
+    reader.iter_batches.return_value = iter([[_review(organization)]])
+    exporter = RdfExporter(
+        reader,
+        Mock(),
+        RDFGenerator(BASE),
+        output_path_template=str(tmp_path / "{SOURCE}.nt.gz"),
+        enrichment_graphs={},
     )
 
-    session.add([_review(organization) for _index in range(100)])
-    report = session.finish()
+    report = exporter.run(
+        ("claimreviewdata",),
+        datetime(2026, 8, 13),
+        incomplete_stages_by_graph={"claimreviewdata": {"cimple.emotion"}},
+    )
 
-    assert report.failed_items == 100
-    assert report.source_errors == [
-        "claimreviewdata: 100 reviews failed projection; first error: invalid review"
-    ]
+    assert not report.artifacts[0].complete
+    assert gzip.decompress(output.read_bytes()) == b"previous complete graph\n"
+    assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_deduplication_failure_preserves_previous_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = tmp_path / "claimreviewdata.nt.gz"
+    output.write_bytes(gzip.compress(b"previous complete graph\n"))
+    organization = CanonicalOrganization(
+        uri=f"{BASE}/organization/factual",
+        name="Factual",
+        website="https://factual.ro",
+    )
+    reader = Mock()
+    reader.count.return_value = 1
+    reader.iter_batches.return_value = iter([[_review(organization)]])
+    exporter = RdfExporter(
+        reader,
+        Mock(),
+        RDFGenerator(BASE),
+        output_path_template=str(tmp_path / "{SOURCE}.nt.gz"),
+        enrichment_graphs={},
+    )
+    monkeypatch.setattr("climatesense_kg.export.shutil.which", lambda _name: None)
+
+    with pytest.raises(RuntimeError, match="requires the system sort command"):
+        exporter.run(("claimreviewdata",), datetime(2026, 8, 13))
+
+    assert gzip.decompress(output.read_bytes()) == b"previous complete graph\n"
+    assert not list(tmp_path.glob("*.tmp"))

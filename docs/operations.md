@@ -1,25 +1,25 @@
 # Production Operations
 
-## Durable State
+## Durable state
 
-PostgreSQL is durable application state. Back it up with the same retention and
-recovery guarantees as the published RDF.
+PostgreSQL is authoritative pipeline state and needs the same backup guarantees as
+the published RDF. It contains:
 
-The database contains two independently managed categories:
+- active normalized records in `source_observations`;
+- persistent random document and claim-review UUIDs in `documents` and
+  `claim_reviews`;
+- document URL and exact-text aliases in `document_urls` and
+  `document_text_hashes`;
+- current extraction results and retry state in `document_extractions`;
+- current enrichment results and retry state in `enrichment_results`;
+- pipeline run status and optional manual duplicate candidates.
 
-- Identity tables assign and preserve document and claim-review UUIDs. They are not
-  recomputable because claim-review UUIDs are intentionally random.
-- Stage-result tables store recomputable extraction and enrichment outcomes.
-  `stage_results` holds current reusable results and `stage_result_attempts` retains
-  immutable attempt diagnostics.
+The filesystem `cache/` directory holds downloaded source artifacts. Analytics query
+responses are also caches. Neither replaces a PostgreSQL backup.
 
-The filesystem `cache/` directory contains downloaded source artifacts. Analytics
-SQL and SPARQL responses are also caches. Neither cache replaces a PostgreSQL backup.
+## Backup and restore
 
-## Backup and Restore
-
-Create a compressed PostgreSQL backup before deployments that can affect pipeline
-state and after initializing a fresh identity registry:
+Create a compressed backup:
 
 ```bash
 docker compose -f docker/docker-compose.yml exec -T postgres sh -c \
@@ -27,8 +27,7 @@ docker compose -f docker/docker-compose.yml exec -T postgres sh -c \
   > climatesense.dump
 ```
 
-Restore into the empty `climatesense` database created by PostgreSQL before running
-the pipeline:
+Restore it into an empty database:
 
 ```bash
 docker compose -f docker/docker-compose.yml exec -T postgres sh -c \
@@ -36,48 +35,58 @@ docker compose -f docker/docker-compose.yml exec -T postgres sh -c \
   < climatesense.dump
 ```
 
-Also archive the currently deployed RDF snapshots so the PostgreSQL and RDF states
-can be rolled back together. Verify a restored database by resolving a known source
-record and confirming that its claim-review UUID matches the backup.
+Archive deployed RDF snapshots with the matching database backup. Verify a restore by
+checking a known source record's `claim_review_id`; preserving the database preserves
+its non-deterministic claim-review URI.
 
-## Stage-Result Flush
+## Running the pipeline
 
-Use the dedicated command only when extraction and enrichment results must be
-recomputed:
-
-```bash
-uv run climatesense-kg flush-stage-results --yes
-```
-
-This deletes `stage_results` and `stage_result_attempts`. It does not delete source
-records, review documents, claim-review identities, or identity candidates. Deleting
-the PostgreSQL database or its identity tables creates a different identity universe
-and therefore different claim-review UUIDs.
-
-## Attempt-History Retention
-
-`stage_result_attempts` is append-only and should be monitored like any audit table.
-Choose a retention period that covers the analytics and incident-review window. To
-prune only diagnostics older than 180 days after taking a backup:
+Start PostgreSQL and the selected triplestore, then run:
 
 ```bash
-docker compose -f docker/docker-compose.yml exec -T postgres sh -c \
-  'psql --username "$POSTGRES_USER" --dbname "$POSTGRES_DB"' <<'SQL'
-DELETE FROM stage_result_attempts
-WHERE created_at < CURRENT_TIMESTAMP - INTERVAL '180 days';
-SQL
+docker compose -f docker/docker-compose.yml run --build --rm pipeline \
+  run --config config/daily.yaml
 ```
 
-This does not affect current reusable results in `stage_results` or any identity
-table. Analytics over attempt history reflects the retained time window.
+Operational modes are explicit:
 
-## Document-Extraction Progress
+- `--skip-download` reads only cached source files and ignores cache expiry;
+- `--skip-extraction` makes no document requests and uses current stored successes;
+- `--skip-enrichment` makes no enrichment requests and uses current stored successes;
+- `--skip-deployment` generates complete artifacts without changing the triplestore;
+- `--force-regenerate` recomputes extraction and enrichment results regardless of
+  current result state.
 
-Document extraction logs the number of eligible, restored, fetched, failed, and
-remaining documents together with the current rate and estimated completion time.
-New results are written to PostgreSQL every
-`document_extraction.checkpoint_size` documents. The final partial checkpoint and
-all completed work at the time of a graceful operator interruption are also written.
+RDF export always produces a complete snapshot of every successfully ingested source.
+
+## Run lifecycle and recovery
+
+One session-scoped PostgreSQL advisory lock permits one writer at a time. A concurrent
+run exits before ingestion. PostgreSQL releases the lock when a process or connection
+ends, including an OOM kill. The next run marks any abandoned `running` row failed and
+continues from committed database state.
+
+Inspect recent runs:
+
+```sql
+SELECT id, status, started_at, finished_at, error, summary
+FROM pipeline_runs
+ORDER BY started_at DESC
+LIMIT 20;
+```
+
+Each source is installed in one transaction. Download, parse, validation, or database
+failure rolls back that source and leaves its previous active observations unchanged.
+The failed source's RDF graph is not exported or replaced during that run.
+
+## Progress and memory
+
+Ingestion, extraction, identity resolution, enrichment, and RDF export process fixed
+database batches. Progress lines report processed and total items, rate, ETA, stage
+counters, and process RSS. `batch_size` controls the common database batch size;
+`progress_interval_seconds` and the extraction/enrichment-specific progress settings
+control log frequency. Enrichment lines include the active enricher, the current
+review range, and progress through its pending semantic subjects.
 
 Follow a running container from another terminal:
 
@@ -87,71 +96,18 @@ docker ps --filter label=com.docker.compose.service=pipeline \
 docker logs --tail 100 --follow <pipeline-container-name>
 ```
 
-Inspect durable extraction coverage at any time:
+Committed external-processing results survive interruption. Enrichment results are
+written after each completed work unit, so only in-flight units must be repeated.
 
-```sql
-SELECT status, COUNT(*), MIN(retry_at) AS next_retry_at
-FROM stage_results
-WHERE stage_name = 'document.extract'
-GROUP BY status;
-```
+## Document extraction
 
-Checkpoint size and progress-log frequency are operational settings and do not
-invalidate reusable extraction results.
-Run with `--skip-extraction` to restore successful checkpoints without retrying
-stored failures or fetching missing documents.
+The extractor selects distinct normalized URLs from active observations. It allows
+only one active request per hostname, applies host-specific request policy, and stops
+scheduling a host for the run after an HTTP 429 response. Current successes are
+reused. Retryable failures are retried after `retry_at`; permanent failures remain
+stored unless processing is forced.
 
-## Pipeline Memory
-
-Ingestion writes each source into run-scoped PostgreSQL observations inside one
-source transaction. Later stages read fixed-size batches, and N-Triples graphs are
-written incrementally to atomic temporary files. The observation rows are removed
-when the pipeline run finishes. Progress lines include process RSS; sustained growth
-across completed batches indicates a retained object and should be investigated.
-
-A PostgreSQL advisory lock permits one pipeline run at a time. If a process exits
-without finalizing its run, the database releases the session lock automatically;
-the next run marks that run failed and removes its abandoned observation rows before
-ingestion starts.
-
-Use N-Triples for complete production snapshots. Turtle, RDF/XML, JSON-LD, and the
-other supported serializers buffer their input and are intended for smaller exports.
-
-## Identity-Resolution Progress
-
-Identity resolution logs committed source records, canonical reviews, batches,
-throughput, and estimated completion time. Each batch contains at most
-`identity_resolution.batch_size` records. The repository loads the relevant source
-assignments and exact document evidence with set-based queries. The resolver plans
-the complete batch in memory, and the repository persists the plan with bulk
-statements in one transaction. Interruption recovery remains bounded: committed
-batches stay durable and only the active batch is rolled back.
-
-Monitor durable identity progress directly:
-
-```sql
-SELECT COUNT(*) AS resolved_source_records
-FROM source_review_records;
-```
-
-`identity_resolution.progress_interval_seconds` controls log frequency. Progress is
-reported after commits, so it always reflects durable work.
-
-Near-duplicate body comparison is a separate exact audit and does not participate in
-identity assignment:
-
-```bash
-uv run climatesense-kg audit-duplicates --config config/daily.yaml
-```
-
-It compares same-organization, same-claim groups in batches and replaces the manual
-review queue in `identity_candidates` without changing canonical identities.
-
-## Document-Extraction Retry Policy
-
-Document failures remain queryable in both stage-result tables. Retryable failures
-have a `retry_at` timestamp; permanent failures remain stored with a null retry time.
-The default scheduling policy is:
+Default scheduling is:
 
 - transient network and server failures: one hour;
 - DNS resolution failures: seven days;
@@ -159,88 +115,163 @@ The default scheduling policy is:
 - pages with no extractable text: thirty days;
 - invalid URLs, unsupported or oversized responses, and HTTP 404/410: permanent.
 
-Changing the observed URL or document-extraction stage version creates a distinct
-result identity. `--force-regenerate` explicitly bypasses stored retry decisions.
-`--skip-extraction` performs no external requests and only applies stored successes.
-
-Inspect the current retry queue with:
+Inspect extraction coverage:
 
 ```sql
-SELECT stage_name, status, payload->>'failure_category' AS category,
-       COUNT(*) AS results, MIN(retry_at) AS next_retry_at
-FROM stage_results
-WHERE stage_name = 'document.extract' AND status <> 'success'
-GROUP BY stage_name, status, category
-ORDER BY next_retry_at NULLS LAST;
+SELECT status, failure_category, http_status, COUNT(*) AS results,
+       MIN(retry_at) AS next_retry_at
+FROM document_extractions
+GROUP BY status, failure_category, http_status
+ORDER BY status, next_retry_at NULLS LAST;
 ```
 
-## Enrichment Completeness
+`--skip-extraction` never retries failures or fetches missing documents. Stored source
+text remains available to identity resolution and RDF projection when extraction is
+missing.
 
-Each enrichment stage logs when it starts and finishes. While it runs, progress
-includes restored, computed, failed, and remaining semantic subjects together with
-throughput and ETA. Results are persisted every `enrichment.checkpoint_size`
-subjects, and `enrichment.progress_interval_seconds` controls progress-log
-frequency. After a graceful interruption, the next run restores completed
-checkpoints before computing missing results.
+## Identity resolution
 
-Each enabled enrichment stage reports:
+Identity resolution applies exact rules in this order:
 
-- dependency availability;
-- eligible semantic subjects;
-- stored successes and failures;
-- computed successes and failures;
-- results still missing after the run.
+1. keep an existing source-record assignment;
+2. use the stable source/native identifier embodied by the record key;
+3. match a document from the same organization through a normalized URL alias;
+4. match a document from the same organization through an exact normalized text hash;
+5. otherwise create a document with a random UUID;
+6. reuse or create the `(document, claim)` review with a random UUID;
+7. persist the source assignment.
 
-A successful empty result is complete. A stored failure is diagnostic state, not a
-reusable result, and is retried whenever the dependency is available. Dependency
-availability is reported as not checked when stored-only execution is requested or
-when every eligible subject was restored successfully and no external call is needed.
+All observed, redirected, and canonical URLs become durable document aliases. All
+exact body hashes become durable text aliases even when another body is selected as
+the document's preferred export content. This keeps identity independent of batch
+boundaries and content-selection order.
 
-DBpedia Spotlight claim annotations, review annotations, and enabled DBpedia property
-lookups are required for a complete `dbpedia-enricher` graph. The pipeline replaces
-that graph only when all required results and the RDF projection are complete.
-Enabled CIMPLE stages are required for complete source graphs because their claim
-analysis is emitted there. Complete source graphs and catalogs may still deploy when
-only the DBpedia enrichment graph is incomplete. Any graph with missing required
-results retains its deployed snapshot. Disabling an enrichment stage does not clear
-its deployed graph.
+Monitor resolution coverage:
 
-## Enrichment Outage Runbook
+```sql
+SELECT COUNT(*) FILTER (WHERE claim_review_id IS NOT NULL) AS resolved,
+       COUNT(*) FILTER (WHERE claim_review_id IS NULL) AS unresolved
+FROM source_observations
+WHERE active;
+```
 
-1. Run the pipeline normally and inspect the per-stage completeness summary.
-2. If a dependency is unavailable but every eligible subject has a stored success,
-   allow the run to continue; the graph is complete from restored results.
-3. If any required result is missing or failed, confirm that the run is marked
-   degraded and lists the affected stage.
-4. Confirm that `dbpedia-enricher` appears under preserved or skipped graphs and is
-   absent from replacement requests to the triplestore.
-5. Confirm that complete source graphs and catalogs deployed successfully.
-6. Restore the dependency and rerun. Stored failures are retried automatically;
-   stored successes are reused.
-7. Deploy the enrichment graph only after its missing-result count reaches zero.
+Fuzzy text similarity never assigns identities. Rebuild the bounded manual queue with:
 
-Do not use `redeploy` with an incomplete enrichment artifact. That command treats
-the selected files as operator-approved full snapshots and cannot reconstruct the
-completeness evidence from the originating run.
+```bash
+uv run climatesense-kg audit-duplicates --config config/daily.yaml
+```
 
-## Fresh Production Cutover
+Candidates are stored in `duplicate_candidates` and do not alter RDF.
 
-1. Archive the current PostgreSQL database and deployed RDF for rollback only.
-2. Create an empty PostgreSQL database named `climatesense`.
-3. Run the complete pipeline with deployment disabled and all enrichment services
-   available.
-4. Verify eligible-subject, success, failure, and missing-result counts for every
-   stage.
-5. Inspect the RDF and confirm that claim reviews, claims, and enrichment links are
-   internally consistent.
-6. Run the pipeline again and confirm that unchanged successful results are restored
-   from PostgreSQL.
-7. Make Spotlight unavailable and confirm that complete stored annotations are
-   reused without annotation requests.
-8. Create an intentional stored-result miss while Spotlight remains unavailable;
-   confirm a degraded run and verify that the deployed DBpedia graph is untouched.
-9. Back up the initialized PostgreSQL database, including the identity registry.
-10. Deploy the graphs produced by a complete run.
+## Enrichment completeness and outages
 
-The archived database is not imported into the fresh database, and no RDF URI
-compatibility layer is required.
+Each enricher stores one current result per semantic subject. A matching success is
+reused; a due retryable failure is recomputed; a future retry and a permanent failure
+remain missing. Health checks run once per dependency per pipeline run and only when
+work actually requires the dependency.
+
+The enrichment service runs bounded work units and owns concurrency, checkpointing,
+and progress reporting. Spotlight uses one text per work unit and defaults to eight
+workers against the hosted ClimateSense endpoint. DBpedia properties retain
+single-worker batched access to the public SPARQL endpoint. Each CIMPLE model uses
+configured text batches and a separately bounded worker count. Worker counts and
+timeouts are operational settings, so tuning them does not invalidate stored
+semantic results.
+
+An unavailable dependency does not discard stored successes. If required subjects
+are missing, the run is degraded and the affected graph is incomplete. Incomplete
+graphs do not replace their final output files and are not sent to the triplestore.
+Their existing local and deployed snapshots remain intact.
+
+DBpedia Spotlight claim/review annotations and enabled DBpedia property results govern
+the `dbpedia-enricher` graph. Enabled CIMPLE model results govern source graphs because
+their claim analysis is emitted there.
+
+Inspect all current processing results through the analytics view:
+
+```sql
+SELECT stage_name, stage_version, status, COUNT(*) AS results,
+       MIN(retry_at) AS next_retry_at
+FROM processing_results
+GROUP BY stage_name, stage_version, status
+ORDER BY stage_name, status;
+```
+
+After restoring a dependency, run the pipeline normally. Stored successes are reused
+and due failures are retried.
+
+## RDF snapshots and deployment
+
+The exporter writes N-Triples to a temporary file in the destination directory. A
+complete graph is externally sorted and deduplicated on disk, then atomically renamed
+to its final path. Failed or incomplete graphs discard their temporary files without
+changing the previous snapshot. Finalization can temporarily require enough free disk
+space for the raw export, external-sort working files, the deduplicated export, and
+the previous snapshot.
+
+Virtuoso deployment receives only complete artifacts and replaces each named graph as
+a full snapshot. `redeploy` treats selected files as operator-approved complete
+snapshots. Do not use it for files from an interrupted or manually assembled export:
+
+```bash
+uv run climatesense-kg redeploy \
+  --config config/daily.yaml \
+  --rdf-dir data/rdf
+```
+
+QLever is deployed as one complete native index:
+
+```bash
+just qlever-deploy
+```
+
+A scheduled run should chain export and deployment so indexing starts only after the
+pipeline exits successfully:
+
+```bash
+docker compose -f docker/docker-compose.yml run --build --rm pipeline \
+  run --config config/daily.yaml --skip-deployment && \
+just qlever-deploy
+```
+
+The command selects the latest run directory (named `<run>` as `YYYY-MM-DD_HHMMSS`)
+below `data/rdf` by default, and requires all eight graph files with fixed names
+(`claimreviewdata.nt.gz`, `euroclimatecheck.nt.gz`, ...) inside it. An explicit cohort can be
+selected by passing its run directory:
+
+```bash
+just qlever-deploy data/rdf/2026-08-15_143734
+```
+
+The candidate is built in `index-next` while `index-current` continues serving
+queries. Once indexing succeeds, QLever stops, the directories are renamed, and the
+server starts from the completed candidate. The former current index is retained as
+`index-previous`. If the readiness query fails, the command restores that previous
+index and restarts QLever. The switch never exposes a partially built index.
+
+## Recomputing external results
+
+Delete extraction and enrichment results without touching observations or identities:
+
+```bash
+uv run climatesense-kg flush-processing-results --yes
+```
+
+This deletes `document_extractions` and `enrichment_results`. The next pipeline run
+recomputes them. Documents, URL/text aliases, source assignments, and random review
+UUIDs remain unchanged.
+
+## Initial database validation
+
+The packaged schema is one initial migration intended for an empty PostgreSQL
+database. Before the first deployment:
+
+1. Run the pipeline with `--skip-deployment` and all configured dependencies ready.
+2. Inspect source, extraction, identity, enrichment, and RDF counts.
+3. Run it again and confirm that document and claim-review UUIDs are unchanged and
+   current successful results are reused.
+4. Exercise an unavailable enrichment dependency and confirm that its graph file and
+   deployed graph remain untouched.
+5. Back up PostgreSQL and the complete RDF snapshots.
+6. Deploy the verified snapshots with `just qlever-deploy` or the configured
+   Virtuoso backend.

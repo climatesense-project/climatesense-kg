@@ -77,9 +77,6 @@ class DataManager:
 
             # 2. Check cache
             cache_key_config = provider.get_cache_key_fields(provider_config)
-            fallback_key_config = provider.get_cache_fallback_key_fields(
-                provider_config
-            )
             processor = self._create_processor(source_name, source_type)
             with self.cache.open_stream(
                 source_name,
@@ -97,21 +94,6 @@ class DataManager:
                     yield from processor.process_stream(cached)
                     return
 
-            if skip_download and fallback_key_config:
-                with self.cache.open_stream(
-                    source_name,
-                    fallback_key_config,
-                    cache_ttl_hours,
-                    ignore_expiry=True,
-                ) as cached:
-                    if cached is not None:
-                        self.logger.info(
-                            "Using fallback cached data for %s (--skip-download enabled)",
-                            source_name,
-                        )
-                        yield from processor.process_stream(cached)
-                        return
-
             if skip_download:
                 raise RuntimeError(
                     f"No cached data found for {source_name} and --skip-download is enabled. "
@@ -121,8 +103,6 @@ class DataManager:
             self.logger.info("Cache miss for %s, fetching from provider", source_name)
             raw_data = provider.fetch(provider_config)
             self.cache.put(source_name, cache_key_config, raw_data)
-            if fallback_key_config and fallback_key_config != cache_key_config:
-                self.cache.put(source_name, fallback_key_config, raw_data)
             del raw_data
             with self.cache.open_stream(
                 source_name,

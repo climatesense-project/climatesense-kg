@@ -242,11 +242,17 @@ class RDFGenerator:
         self,
         claim_review: CanonicalClaimReview,
         entity_sources: frozenset[str],
+        *,
+        property_entity_uris: frozenset[str] | None = None,
     ) -> bytes:
         """Project one review's provider-owned enrichment as N-Triples."""
 
         self._reset_graph()
-        self._generate_entity_enrichment_rdf(claim_review, entity_sources)
+        self._generate_entity_enrichment_rdf(
+            claim_review,
+            entity_sources,
+            property_entity_uris=property_entity_uris,
+        )
         serialized = self.graph.serialize(format="nt", encoding="utf-8")
         return serialized if isinstance(serialized, bytes) else serialized.encode()
 
@@ -305,27 +311,47 @@ class RDFGenerator:
         claim_review: CanonicalClaimReview, entity_sources: frozenset[str]
     ) -> bool:
         """Return whether a review contains an entity owned by the given sources."""
+
+        return bool(RDFGenerator.entity_uris(claim_review, entity_sources))
+
+    @staticmethod
+    def entity_uris(
+        claim_review: CanonicalClaimReview,
+        entity_sources: frozenset[str],
+    ) -> frozenset[str]:
+        """Return provider-owned entity URIs referenced by one review."""
+
         entities = [
             *claim_review.claim.analysis.entities,
             *claim_review.analysis.entities,
         ]
-        return any(entity.source in entity_sources for entity in entities)
+        return frozenset(
+            entity.uri
+            for entity in entities
+            if entity.uri and entity.source in entity_sources
+        )
 
     def _generate_entity_enrichment_rdf(
         self,
         claim_review: CanonicalClaimReview,
         entity_sources: frozenset[str],
+        *,
+        property_entity_uris: frozenset[str] | None = None,
     ) -> None:
         """Generate entity mention and property triples for one review."""
         claim_uri = URIRef(self.get_full_uri(claim_review.claim.uri))
         review_uri = URIRef(self.get_full_uri(claim_review.uri))
         self._add_entity_mentions(
-            claim_uri, claim_review.claim.analysis.entities, entity_sources
+            claim_uri,
+            claim_review.claim.analysis.entities,
+            entity_sources,
+            property_entity_uris,
         )
         self._add_entity_mentions(
             review_uri,
             claim_review.analysis.entities,
             entity_sources,
+            property_entity_uris,
         )
 
     def _add_entity_mentions(
@@ -333,6 +359,7 @@ class RDFGenerator:
         subject_uri: URIRef,
         entities: list[EntityMention],
         entity_sources: frozenset[str],
+        property_entity_uris: frozenset[str] | None,
     ) -> None:
         """Add provider-owned mention assertions and entity descriptions."""
         for entity in entities:
@@ -340,7 +367,8 @@ class RDFGenerator:
                 continue
             entity_uri = URIRef(entity.uri)
             self.graph.add((subject_uri, self.SCHEMA.mentions, entity_uri))
-            self._add_entity_properties(entity_uri, entity.properties)
+            if property_entity_uris is None or entity.uri in property_entity_uris:
+                self._add_entity_properties(entity_uri, entity.properties)
 
     def _normalize_format_name(self, format_name: str) -> str:
         """

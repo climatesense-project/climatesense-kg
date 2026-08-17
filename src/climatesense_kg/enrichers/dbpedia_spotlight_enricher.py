@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-import time
 from typing import Any, Literal
 
 import requests
 
 from .. import USER_AGENT
 from ..domain import CanonicalClaimReview, EntityMention
-from ..persistence import StageResult, StageResultStore, stable_hash
+from ..processing import ProcessingResult, stable_hash
 from .base import Enricher
 
 
@@ -21,36 +20,30 @@ class DBpediaSpotlightEnricher(Enricher):
         self,
         *,
         target: Literal["claim", "review"],
-        store: StageResultStore,
         api_url: str = "https://api.dbpedia-spotlight.org/en/annotate",
         model_id: str = "dbpedia-spotlight-en",
         confidence: float = 0.5,
         support: int = 20,
         timeout: int = 20,
-        rate_limit_delay: float = 0.1,
-        checkpoint_size: int = 100,
-        progress_interval_seconds: float = 10.0,
+        max_workers: int = 8,
     ) -> None:
         super().__init__(
             f"dbpedia_spotlight.{target}",
             version="1",
-            store=store,
             semantic_config={
                 "model_id": model_id,
                 "confidence": confidence,
                 "support": support,
             },
             availability_key="dbpedia_spotlight",
-            compute_batch_size=25,
-            checkpoint_size=checkpoint_size,
-            progress_interval_seconds=progress_interval_seconds,
+            batch_size=1,
+            max_workers=max_workers,
         )
         self.target = target
         self.api_url = api_url
         self.confidence = confidence
         self.support = support
         self.timeout = timeout
-        self.rate_limit_delay = rate_limit_delay
         self.headers = {
             "accept": "application/json",
             "User-Agent": USER_AGENT,
@@ -69,33 +62,30 @@ class DBpediaSpotlightEnricher(Enricher):
             self.logger.warning("DBpedia Spotlight unavailable: %s", exc)
             return False
 
-    def _eligible_items(
+    def eligible_items(
         self, items: list[CanonicalClaimReview]
     ) -> list[CanonicalClaimReview]:
         if self.target == "claim":
             return items
         return [item for item in items if (item.review_text or "").strip()]
 
-    def _subject_key(self, item: CanonicalClaimReview) -> str:
+    def subject_key(self, item: CanonicalClaimReview) -> str:
         if self.target == "claim":
             return item.claim.uri
         review_text = item.review_text or ""
         digest = stable_hash(review_text)
         return f"review-text/{digest}"
 
-    def _input_value(self, item: CanonicalClaimReview) -> Any:
+    def input_value(self, item: CanonicalClaimReview) -> Any:
         return {"text": self._text(item)}
 
-    def _compute(
-        self, item: CanonicalClaimReview, *, force: bool = False
-    ) -> StageResult:
-        del force
+    def compute_item(self, item: CanonicalClaimReview) -> ProcessingResult:
         entities = self._extract_entities(self._text(item))
-        return StageResult.succeeded(
+        return ProcessingResult.success(
             {"entities": [asdict(entity) for entity in entities]},
         )
 
-    def _apply(self, item: CanonicalClaimReview, payload: dict[str, Any]) -> None:
+    def apply_item(self, item: CanonicalClaimReview, payload: dict[str, Any]) -> None:
         target_entities = (
             item.claim.analysis.entities
             if self.target == "claim"
@@ -116,21 +106,18 @@ class DBpediaSpotlightEnricher(Enricher):
     def _extract_entities(self, text: str) -> list[EntityMention]:
         if len(text.strip()) < 10:
             return []
-        try:
-            response = requests.post(
-                self.api_url,
-                headers=self.headers,
-                data={
-                    "text": text,
-                    "confidence": str(self.confidence),
-                    "support": str(self.support),
-                },
-                timeout=self.timeout,
-            )
-            response.raise_for_status()
-            return self._parse_dbpedia_response(response.json())
-        finally:
-            time.sleep(self.rate_limit_delay)
+        response = requests.post(
+            self.api_url,
+            headers=self.headers,
+            data={
+                "text": text,
+                "confidence": str(self.confidence),
+                "support": str(self.support),
+            },
+            timeout=self.timeout,
+        )
+        response.raise_for_status()
+        return self._parse_dbpedia_response(response.json())
 
     def _parse_dbpedia_response(self, data: dict[str, Any]) -> list[EntityMention]:
         entities: list[EntityMention] = []

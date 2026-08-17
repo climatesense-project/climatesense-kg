@@ -119,14 +119,11 @@ class DocumentExtractionConfig:
     blocked_retry_delay_hours: float = 24 * 30
     dns_retry_delay_hours: float = 24 * 7
     content_retry_delay_hours: float = 24 * 30
-    checkpoint_size: int = 25
     progress_interval_seconds: float = 10.0
 
     def __post_init__(self) -> None:
         if self.max_workers <= 0:
             raise ValueError("Document extraction max_workers must be positive")
-        if self.checkpoint_size <= 0:
-            raise ValueError("Document extraction checkpoint_size must be positive")
         if any(
             delay < 0
             for delay in (
@@ -140,22 +137,6 @@ class DocumentExtractionConfig:
         if self.progress_interval_seconds < 0:
             raise ValueError(
                 "Document extraction progress_interval_seconds must be non-negative"
-            )
-
-
-@dataclass
-class IdentityResolutionConfig:
-    """Operational settings for durable identity resolution."""
-
-    batch_size: int = 500
-    progress_interval_seconds: float = 10.0
-
-    def __post_init__(self) -> None:
-        if self.batch_size <= 0:
-            raise ValueError("Identity resolution batch_size must be positive")
-        if self.progress_interval_seconds < 0:
-            raise ValueError(
-                "Identity resolution progress_interval_seconds must be non-negative"
             )
 
 
@@ -181,12 +162,16 @@ class DbpediaSpotlightConfig:
     """Configuration for DBpedia Spotlight entity extraction."""
 
     enabled: bool = False
-    api_url: str = "https://api.dbpedia-spotlight.org/en/annotate"
+    api_url: str = "https://dbpedia-spotlight.tools.eurecom.fr/rest/annotate"
     model_id: str = "dbpedia-spotlight-en"
     confidence: float = 0.5
     support: int = 20
     timeout: int = 20
-    rate_limit_delay: float = 0.1
+    max_workers: int = 8
+
+    def __post_init__(self) -> None:
+        if self.max_workers <= 0:
+            raise ValueError("DBpedia Spotlight max_workers must be positive")
 
 
 @dataclass
@@ -213,13 +198,19 @@ class CimpleConfig:
     max_length: int = 128
     timeout: int = 60
     rate_limit_delay: float = 0.1
+    max_workers: int = 1
+
+    def __post_init__(self) -> None:
+        if self.batch_size <= 0:
+            raise ValueError("CIMPLE batch_size must be positive")
+        if self.max_workers <= 0:
+            raise ValueError("CIMPLE max_workers must be positive")
 
 
 @dataclass
 class EnrichmentConfig:
     """Configuration for enrichment methods."""
 
-    checkpoint_size: int = 100
     progress_interval_seconds: float = 10.0
     dbpedia_spotlight: DbpediaSpotlightConfig = field(
         default_factory=DbpediaSpotlightConfig
@@ -230,21 +221,37 @@ class EnrichmentConfig:
     cimple: CimpleConfig = field(default_factory=CimpleConfig)
 
     def __post_init__(self) -> None:
-        if self.checkpoint_size <= 0:
-            raise ValueError("Enrichment checkpoint_size must be positive")
         if self.progress_interval_seconds < 0:
             raise ValueError(
                 "Enrichment progress_interval_seconds must be non-negative"
             )
+        if (
+            self.dbpedia_entity_properties.enabled
+            and not self.dbpedia_spotlight.enabled
+        ):
+            raise ValueError(
+                "DBpedia entity properties require DBpedia Spotlight to be enabled"
+            )
+
+
+@dataclass
+class SnapshotRetentionConfig:
+    """Retention policy for full RDF snapshot runs."""
+
+    keep_latest: int = 0
 
 
 @dataclass
 class OutputConfig:
     """Configuration for RDF output."""
 
-    format: Literal["turtle", "nt", "rdf/xml", "n3"] = "nt"
-    output_path: str | Path = "output/knowledge_graph.nt"
+    output_path: str | Path = "data/rdf/{DATETIME}/{SOURCE}.nt.gz"
     base_uri: str = "http://data.climatesense-project.eu"
+    retention: SnapshotRetentionConfig = field(default_factory=SnapshotRetentionConfig)
+
+    def __post_init__(self) -> None:
+        if self.retention.keep_latest < 0:
+            raise ValueError("Output retention keep_latest must be non-negative")
 
 
 @dataclass
@@ -262,7 +269,7 @@ class LoggingConfig:
 class DeploymentConfig:
     """Configuration for deployment settings."""
 
-    backend: Literal["none", "virtuoso", "qlever"] = "none"
+    backend: Literal["none", "virtuoso"] = "none"
     graph_template: str = "http://data.climatesense-project.eu/graph/{SOURCE}"
 
 
@@ -279,11 +286,10 @@ class PipelineConfig:
     """Main pipeline configuration."""
 
     data_sources: list[DataSourceConfig] = field(default_factory=list[DataSourceConfig])
+    batch_size: int = 500
+    progress_interval_seconds: float = 10.0
     document_extraction: DocumentExtractionConfig = field(
         default_factory=DocumentExtractionConfig
-    )
-    identity_resolution: IdentityResolutionConfig = field(
-        default_factory=IdentityResolutionConfig
     )
     duplicate_audit: DuplicateAuditConfig = field(default_factory=DuplicateAuditConfig)
     enrichment: EnrichmentConfig = field(default_factory=EnrichmentConfig)
@@ -291,3 +297,9 @@ class PipelineConfig:
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     deployment: DeploymentConfig = field(default_factory=DeploymentConfig)
     cache: CacheConfig = field(default_factory=CacheConfig)
+
+    def __post_init__(self) -> None:
+        if self.batch_size <= 0:
+            raise ValueError("Pipeline batch_size must be positive")
+        if self.progress_interval_seconds < 0:
+            raise ValueError("Pipeline progress interval must be non-negative")

@@ -9,7 +9,6 @@ from dacite import Config, from_dict
 import yaml
 
 from ..provider_registry import PROVIDER_REGISTRATIONS
-from .rdf_formats import RDF_FORMAT_EXTENSIONS
 from .schemas import PipelineConfig
 
 logger = logging.getLogger(__name__)
@@ -64,22 +63,7 @@ def load_config(config_path: str | Path) -> PipelineConfig:
     except Exception as e:
         raise ValueError(f"Failed to parse configuration: {e}") from e
 
-    output_suffix = Path(dataclass.output.output_path).suffix.lower()
-    valid_suffixes = RDF_FORMAT_EXTENSIONS[dataclass.output.format]
-    if output_suffix not in valid_suffixes:
-        expected = ", ".join(sorted(valid_suffixes))
-        raise ValueError(
-            f"Output format {dataclass.output.format!r} requires a file extension "
-            f"of {expected}; got {output_suffix or '<none>'}"
-        )
-
-    if dataclass.deployment.backend == "qlever" and dataclass.output.format not in {
-        "nt",
-        "turtle",
-    }:
-        raise ValueError(
-            "QLever deployment supports only the 'nt' and 'turtle' RDF formats; "
-            f"got {dataclass.output.format!r}"
-        )
+    if not str(Path(dataclass.output.output_path)).lower().endswith(".nt.gz"):
+        raise ValueError("Pipeline RDF output_path must use the .nt.gz extension")
 
     return dataclass

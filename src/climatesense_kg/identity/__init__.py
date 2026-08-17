@@ -3,31 +3,17 @@
 from .audit import DuplicateAuditor, DuplicateAuditReport
 from .fingerprints import (
     DocumentFingerprint,
-    fingerprint_document,
     normalize_identity_text,
     shingle_containment,
 )
-from .models import IdentityAssignment, RegisteredDocument
-from .planner import IdentityPlanner
-from .registry import (
-    IdentityRegistry,
-    IdentityRepositoryBatch,
-    InMemoryIdentityRegistry,
-)
-from .resolver import IdentityResolver
+from .service import IdentityService, IdentitySummary
 
 __all__ = [
     "DocumentFingerprint",
     "DuplicateAuditReport",
     "DuplicateAuditor",
-    "IdentityAssignment",
-    "IdentityPlanner",
-    "IdentityRegistry",
-    "IdentityRepositoryBatch",
-    "IdentityResolver",
-    "InMemoryIdentityRegistry",
-    "RegisteredDocument",
-    "fingerprint_document",
+    "IdentityService",
+    "IdentitySummary",
     "normalize_identity_text",
     "shingle_containment",
 ]

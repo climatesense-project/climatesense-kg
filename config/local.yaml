@@ -68,7 +68,7 @@ enrichment:
     confidence: 0.6
     support: 30
     timeout: 20
-    rate_limit_delay: 1
+    max_workers: 8
 
   dbpedia_entity_properties:
     enabled: true
@@ -96,18 +96,20 @@ enrichment:
     max_length: 128
     timeout: 300
     rate_limit_delay: 0
+    max_workers: 1
 
 output:
-  format: "nt"
-  output_path: "data/rdf/{DATE}/{SOURCE}_{DATETIME}.nt"
+  output_path: "data/rdf/{DATETIME}/{SOURCE}.nt.gz"
   base_uri: "http://data.climatesense-project.eu"
+  retention:
+    keep_latest: 3
 
 cache:
   cache_dir: "cache"
   default_ttl_hours: 24.0
 
 deployment:
-  backend: "qlever"
+  backend: "none"
   graph_template: "http://data.climatesense-project.eu/graph/{SOURCE}"
 
 logging:

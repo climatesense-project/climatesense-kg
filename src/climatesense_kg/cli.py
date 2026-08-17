@@ -4,17 +4,8 @@ import argparse
 import logging
 from pathlib import Path
 import sys
-from typing import TYPE_CHECKING
 
 from . import __version__
-
-if TYPE_CHECKING:
-    from .pipeline import (
-        DeploymentResults,
-        PipelineResults,
-        RDFGenerationResults,
-    )
-    from .stages import StageExecutionSummary
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -87,13 +78,13 @@ Examples:
     )
 
     flush_parser = subparsers.add_parser(
-        "flush-stage-results",
-        help="Delete recomputable stage results while preserving identities",
+        "flush-processing-results",
+        help="Delete recomputable extraction and enrichment results",
     )
     flush_parser.add_argument(
         "--yes",
         action="store_true",
-        help="Confirm deletion of all persisted stage results",
+        help="Confirm deletion of all persisted processing results",
     )
 
     audit_parser = subparsers.add_parser(
@@ -106,141 +97,51 @@ Examples:
     return parser
 
 
-def _print_rdf_generation_summary(rdf_data: "RDFGenerationResults") -> None:
-    """Print RDF generation summary in a safe way."""
-    if rdf_data.get("error"):
-        print(f"RDF Generation: Failed - {rdf_data['error']}")
-        return
+def _print_pipeline_summary(summary: object) -> None:
+    """Print the compact result of one successful pipeline run."""
 
-    generated_files = rdf_data.get("generated_files", [])
-    total_files = rdf_data.get("total_files", 0)
-    total_size = rdf_data.get("total_file_size", 0)
-    failed_items = rdf_data.get("failed_items", 0)
+    from .pipeline import PipelineSummary
 
-    if not generated_files:
-        print("RDF Generation: No files generated")
-        return
-
-    print(f"RDF Generation: {total_files} files generated ({total_size} bytes total)")
-
-    if failed_items:
-        print(f"RDF Generation: {failed_items} items failed")
-
-    for warning in rdf_data.get("warnings", []):
-        print(f"RDF Generation warning: {warning}")
-
-    for file_info in generated_files:
-        failure_summary = ""
-        if file_info["failed_items"]:
-            failure_summary = f", {file_info['failed_items']} failed"
+    if not isinstance(summary, PipelineSummary):
+        raise TypeError("Expected a PipelineSummary")
+    status = "with degraded coverage" if summary.degraded else "successfully"
+    print(f"Pipeline completed {status} in {summary.duration_seconds:.2f}s.")
+    print(f"Processed {summary.reviews} claim reviews.")
+    if summary.extraction:
+        stage = summary.extraction
         print(
-            f"  - {file_info['graph_name']}: {file_info['path']} "
-            f"({file_info['items']} items{failure_summary}, "
-            f"{file_info['file_size']} bytes)"
+            "Document extraction: "
+            f"eligible={stage.eligible}, cached={stage.cached}, "
+            f"fetched={stage.succeeded}, retryable={stage.retryable_failures}, "
+            f"permanent={stage.permanent_failures}, missing={stage.missing}"
         )
-
-
-def _print_deployment_summary(deployment_data: "DeploymentResults") -> None:
-    """Print deployment summary in a safe way."""
-    success = deployment_data["success"]
-    files_deployed = deployment_data["files_deployed"]
-    total_files = deployment_data["total_files"]
-    skipped_files = deployment_data["skipped_files"]
-
-    status = "Success" if success else "Failed"
-    print(f"Deployment: {status} ({files_deployed}/{total_files} files)")
-    if skipped_files:
-        skipped_graphs = ", ".join(deployment_data["skipped_graphs"])
+    for stage in summary.enrichments:
         print(
-            f"Deployment: preserved {skipped_files} incomplete graph(s): "
-            f"{skipped_graphs}"
+            f"Enrichment {stage.name}: eligible={stage.eligible}, "
+            f"cached={stage.cached}, succeeded={stage.succeeded}, "
+            f"retryable={stage.retryable_failures}, "
+            f"permanent={stage.permanent_failures}, missing={stage.missing}"
         )
-
-
-def _format_stage_counts(
-    stage: "StageExecutionSummary",
-    *,
-    success_label: str = "computed_successes",
-    failure_label: str = "computed_failures",
-) -> str:
-    """Format the counters shared by persisted-stage summaries."""
-
-    return (
-        f"eligible={stage['eligible_subjects']}, "
-        f"stored_successes={stage['stored_successes']}, "
-        f"stored_failures={stage['stored_failures']}, "
-        f"stored_deferred={stage['stored_deferred_failures']}, "
-        f"stored_permanent={stage['stored_permanent_failures']}, "
-        f"{success_label}={stage['computed_successes']}, "
-        f"{failure_label}={stage['computed_failures']}, "
-        f"computed_deferred={stage['computed_deferred_failures']}, "
-        f"computed_permanent={stage['computed_permanent_failures']}, "
-        f"missing={stage['missing_results']}"
-    )
-
-
-def _print_enrichment_summary(results: "PipelineResults") -> None:
-    enrichment = results.get("enrichment")
-    if not enrichment:
-        return
-    status = "complete" if enrichment["complete"] else "incomplete"
-    print(f"Enrichment: {status}")
-    for stage in enrichment["stages"]:
-        availability = stage["available"]
-        availability_text = (
-            "not checked" if availability is None else str(availability).lower()
-        )
+    if summary.export:
         print(
-            f"  - {stage['stage_name']}: available={availability_text}, "
-            f"{_format_stage_counts(stage)}"
+            f"RDF export: {len(summary.export.artifacts)} files, "
+            f"{summary.export.total_file_size} bytes total"
         )
-
-
-def _print_document_extraction_summary(results: "PipelineResults") -> None:
-    extraction = results.get("document_extraction")
-    if extraction is None:
-        return
-    coverage = "complete" if extraction["complete"] else "incomplete"
-    health = "healthy" if extraction["healthy"] else "degraded"
-    print(
-        f"Document extraction: coverage={coverage}, run={health}; "
-        f"{_format_stage_counts(extraction, success_label='fetched', failure_label='failed')}"
-    )
-
-
-def _print_success_summary(results: "PipelineResults") -> None:
-    """Print pipeline success summary."""
-    if results["degraded"]:
-        print("Pipeline completed with degraded coverage.")
-    else:
-        print("Pipeline completed successfully!")
-    print(f"Processed {results['total_processed']} claim reviews")
-
-    duration = results.get("duration")
-    if duration is not None:
-        print(f"Duration: {duration:.2f} seconds")
-
-    _print_document_extraction_summary(results)
-    _print_enrichment_summary(results)
-
-    # Print RDF generation summary
-    rdf_data = results.get("rdf_generation")
-    if rdf_data:
-        _print_rdf_generation_summary(rdf_data)
-
-    # Print deployment summary
-    deployment_data = results.get("deployment")
-    if deployment_data:
-        _print_deployment_summary(deployment_data)
-
-
-def _print_failure_summary(results: "PipelineResults") -> None:
-    """Print pipeline failure summary."""
-    print("Pipeline failed:", file=sys.stderr)
-
-    error = results.get("error")
-    if error:
-        print(f"Error: {error}", file=sys.stderr)
+        for artifact in summary.export.artifacts:
+            print(
+                f"  - {artifact.graph_name}: {artifact.path} "
+                f"({artifact.items} reviews, {artifact.failed_items} failed)"
+            )
+    if summary.deployment:
+        print(
+            f"Deployment: {summary.deployment.files_deployed}/"
+            f"{summary.deployment.total_files} files"
+        )
+        if summary.deployment.skipped_graphs:
+            print(
+                "Preserved incomplete graphs: "
+                + ", ".join(summary.deployment.skipped_graphs)
+            )
 
 
 def _graph_name_for_rdf_file(
@@ -302,7 +203,7 @@ def run_redeploy(args: argparse.Namespace) -> int:
     }
     rdf_files = sorted(
         path
-        for pattern in ("*.nt", "*.ttl")
+        for pattern in ("*.nt.gz", "*.ttl")
         for path in rdf_dir.rglob(pattern)
         if path.resolve() not in curated_paths
     )
@@ -391,16 +292,16 @@ def run_pipeline(args: argparse.Namespace) -> int:
 
     try:
         with Pipeline(config) as pipeline:
-            results = pipeline.run(
-                skip_download=getattr(args, "skip_download", False),
-                skip_extraction=getattr(args, "skip_extraction", False),
-                skip_enrichment=getattr(args, "skip_enrichment", False),
+            summary = pipeline.run(
+                cached_sources_only=getattr(args, "skip_download", False),
+                offline_extraction=getattr(args, "skip_extraction", False),
+                offline_enrichment=getattr(args, "skip_enrichment", False),
                 skip_deployment=getattr(args, "skip_deployment", False),
-                force_regenerate=getattr(args, "force_regenerate", False),
+                force=getattr(args, "force_regenerate", False),
             )
     except KeyboardInterrupt:
         print(
-            "Pipeline interrupted; completed pipeline checkpoints were preserved.",
+            "Pipeline interrupted; committed database results were preserved.",
             file=sys.stderr,
         )
         return 130
@@ -408,40 +309,41 @@ def run_pipeline(args: argparse.Namespace) -> int:
         print(f"Pipeline execution failed: {e}", file=sys.stderr)
         return 1
 
-    success = results["success"]
-
-    if success:
-        _print_success_summary(results)
+    if summary.success:
+        _print_pipeline_summary(summary)
         return 0
-    else:
-        _print_failure_summary(results)
-        return 1
+    print(f"Pipeline failed: {summary.error or 'unknown error'}", file=sys.stderr)
+    return 1
 
 
-def run_flush_stage_results(args: argparse.Namespace) -> int:
-    """Delete recomputable stage state without touching identity tables."""
+def run_flush_processing_results(args: argparse.Namespace) -> int:
+    """Delete recomputable processing state without touching identity tables."""
 
     if not getattr(args, "yes", False):
         print(
-            "Refusing to flush stage results without --yes; identity data is never "
-            "deleted by this command.",
+            "Refusing to flush processing results without --yes; identity data is "
+            "never deleted by this command.",
             file=sys.stderr,
         )
         return 1
 
     from dotenv import load_dotenv
 
-    from .persistence import PostgresDatabase, PostgresStageResultStore
+    from .database import Database
+    from .enrichment import clear_processing_results
 
     load_dotenv()
     try:
-        with PostgresDatabase.from_environment() as database:
-            deleted = PostgresStageResultStore(database.pool).clear()
+        with Database.from_environment() as database:
+            deleted = clear_processing_results(database.pool)
     except Exception as exc:
-        print(f"Failed to flush stage results: {exc}", file=sys.stderr)
+        print(f"Failed to flush processing results: {exc}", file=sys.stderr)
         return 1
 
-    print(f"Deleted {deleted} recomputable stage result(s); identities were preserved.")
+    print(
+        f"Deleted {deleted} recomputable processing result(s); identities were "
+        "preserved."
+    )
     return 0
 
 
@@ -451,8 +353,8 @@ def run_duplicate_audit(args: argparse.Namespace) -> int:
     from dotenv import load_dotenv
 
     from .config import load_config
+    from .database import Database
     from .identity import DuplicateAuditor
-    from .persistence import PostgresDatabase
     from .utils.logging import setup_logging
 
     try:
@@ -465,7 +367,7 @@ def run_duplicate_audit(args: argparse.Namespace) -> int:
     load_dotenv()
     audit = config.duplicate_audit
     try:
-        with PostgresDatabase.from_environment() as database:
+        with Database.from_environment() as database:
             report = DuplicateAuditor(
                 database.pool,
                 similarity_threshold=audit.similarity_threshold,
@@ -495,7 +397,7 @@ def main() -> int:
 
     handlers = {
         "audit-duplicates": run_duplicate_audit,
-        "flush-stage-results": run_flush_stage_results,
+        "flush-processing-results": run_flush_processing_results,
         "run": run_pipeline,
         "redeploy": run_redeploy,
     }

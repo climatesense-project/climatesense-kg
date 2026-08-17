@@ -15,12 +15,12 @@ def _write_config(path: Path, deployment: str) -> Path:
 def test_loads_backend_deployment_config(tmp_path: Path) -> None:
     config_path = _write_config(
         tmp_path / "config.yaml",
-        "  backend: qlever\n  graph_template: https://example.test/graph/{SOURCE}\n",
+        "  backend: virtuoso\n  graph_template: https://example.test/graph/{SOURCE}\n",
     )
 
     config = load_config(config_path)
 
-    assert config.deployment.backend == "qlever"
+    assert config.deployment.backend == "virtuoso"
     assert config.deployment.graph_template == ("https://example.test/graph/{SOURCE}")
 
 
@@ -44,27 +44,71 @@ def test_rejects_unknown_deployment_backend(tmp_path: Path) -> None:
         load_config(config_path)
 
 
-def test_rejects_output_extension_that_disagrees_with_format(tmp_path: Path) -> None:
+def test_rejects_non_ntriples_gz_output_extension(tmp_path: Path) -> None:
     config_path = tmp_path / "config.yaml"
     config_path.write_text(
-        "output:\n  format: turtle\n  output_path: output/graph.nt\n",
+        "output:\n  output_path: output/graph.ttl\n",
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match=r"requires a file extension of \.ttl"):
+    with pytest.raises(ValueError, match=r"must use the \.nt\.gz extension"):
         load_config(config_path)
 
 
-@pytest.mark.parametrize(("rdf_format", "suffix"), [("n3", ".n3"), ("rdf/xml", ".rdf")])
-def test_rejects_rdf_formats_qlever_cannot_deploy(
-    tmp_path: Path, rdf_format: str, suffix: str
-) -> None:
+def test_accepts_ntriples_gz_output_extension(tmp_path: Path) -> None:
     config_path = tmp_path / "config.yaml"
     config_path.write_text(
-        "deployment:\n  backend: qlever\n"
-        f"output:\n  format: {rdf_format}\n  output_path: output/graph{suffix}\n",
+        "output:\n  output_path: output/graph.nt.gz\n",
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match="QLever deployment supports only"):
+    config = load_config(config_path)
+
+    assert config.output.output_path == "output/graph.nt.gz"
+
+
+def test_rejects_obsolete_output_format_option(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        "output:\n  format: nt\n  output_path: output/graph.nt.gz\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="Failed to parse configuration"):
+        load_config(config_path)
+
+
+def test_dbpedia_properties_require_spotlight(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        "enrichment:\n"
+        "  dbpedia_entity_properties:\n"
+        "    enabled: true\n"
+        "output:\n"
+        "  output_path: output/graph.nt.gz\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="require DBpedia Spotlight"):
+        load_config(config_path)
+
+
+@pytest.mark.parametrize(
+    "section",
+    [
+        "  dbpedia_spotlight:\n    max_workers: 0\n",
+        "  cimple:\n    max_workers: 0\n",
+    ],
+)
+def test_enrichment_worker_counts_must_be_positive(
+    tmp_path: Path,
+    section: str,
+) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        f"enrichment:\n{section}output:\n  output_path: output/graph.nt.gz\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="max_workers must be positive"):
         load_config(config_path)

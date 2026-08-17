@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import asdict, dataclass
 import json
-import logging
 import re
 import time
 from typing import Any
@@ -16,13 +14,8 @@ import requests
 from .. import USER_AGENT
 from ..config.graphs import DBPEDIA_ENTITY_SOURCES
 from ..domain import CanonicalClaimReview, EntityMention, EntityPropertyValue
-from ..persistence import StageResult, StageResultKey, StageResultStore
-from ..stages.persisted import (
-    StageExecutionPolicy,
-    StageExecutionReport,
-    StageProgressLogger,
-    execute_persisted_stage,
-)
+from ..processing import ProcessingResult, stable_hash
+from .base import Enricher, EnrichmentSubject
 
 
 @dataclass(frozen=True)
@@ -35,11 +28,10 @@ class PropertyQueryResult:
     language: str | None = None
 
 
-class DBpediaPropertyEnricher:
+class DBpediaPropertyEnricher(Enricher):
     """Persist selected properties once for each DBpedia entity URI."""
 
     name = "dbpedia_entity_properties"
-    stage_name = "enrichment.dbpedia_entity_properties"
     version = "1"
     availability_key = "dbpedia_sparql"
     entity_batch_size = 50
@@ -49,29 +41,24 @@ class DBpediaPropertyEnricher:
     def __init__(
         self,
         *,
-        store: StageResultStore,
         sparql_endpoint: str = "https://dbpedia.org/sparql",
         properties: list[str] | None = None,
         timeout: int = 20,
         rate_limit_delay: float = 0.1,
         max_retries: int = 2,
-        checkpoint_size: int = 100,
-        progress_interval_seconds: float = 10.0,
     ) -> None:
-        if checkpoint_size <= 0:
-            raise ValueError("Checkpoint size must be positive")
-        if progress_interval_seconds < 0:
-            raise ValueError("Progress interval must be non-negative")
-        self.store = store
-        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         self.endpoint = sparql_endpoint
         self.properties = self._normalize_property_uris(properties or [])
-        self.semantic_config = {"properties": self.properties}
+        super().__init__(
+            self.name,
+            version=self.version,
+            semantic_config={"properties": self.properties},
+            availability_key=self.availability_key,
+            batch_size=self.entity_batch_size,
+        )
         self.timeout = timeout
         self.rate_limit_delay = rate_limit_delay
         self.max_retries = max_retries
-        self.checkpoint_size = checkpoint_size
-        self.progress_interval_seconds = progress_interval_seconds
         self.headers = {
             "Accept": "application/sparql-results+json",
             "User-Agent": USER_AGENT,
@@ -92,71 +79,31 @@ class DBpediaPropertyEnricher:
         except Exception:
             return False
 
-    def enrich(
-        self,
-        items: list[CanonicalClaimReview],
-        *,
-        policy: StageExecutionPolicy = StageExecutionPolicy.COMPUTE,
-        force: bool = False,
-        availability_check: Callable[[], bool] | None = None,
-        report_progress: bool = True,
-    ) -> StageExecutionReport:
-        """Restore or fetch each distinct entity result exactly once."""
-
+    def subjects(self, items: list[CanonicalClaimReview]) -> list[EnrichmentSubject]:
         entity_map = self._collect_all_entity_references(items)
         if not self.properties:
             entity_map = {}
-        subjects = {
-            self._result_key(entity_uri): (entity_uri, references)
-            for entity_uri, references in entity_map.items()
-        }
-        return execute_persisted_stage(
-            stage_name=self.stage_name,
-            subjects=subjects,
-            store=self.store,
-            compute_many=lambda pending: self._fetch_entity_properties(
-                [entity_uri for entity_uri, _references in pending]
-            ),
-            apply_result=lambda subject, payload: self._apply_result(
-                subject[1], payload
-            ),
-            policy=policy,
-            force=force,
-            availability_check=availability_check,
-            stage_logger=self.logger,
-            compute_batch_size=min(self.entity_batch_size, self.checkpoint_size),
-            checkpoint_size=self.checkpoint_size,
-            progress_callback=(
-                StageProgressLogger(
-                    self.logger,
-                    label="Enrichment",
-                    interval_seconds=self.progress_interval_seconds,
-                )
-                if report_progress
-                else None
-            ),
-        )
-
-    def _result_key(self, entity_uri: str) -> StageResultKey:
-        return StageResultKey.build(
-            subject_key=entity_uri,
-            stage_name=self.stage_name,
-            stage_version=self.version,
-            input_value={"entity_uri": entity_uri},
-            config_value=self.semantic_config,
-        )
-
-    def _fetch_entity_properties(self, entity_uris: list[str]) -> list[StageResult]:
-        results: list[StageResult] = []
-        for start in range(0, len(entity_uris), self.entity_batch_size):
-            results.extend(
-                self._fetch_entity_property_batch(
-                    entity_uris[start : start + self.entity_batch_size]
-                )
+        return [
+            EnrichmentSubject(
+                entity_uri,
+                stable_hash({"entity_uri": entity_uri}),
+                references,
             )
-        return results
+            for entity_uri, references in entity_map.items()
+        ]
 
-    def _fetch_entity_property_batch(self, entity_uris: list[str]) -> list[StageResult]:
+    def compute_batch(
+        self,
+        subjects: list[EnrichmentSubject],
+    ) -> list[ProcessingResult]:
+        return self._fetch_entity_property_batch([subject.key for subject in subjects])
+
+    def apply(self, subject: EnrichmentSubject, payload: dict[str, Any]) -> None:
+        self._apply_result(subject.targets, payload)
+
+    def _fetch_entity_property_batch(
+        self, entity_uris: list[str]
+    ) -> list[ProcessingResult]:
         last_exception: Exception | None = None
         for attempt in range(self.max_retries + 1):
             try:
@@ -174,7 +121,7 @@ class DBpediaPropertyEnricher:
                 parsed = self._parse_bindings_by_entity(bindings)
                 time.sleep(self.rate_limit_delay)
                 return [
-                    StageResult.succeeded(
+                    ProcessingResult.success(
                         {"properties": parsed.get(entity_uri, {})},
                     )
                     for entity_uri in entity_uris
@@ -184,7 +131,7 @@ class DBpediaPropertyEnricher:
                 if attempt < self.max_retries:
                     time.sleep(min(2**attempt, 2))
         return [
-            StageResult.retryable_failure(
+            ProcessingResult.retryable(
                 {
                     "error_type": "property_query_error",
                     "entity_uri": entity_uri,

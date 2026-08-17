@@ -8,7 +8,7 @@ from unittest.mock import Mock, call, patch
 from src.climatesense_kg.cli import (
     create_parser,
     run_duplicate_audit,
-    run_flush_stage_results,
+    run_flush_processing_results,
     run_pipeline,
     run_redeploy,
 )
@@ -63,7 +63,7 @@ def test_duplicate_audit_uses_its_own_configuration(capsys) -> None:
     with (
         patch("src.climatesense_kg.config.load_config", return_value=config),
         patch(
-            "src.climatesense_kg.persistence.PostgresDatabase.from_environment",
+            "src.climatesense_kg.database.Database.from_environment",
             return_value=database,
         ),
         patch(
@@ -190,34 +190,31 @@ def test_redeploy_rejects_multiple_snapshots_for_one_graph(
     handler.deploy.assert_not_called()
 
 
-def test_flush_stage_results_requires_explicit_confirmation() -> None:
-    assert run_flush_stage_results(Namespace(yes=False)) == 1
+def test_flush_processing_results_requires_explicit_confirmation() -> None:
+    assert run_flush_processing_results(Namespace(yes=False)) == 1
 
 
-def test_flush_stage_results_uses_only_stage_store() -> None:
+def test_flush_processing_results_deletes_only_recomputable_results() -> None:
     database = Mock()
     database.__enter__ = Mock(return_value=database)
     database.__exit__ = Mock(return_value=None)
-    store = Mock()
-    store.clear.return_value = 7
-
     with (
         patch(
-            "src.climatesense_kg.persistence.PostgresDatabase.from_environment",
+            "src.climatesense_kg.database.Database.from_environment",
             return_value=database,
         ),
         patch(
-            "src.climatesense_kg.persistence.PostgresStageResultStore",
-            return_value=store,
-        ),
+            "src.climatesense_kg.enrichment.clear_processing_results",
+            return_value=7,
+        ) as clear,
     ):
-        exit_code = run_flush_stage_results(Namespace(yes=True))
+        exit_code = run_flush_processing_results(Namespace(yes=True))
 
     assert exit_code == 0
-    store.clear.assert_called_once_with()
+    clear.assert_called_once_with(database.pool)
 
 
-def test_pipeline_interrupt_reports_preserved_checkpoints(capsys) -> None:
+def test_pipeline_interrupt_reports_preserved_results(capsys) -> None:
     config = SimpleNamespace(logging=SimpleNamespace(level="INFO"))
     pipeline = Mock()
     pipeline.__enter__ = Mock(return_value=pipeline)
@@ -231,4 +228,4 @@ def test_pipeline_interrupt_reports_preserved_checkpoints(capsys) -> None:
         exit_code = run_pipeline(Namespace(config="config.yaml", debug=False))
 
     assert exit_code == 130
-    assert "pipeline checkpoints were preserved" in capsys.readouterr().err
+    assert "committed database results were preserved" in capsys.readouterr().err
