@@ -1,9 +1,11 @@
-# QLever index template used by deploy-index.sh.
-# The deployment script replaces the snapshot directory placeholder before indexing.
+# QLever configuration for the ClimateSense knowledge graph.
 
 [data]
 NAME = climatesense
 DESCRIPTION = ClimateSense climate misinformation knowledge graph
+
+# Do not change this variable. It is automatically substituted by
+# the deployment script (deploy-index.sh).
 SNAPSHOT_DIRECTORY = __SNAPSHOT_DIRECTORY__
 
 [index]
