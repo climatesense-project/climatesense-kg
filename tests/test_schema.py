@@ -28,6 +28,5 @@ def test_schema_contains_one_authoritative_processing_model() -> None:
         "document_text_hashes",
         "claim_reviews",
         "enrichment_results",
-        "duplicate_candidates",
     ):
         assert f"CREATE TABLE {table}" in schema

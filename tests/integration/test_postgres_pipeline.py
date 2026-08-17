@@ -35,7 +35,7 @@ from climatesense_kg.enrichers import Enricher
 from climatesense_kg.enrichment import EnrichmentService
 from climatesense_kg.export import RdfExporter
 from climatesense_kg.extraction import DocumentExtractionService, DocumentTarget
-from climatesense_kg.identity import DuplicateAuditor, IdentityService
+from climatesense_kg.identity import IdentityService
 from climatesense_kg.ingestion import IngestionService
 from climatesense_kg.processing import ProcessingResult, StageSummary
 from climatesense_kg.projection import ReviewProjectionReader
@@ -66,7 +66,6 @@ def database() -> Iterator[Database]:
             cursor.execute(
                 """
                 TRUNCATE TABLE
-                    duplicate_candidates,
                     enrichment_results,
                     document_extractions,
                     source_observations,
@@ -245,7 +244,6 @@ def _reset_domain_state(database: Database) -> None:
             cursor.execute(
                 """
                 TRUNCATE TABLE
-                    duplicate_candidates,
                     enrichment_results,
                     document_extractions,
                     source_observations,
@@ -321,7 +319,7 @@ def test_failed_source_install_rolls_back_the_whole_snapshot(
         assert cursor.fetchone() == (4,)
 
 
-def test_changed_claim_preserves_uuid_and_audit_uses_current_claim(
+def test_changed_claim_preserves_uuid(
     database: Database,
 ) -> None:
     shared = " ".join(f"word{index}" for index in range(70))
@@ -346,14 +344,6 @@ def test_changed_claim_preserves_uuid_and_audit_uses_current_claim(
         )
     )
     assert {review.claim.text for review in projected} == {"Revised claim"}
-    audit = DuplicateAuditor(
-        database.pool,
-        similarity_threshold=0.9,
-        minimum_similarity_words=50,
-    ).run()
-    assert audit.groups == 1
-    assert audit.candidate_pairs == 1
-    assert audit.matches == 1
 
 
 def test_enrichment_outage_retry_and_success_reuse(database: Database) -> None:

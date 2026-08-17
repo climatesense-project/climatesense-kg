@@ -183,15 +183,3 @@ SELECT
     payload,
     updated_at
 FROM enrichment_results;
-
-CREATE TABLE duplicate_candidates (
-    left_review_id UUID NOT NULL REFERENCES claim_reviews(id) ON DELETE CASCADE,
-    right_review_id UUID NOT NULL REFERENCES claim_reviews(id) ON DELETE CASCADE,
-    similarity DOUBLE PRECISION NOT NULL CHECK (
-        similarity >= 0 AND similarity <= 1
-    ),
-    evidence JSONB NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (left_review_id, right_review_id),
-    CHECK (left_review_id < right_review_id)
-);

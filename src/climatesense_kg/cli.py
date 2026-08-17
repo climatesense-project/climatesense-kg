@@ -61,13 +61,6 @@ Examples:
         help="Confirm deletion of all persisted processing results",
     )
 
-    audit_parser = subparsers.add_parser(
-        "audit-duplicates",
-        help="Rebuild exact near-duplicate claim-review candidates",
-    )
-    audit_parser.add_argument(
-        "--config", "-c", type=str, required=True, help="Configuration file path"
-    )
     return parser
 
 
@@ -178,45 +171,6 @@ def run_flush_processing_results(args: argparse.Namespace) -> int:
     return 0
 
 
-def run_duplicate_audit(args: argparse.Namespace) -> int:
-    """Rebuild bounded exact near-duplicate candidate evidence."""
-
-    from dotenv import load_dotenv
-
-    from .config import load_config
-    from .database import Database
-    from .identity import DuplicateAuditor
-    from .utils.logging import setup_logging
-
-    try:
-        config = load_config(args.config)
-    except Exception as exc:
-        print(f"Failed to load configuration: {exc}", file=sys.stderr)
-        return 1
-
-    setup_logging(config.logging)
-    load_dotenv()
-    audit = config.duplicate_audit
-    try:
-        with Database.from_environment() as database:
-            report = DuplicateAuditor(
-                database.pool,
-                similarity_threshold=audit.similarity_threshold,
-                minimum_similarity_words=audit.minimum_similarity_words,
-                group_batch_size=audit.group_batch_size,
-            ).run()
-    except Exception as exc:
-        print(f"Duplicate audit failed: {exc}", file=sys.stderr)
-        return 1
-
-    print(
-        "Duplicate audit complete: "
-        f"groups={report.groups}, pairs={report.candidate_pairs}, "
-        f"eligible={report.eligible_pairs}, matches={report.matches}"
-    )
-    return 0
-
-
 def main() -> int:
     """Main CLI entry point."""
     parser = create_parser()
@@ -227,7 +181,6 @@ def main() -> int:
         return 1
 
     handlers = {
-        "audit-duplicates": run_duplicate_audit,
         "flush-processing-results": run_flush_processing_results,
         "run": run_pipeline,
     }

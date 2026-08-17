@@ -141,23 +141,6 @@ class DocumentExtractionConfig:
 
 
 @dataclass
-class DuplicateAuditConfig:
-    """Settings for the optional exact near-duplicate audit."""
-
-    similarity_threshold: float = 0.9
-    minimum_similarity_words: int = 50
-    group_batch_size: int = 100
-
-    def __post_init__(self) -> None:
-        if not 0 <= self.similarity_threshold <= 1:
-            raise ValueError("Duplicate audit threshold must be between zero and one")
-        if self.minimum_similarity_words <= 0:
-            raise ValueError("Duplicate audit minimum words must be positive")
-        if self.group_batch_size <= 0:
-            raise ValueError("Duplicate audit group_batch_size must be positive")
-
-
-@dataclass
 class DbpediaSpotlightConfig:
     """Configuration for DBpedia Spotlight entity extraction."""
 
@@ -283,7 +266,6 @@ class PipelineConfig:
     document_extraction: DocumentExtractionConfig = field(
         default_factory=DocumentExtractionConfig
     )
-    duplicate_audit: DuplicateAuditConfig = field(default_factory=DuplicateAuditConfig)
     enrichment: EnrichmentConfig = field(default_factory=EnrichmentConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)

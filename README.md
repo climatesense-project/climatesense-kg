@@ -153,11 +153,6 @@ document_extraction:
   content_retry_delay_hours: 720
   progress_interval_seconds: 10
 
-duplicate_audit:
-  similarity_threshold: 0.9
-  minimum_similarity_words: 50
-  group_batch_size: 100
-
 enrichment:
   progress_interval_seconds: 10
 
@@ -290,14 +285,13 @@ uv run climatesense-kg run --config config/daily.yaml --skip-download --force-re
 # Restore stored extractions without fetching fact-check documents
 uv run climatesense-kg run --config config/daily.yaml --skip-extraction
 
-# Redeploy existing RDF snapshots to the selected triplestore
-just virtuoso-deploy
-
-# Build and activate QLever from the latest complete RDF snapshot
-just qlever-deploy
+# Redeploy existing RDF snapshots
+# just virtuoso-deploy  # Virtuoso
+# just qlever-deploy    # QLever
 
 # Or select a snapshot explicitly
-just qlever-deploy data/rdf/2026-08-15_143734
+# just virtuoso-deploy data/rdf/2026-08-15_143734  # Virtuoso
+# just qlever-deploy data/rdf/2026-08-15_143734    # QLever
 
 # Delete recomputable extraction and enrichment results without deleting identities
 uv run climatesense-kg flush-processing-results --yes

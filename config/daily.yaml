@@ -69,11 +69,6 @@ document_extraction:
   content_retry_delay_hours: 720
   progress_interval_seconds: 10
 
-duplicate_audit:
-  similarity_threshold: 0.9
-  minimum_similarity_words: 50
-  group_batch_size: 100
-
 enrichment:
   progress_interval_seconds: 10
 
