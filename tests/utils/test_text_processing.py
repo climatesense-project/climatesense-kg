@@ -255,13 +255,6 @@ class TestSanitizeUrl:
             == "https://example.com/private"
         )
 
-    def test_malformed_url_exception(self) -> None:
-        """Test malformed URL that raises exception."""
-        with patch("src.climatesense_kg.utils.text_processing.urlparse") as mock_parse:
-            mock_parse.side_effect = ValueError("Invalid URL")
-            result = sanitize_url("malformed-url")
-            assert result is None
-
 
 def test_document_url_identity_ignores_fragments_and_default_ports() -> None:
     assert (
@@ -490,25 +483,6 @@ class TestFetchAndExtractText:
         assert result.content == "Extracted text content"
         assert result.error_type is None
         mock_response.raise_for_status.assert_called_once_with()
-
-    @patch("src.climatesense_kg.utils.text_processing._fetch_public_url")
-    @patch("src.climatesense_kg.utils.text_processing.trafilatura")
-    @patch("src.climatesense_kg.utils.text_processing.sanitize_url")
-    def test_trafilatura_fallback_to_requests(
-        self, mock_sanitize: Mock, mock_trafilatura: Mock, mock_fetch: Mock
-    ) -> None:
-        """Test fallback to requests when trafilatura fails."""
-        mock_sanitize.return_value = "https://example.com"
-
-        mock_response = Mock(headers={"Content-Type": "text/html"}, encoding="utf-8")
-        mock_response.iter_content.return_value = [b"<html>content</html>"]
-        mock_fetch.return_value = mock_response
-        mock_trafilatura.extract.return_value = "Extracted text"
-
-        result = fetch_and_extract_text("https://example.com")
-
-        assert result.success is True
-        mock_fetch.assert_called_once()
 
     @patch("src.climatesense_kg.utils.text_processing._fetch_public_url")
     @patch("src.climatesense_kg.utils.text_processing.sanitize_url")

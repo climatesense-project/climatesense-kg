@@ -25,7 +25,6 @@ def test_database_ports_are_loopback_only() -> None:
     assert services["virtuoso"]["ports"] == [
         "${VIRTUOSO_BIND_ADDRESS:-127.0.0.1}:${VIRTUOSO_PORT:-8890}:8890"
     ]
-    assert "ports" not in services["isql-service"]
 
 
 def test_database_passwords_have_no_defaults() -> None:

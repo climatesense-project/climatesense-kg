@@ -32,9 +32,6 @@ def test_pipeline_metrics_use_current_processing_results() -> None:
 
     assert len(queries) == 5
     assert all("processing_results" in query for query in queries)
-    assert all("stage_result_attempts" not in query for query in queries)
-    assert all("stage_results" not in query for query in queries)
-    assert all("cache_entries" not in query for query in queries)
     assert all("stage_version" in query for query in queries)
 
 

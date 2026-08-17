@@ -13,10 +13,6 @@ from dotenv import load_dotenv
 from .bootstrap import PipelineServices, build_services
 from .config import PipelineConfig
 from .database import PipelineRun
-from .deployment.artifacts import (
-    ArtifactDeploymentReport,
-    plan_artifact_deployment,
-)
 from .export import ExportSummary, retain_latest_snapshots
 from .identity import IdentitySummary
 from .ingestion import IngestionSummary
@@ -36,7 +32,6 @@ class PipelineSummary:
     identity: IdentitySummary | None = None
     enrichments: tuple[StageSummary, ...] = ()
     export: ExportSummary | None = None
-    deployment: ArtifactDeploymentReport | None = None
     error: str | None = None
 
     @property
@@ -64,7 +59,6 @@ class Pipeline:
         cached_sources_only: bool = False,
         offline_extraction: bool = False,
         offline_enrichment: bool = False,
-        skip_deployment: bool = False,
         force: bool = False,
     ) -> PipelineSummary:
         started = time.monotonic()
@@ -103,30 +97,21 @@ class Pipeline:
                 datetime.now(),
                 incomplete_stages_by_graph=incomplete,
             )
-            deployment = (
-                self._deployment_preview(exported)
-                if skip_deployment
-                else self.services.deployment.deploy(list(exported.artifacts))
-            )
-            if not deployment.success:
-                raise RuntimeError("One or more RDF graphs failed deployment")
-            if not skip_deployment:
-                keep_latest = self.config.output.retention.keep_latest
-                if keep_latest > 0:
-                    rdf_root = Path(self.config.output.output_path).parent.parent
-                    removed = retain_latest_snapshots(rdf_root, keep_latest)
-                    if removed:
-                        logger.info(
-                            "Retention removed %d old snapshot dir(s) from %s",
-                            len(removed),
-                            rdf_root,
-                        )
+            keep_latest = self.config.output.retention.keep_latest
+            if keep_latest > 0:
+                rdf_root = Path(self.config.output.output_path).parent.parent
+                removed = retain_latest_snapshots(rdf_root, keep_latest)
+                if removed:
+                    logger.info(
+                        "Retention removed %d old snapshot dir(s) from %s",
+                        len(removed),
+                        rdf_root,
+                    )
             degraded = bool(
                 ingestion.failed_sources
                 or (extraction and not extraction.complete)
                 or any(not stage.complete for stage in enrichments)
                 or exported.errors
-                or deployment.skipped_graphs
             )
             result = PipelineSummary(
                 success=True,
@@ -137,7 +122,6 @@ class Pipeline:
                 identity=identity,
                 enrichments=enrichments,
                 export=exported,
-                deployment=deployment,
             )
             return result
         except KeyboardInterrupt:
@@ -176,9 +160,6 @@ class Pipeline:
             "extraction": (result.extraction.to_dict() if result.extraction else None),
             "enrichments": [stage.to_dict() for stage in result.enrichments],
             "export_errors": result.export.errors if result.export else 0,
-            "deployment_skipped_graphs": (
-                list(result.deployment.skipped_graphs) if result.deployment else []
-            ),
         }
 
     def _incomplete_graph_stages(
@@ -192,16 +173,6 @@ class Pipeline:
         for graph, required in self.services.graph_enrichments.items():
             result[graph] = incomplete & required
         return result
-
-    @staticmethod
-    def _deployment_preview(exported: ExportSummary) -> ArtifactDeploymentReport:
-        plan = plan_artifact_deployment(list(exported.artifacts))
-        return ArtifactDeploymentReport(
-            success=True,
-            outcomes=[],
-            total_files=plan.total_files,
-            skipped_graphs=plan.skipped_graphs,
-        )
 
     def close(self) -> None:
         self.services.close()

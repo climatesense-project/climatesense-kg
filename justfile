@@ -69,31 +69,45 @@ run CONFIG *ARGS="":
     uv run climatesense-kg run --config {{CONFIG}} {{ARGS}}
 
 # ============================================================================
-# Docker Commands
+# Virtuoso Commands
 # ============================================================================
-
-# Build Docker images
-docker-build:
-    docker compose -f docker/docker-compose.yml build
 
 # Start the stack with Virtuoso as the triplestore
 virtuoso-up:
     COMPOSE_PROFILES=virtuoso docker compose -f docker/docker-compose.yml up -d
 
-# Build and activate a complete QLever index. Defaults to the latest RDF snapshot.
-qlever-deploy SNAPSHOT="":
-    ./docker/qlever/deploy-index.sh "{{SNAPSHOT}}"
+# Redeploy all Virtuoso graphs from the latest (or given) RDF snapshot
+virtuoso-deploy SNAPSHOT="":
+    ./docker/virtuoso/deploy.sh "{{SNAPSHOT}}"
 
-# Build the first QLever index
-qlever-init: qlever-deploy
+# Query the Virtuoso SPARQL endpoint
+virtuoso-sparql QUERY:
+    @curl -fsS -G \
+        --header "Accept: application/sparql-results+json" \
+        --data-urlencode "query={{QUERY}}" \
+        "http://localhost:${VIRTUOSO_PORT:-8890}/sparql"
+
+# Show Virtuoso named-graph statistics
+virtuoso-stats:
+    @just virtuoso-sparql "SELECT ?g (COUNT(?s) AS ?triples) WHERE { GRAPH ?g { ?s a [] } } GROUP BY ?g ORDER BY DESC(?triples)" | \
+    jq -r '.results.bindings[] | [.g.value, .triples.value] | @tsv' | \
+    awk 'BEGIN {printf "%-80s %10s\n", "Graph", "Triples"; printf "%-80s %10s\n", "-----", "-------"} {printf "%-80s %10s\n", $1, $2}'
+
+# Open an interactive Virtuoso ISQL shell
+virtuoso-isql:
+    cd docker && docker compose exec -T virtuoso isql localhost:1111 dba "$VIRTUOSO_PASSWORD"
+
+# ============================================================================
+# QLever Commands
+# ============================================================================
 
 # Start the stack with QLever as the triplestore
 qlever-up:
     COMPOSE_PROFILES=qlever docker compose -f docker/docker-compose.yml up -d
 
-# Create an administrator for the QLever UI
-qlever-ui-admin:
-    COMPOSE_PROFILES=qlever docker compose -f docker/docker-compose.yml exec qlever-ui-app python manage.py createsuperuser
+# Build and activate a complete QLever index. Defaults to the latest RDF snapshot.
+qlever-deploy SNAPSHOT="":
+    ./docker/qlever/deploy-index.sh "{{SNAPSHOT}}"
 
 # Query the QLever SPARQL endpoint
 qlever-sparql QUERY:
@@ -107,43 +121,6 @@ qlever-stats:
     @just qlever-sparql "SELECT ?g (COUNT(*) AS ?triples) WHERE { GRAPH ?g { ?s ?p ?o } } GROUP BY ?g ORDER BY DESC(?triples)" | \
     jq -r '.results.bindings[] | [.g.value, .triples.value] | @tsv' | \
     awk 'BEGIN {printf "%-80s %10s\n", "Graph", "Triples"; printf "%-80s %10s\n", "-----", "-------"} {printf "%-80s %10s\n", $1, $2}'
-
-# ============================================================================
-# Semantic Stage State Commands
-# ============================================================================
-
-# Flush semantic stage results without changing canonical identities
-stage-results-flush:
-    @echo "WARNING: This will delete ALL semantic stage results!"
-    @read -p "Are you sure? (y/N) " confirm; \
-    if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then \
-        docker compose -f docker/docker-compose.yml run --rm pipeline flush-stage-results --yes && \
-        echo "✅ Semantic stage results cleared successfully"; \
-    else \
-        echo "❌ Stage-result flush cancelled"; \
-    fi
-
-# Delete results for a specific semantic stage
-stage-results-delete STAGE:
-    @echo "Deleting PostgreSQL results for stage: {{STAGE}}"
-    @cd docker && COUNT=$(docker compose exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -t -c "SELECT COUNT(*) FROM stage_results WHERE stage_name = '\''{{STAGE}}'\'';"' | tr -d ' '); \
-    if [ "$COUNT" -eq 0 ]; then \
-        echo "No results found for stage {{STAGE}}"; \
-        exit 0; \
-    fi; \
-    echo "Found $COUNT results for stage {{STAGE}}"; \
-    read -p "Are you sure you want to delete them? (y/N) " confirm; \
-    if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then \
-        docker compose exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "DELETE FROM stage_results WHERE stage_name = '\''{{STAGE}}'\'';"' && \
-        echo "✅ PostgreSQL results deleted for {{STAGE}}"; \
-    else \
-        echo "❌ Stage-result deletion cancelled"; \
-    fi
-
-# List all semantic stages
-stage-results-list:
-    @echo "=== Semantic Stage Results ==="
-    @cd docker && docker compose exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT stage_name, stage_version, success, COUNT(*) AS count FROM stage_results GROUP BY stage_name, stage_version, success ORDER BY stage_name, stage_version, success;"' || true
 
 # ============================================================================
 # Database Commands
@@ -165,44 +142,3 @@ db-restore FILE:
     else \
         echo "❌ Database restore cancelled"; \
     fi
-
-# ============================================================================
-# Virtuoso Commands
-# ============================================================================
-
-# Connect to Virtuoso SQL interface
-isql:
-    cd docker && docker compose exec virtuoso isql localhost:1111 dba
-
-# Run SPARQL query against Virtuoso
-sparql QUERY:
-    @cd docker && \
-    docker compose exec -T virtuoso sh -c '\
-        tmp=$(mktemp) || exit 1; \
-        printf "%s" "$1" > "$tmp" && \
-        wget -q -O - \
-            --header="Content-Type: application/sparql-query" \
-            --header="Accept: application/json" \
-            --post-file="$tmp" \
-            "http://localhost:8890/sparql"; \
-        rc=$?; \
-        rm -f "$tmp"; \
-        exit $rc' -- "{{QUERY}}"
-
-# Show Virtuoso graph statistics
-virtuoso-stats:
-    @cd docker && \
-    docker compose exec -T virtuoso sh -c '\
-        tmp=$(mktemp) || exit 1; \
-        printf "%s" "$1" > "$tmp" && \
-        wget -q -O - \
-            --header="Content-Type: application/sparql-query" \
-            --header="Accept: application/json" \
-            --post-file="$tmp" \
-            "http://localhost:8890/sparql"; \
-        rc=$?; \
-        rm -f "$tmp"; \
-        exit $rc' -- "SELECT ?g (COUNT(?s) AS ?triples) WHERE { GRAPH ?g { ?s a [] } } GROUP BY ?g ORDER BY DESC(?triples)" | \
-    jq -r '.results.bindings[] | [.g.value, .triples.value] | @tsv' | \
-    awk 'BEGIN {printf "%-80s %10s\n", "Graph", "Triples"; printf "%-80s %10s\n", "-----", "-------"} {printf "%-80s %10s\n", $1, $2}' \
-    || echo "No data found or Virtuoso not running."

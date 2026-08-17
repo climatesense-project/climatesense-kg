@@ -1,8 +1,6 @@
 """Command-line interface."""
 
 import argparse
-import logging
-from pathlib import Path
 import sys
 
 from . import __version__
@@ -48,33 +46,9 @@ Examples:
         help=("Skip external enrichment calls; apply stored successful results"),
     )
     run_parser.add_argument(
-        "--skip-deployment",
-        action="store_true",
-        help="Skip deployment step (e.g., Virtuoso upload)",
-    )
-    run_parser.add_argument(
         "--force-regenerate",
         action="store_true",
         help="Recompute stage results instead of restoring stored successes",
-    )
-
-    redeploy_parser = subparsers.add_parser(
-        "redeploy",
-        help="Redeploy existing RDF files without re-running the pipeline",
-    )
-    redeploy_parser.add_argument(
-        "--config", "-c", type=str, required=True, help="Configuration file path"
-    )
-    redeploy_parser.add_argument(
-        "--rdf-dir",
-        type=str,
-        default="data/rdf",
-        help="Directory to scan for RDF files (default: data/rdf)",
-    )
-    redeploy_parser.add_argument(
-        "--debug",
-        action="store_true",
-        help="Enable DEBUG level logging",
     )
 
     flush_parser = subparsers.add_parser(
@@ -132,148 +106,6 @@ def _print_pipeline_summary(summary: object) -> None:
                 f"  - {artifact.graph_name}: {artifact.path} "
                 f"({artifact.items} reviews, {artifact.failed_items} failed)"
             )
-    if summary.deployment:
-        print(
-            f"Deployment: {summary.deployment.files_deployed}/"
-            f"{summary.deployment.total_files} files"
-        )
-        if summary.deployment.skipped_graphs:
-            print(
-                "Preserved incomplete graphs: "
-                + ", ".join(summary.deployment.skipped_graphs)
-            )
-
-
-def _graph_name_for_rdf_file(
-    rdf_file: Path, managed_graph_names: set[str]
-) -> str | None:
-    """Match an RDF artifact to a managed graph without splitting its name."""
-    matching_graphs = [
-        graph_name
-        for graph_name in managed_graph_names
-        if rdf_file.stem == graph_name or rdf_file.stem.startswith(f"{graph_name}_")
-    ]
-    if matching_graphs:
-        return max(matching_graphs, key=len)
-    return None
-
-
-def run_redeploy(args: argparse.Namespace) -> int:
-    """Redeploy existing RDF files to the configured backend."""
-    from .config import load_config
-    from .config.graphs import (
-        ENRICHMENT_GRAPH_SOURCE_NAMES,
-        GRAPH_CATALOG_PATH,
-    )
-    from .config.organizations import ORGANIZATION_CATALOG_PATH
-    from .deployment import ArtifactDeployer
-    from .deployment.factory import create_deployment_handler
-    from .utils.logging import setup_logging
-
-    try:
-        config = load_config(args.config)
-    except Exception as e:
-        print(f"Failed to load configuration: {e}", file=sys.stderr)
-        return 1
-
-    if getattr(args, "debug", False):
-        config.logging.level = "DEBUG"
-
-    setup_logging(config.logging)
-    logger = logging.getLogger(__name__)
-
-    try:
-        handler = create_deployment_handler(config.deployment)
-    except Exception as e:
-        print(f"Failed to initialize deployment handler: {e}", file=sys.stderr)
-        return 1
-
-    if handler is None:
-        print("No deployment backend is configured.", file=sys.stderr)
-        return 1
-
-    rdf_dir = Path(args.rdf_dir)
-    if not rdf_dir.exists():
-        print(f"RDF directory not found: {rdf_dir}", file=sys.stderr)
-        return 1
-
-    curated_paths = {
-        GRAPH_CATALOG_PATH.resolve(),
-        ORGANIZATION_CATALOG_PATH.resolve(),
-    }
-    rdf_files = sorted(
-        path
-        for pattern in ("*.nt.gz", "*.ttl")
-        for path in rdf_dir.rglob(pattern)
-        if path.resolve() not in curated_paths
-    )
-    if not rdf_files:
-        print(f"No supported RDF files found in {rdf_dir}", file=sys.stderr)
-        return 1
-
-    managed_graph_names = {
-        *(source.name for source in config.data_sources),
-        *ENRICHMENT_GRAPH_SOURCE_NAMES,
-    }
-
-    # Group files by their longest matching managed graph name.
-    files_by_graph: dict[str, list[Path]] = {}
-    for f in rdf_files:
-        graph_name = _graph_name_for_rdf_file(f, managed_graph_names)
-        if graph_name is None:
-            print(
-                f"Could not determine a managed graph for RDF file: {f}",
-                file=sys.stderr,
-            )
-            return 1
-        files_by_graph.setdefault(graph_name, []).append(f)
-
-    multi_file_graphs = {
-        graph_name: files
-        for graph_name, files in files_by_graph.items()
-        if len(files) != 1
-    }
-    if multi_file_graphs:
-        graph_names = ", ".join(sorted(multi_file_graphs))
-        print(
-            "Redeployment requires exactly one full-snapshot RDF file per graph; "
-            f"found multiple files for: {graph_names}",
-            file=sys.stderr,
-        )
-        return 1
-
-    # Build the list of files to deploy
-    files_to_deploy = sorted(
-        ((graph, f) for graph, files in files_by_graph.items() for f in files),
-        key=lambda item: (
-            item[0] not in ENRICHMENT_GRAPH_SOURCE_NAMES,
-            item[0],
-            item[1],
-        ),
-    )
-
-    print(
-        f"Found {len(files_to_deploy)} generated file(s) to deploy "
-        f"across {len(files_by_graph)} graph(s), plus the graph and organization catalogs"
-    )
-
-    report = ArtifactDeployer(handler).deploy_files(
-        [(rdf_file, graph_name) for graph_name, rdf_file in files_to_deploy]
-    )
-    for outcome in report.outcomes:
-        target = outcome.target
-        logger.info("Deployed %s (graph: %s)", target.path, target.graph_name)
-        graph_uri = config.deployment.graph_template.replace(
-            "{SOURCE}", target.graph_name
-        )
-        status = "OK" if outcome.success else "FAILED"
-        print(f"  Replacing {target.path} -> {graph_uri} ... {status}")
-
-    print(
-        f"\nRedeployment complete: {report.files_deployed} succeeded, "
-        f"{report.total_files - report.files_deployed} failed."
-    )
-    return 0 if report.success else 1
 
 
 def run_pipeline(args: argparse.Namespace) -> int:
@@ -296,7 +128,6 @@ def run_pipeline(args: argparse.Namespace) -> int:
                 cached_sources_only=getattr(args, "skip_download", False),
                 offline_extraction=getattr(args, "skip_extraction", False),
                 offline_enrichment=getattr(args, "skip_enrichment", False),
-                skip_deployment=getattr(args, "skip_deployment", False),
                 force=getattr(args, "force_regenerate", False),
             )
     except KeyboardInterrupt:
@@ -399,7 +230,6 @@ def main() -> int:
         "audit-duplicates": run_duplicate_audit,
         "flush-processing-results": run_flush_processing_results,
         "run": run_pipeline,
-        "redeploy": run_redeploy,
     }
 
     handler = handlers.get(args.command)

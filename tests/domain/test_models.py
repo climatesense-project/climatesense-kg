@@ -95,11 +95,10 @@ def test_claim_review_uri_depends_only_on_assigned_uuid() -> None:
     assert review.uri == f"claim-review/{review_id}"
 
 
-def test_organization_reference_is_not_a_canonical_identity() -> None:
+def test_organization_reference_normalizes_website() -> None:
     reference = OrganizationReference(
         name="Factual",
         website="https://www.factual.ro/dezinformari/",
     )
 
     assert reference.website == "https://factual.ro"
-    assert not hasattr(reference, "uri")

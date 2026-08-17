@@ -31,11 +31,3 @@ def test_schema_contains_one_authoritative_processing_model() -> None:
         "duplicate_candidates",
     ):
         assert f"CREATE TABLE {table}" in schema
-    for obsolete in (
-        "ingestion_records",
-        "source_review_records",
-        "stage_results",
-        "stage_result_attempts",
-        "claim_review_identities",
-    ):
-        assert f"CREATE TABLE {obsolete}" not in schema

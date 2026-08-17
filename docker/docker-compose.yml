@@ -52,31 +52,6 @@ services:
     profiles:
       - virtuoso
 
-  isql-service:
-    build:
-      context: ./isql-service
-      dockerfile: Dockerfile
-    container_name: climatesense-isql
-    environment:
-      VIRTUOSO_HOST: virtuoso
-      VIRTUOSO_ISQL_PORT: 1111
-      VIRTUOSO_USER: dba
-      VIRTUOSO_PASSWORD: ${VIRTUOSO_PASSWORD}
-      ISQL_SERVICE_TOKEN: ${ISQL_SERVICE_TOKEN:-}
-      HOST: 0.0.0.0
-      PORT: 8080
-    depends_on:
-      - virtuoso
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-    profiles:
-      - virtuoso
-
   qlever-volume-admin:
     image: alpine:3.22
     command: ["true"]
@@ -245,12 +220,6 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-climatesense}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      VIRTUOSO_HOST: ${VIRTUOSO_HOST:-virtuoso}
-      VIRTUOSO_PORT: ${VIRTUOSO_PORT:-8890}
-      VIRTUOSO_USER: ${VIRTUOSO_USER:-dba}
-      VIRTUOSO_PASSWORD: ${VIRTUOSO_PASSWORD}
-      VIRTUOSO_ISQL_SERVICE_URL: http://isql-service:8080
-      ISQL_SERVICE_TOKEN: ${ISQL_SERVICE_TOKEN:-}
       CIMPLE_FACTORS_API_URL: ${CIMPLE_FACTORS_API_URL:?CIMPLE_FACTORS_API_URL must point to a Factors API reachable from the pipeline container}
     volumes:
       - ../data:/app/data

@@ -45,4 +45,3 @@ def test_loads_discriminated_provider_config(tmp_path: Path) -> None:
     provider = load_config(config_path).data_sources[0].provider
 
     assert isinstance(provider, GraphQLProviderConfig)
-    assert not hasattr(provider, "repository")

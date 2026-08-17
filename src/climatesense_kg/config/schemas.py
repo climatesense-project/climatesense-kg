@@ -266,14 +266,6 @@ class LoggingConfig:
 
 
 @dataclass
-class DeploymentConfig:
-    """Configuration for deployment settings."""
-
-    backend: Literal["none", "virtuoso"] = "none"
-    graph_template: str = "http://data.climatesense-project.eu/graph/{SOURCE}"
-
-
-@dataclass
 class CacheConfig:
     """Configuration for data cache."""
 
@@ -295,7 +287,6 @@ class PipelineConfig:
     enrichment: EnrichmentConfig = field(default_factory=EnrichmentConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
-    deployment: DeploymentConfig = field(default_factory=DeploymentConfig)
     cache: CacheConfig = field(default_factory=CacheConfig)
 
     def __post_init__(self) -> None:

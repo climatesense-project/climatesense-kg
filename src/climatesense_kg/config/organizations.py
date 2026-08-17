@@ -19,7 +19,6 @@ SCHEMA_URL = URIRef("http://schema.org/url")
 
 ORGANIZATION_URI_PREFIX = "http://data.climatesense-project.eu/organization/"
 ORGANIZATION_CATALOG_PATH = Path("data/organizations.ttl")
-ORGANIZATION_SOURCE_NAME = "organizations"
 
 
 class OrganizationCatalog:

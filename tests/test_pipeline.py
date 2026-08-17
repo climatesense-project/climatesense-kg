@@ -11,7 +11,6 @@ from climatesense_kg.config.schemas import (
     SnapshotRetentionConfig,
 )
 from climatesense_kg.database import PipelineRun
-from climatesense_kg.deployment.artifacts import ArtifactDeploymentReport
 from climatesense_kg.export import ExportSummary, RdfArtifact
 from climatesense_kg.identity import IdentitySummary
 from climatesense_kg.ingestion import IngestionSummary
@@ -33,8 +32,6 @@ def _services(tmp_path: Path) -> tuple[PipelineServices, dict[str, Mock]]:
     exporter = Mock()
     artifact = RdfArtifact("source", "source", tmp_path / "source.nt.gz", 2, 0, 10)
     exporter.run.return_value = ExportSummary((artifact,), 2, 2, 0, 10, ())
-    deployment = Mock()
-    deployment.deploy.return_value = ArtifactDeploymentReport(True, [], 1)
     services = PipelineServices(
         database=database,
         ingestion=ingestion,
@@ -42,7 +39,6 @@ def _services(tmp_path: Path) -> tuple[PipelineServices, dict[str, Mock]]:
         identity=identity,
         enrichment=enrichment,
         exporter=exporter,
-        deployment=deployment,
         source_enrichments=frozenset({"cimple.emotion"}),
         graph_enrichments={},
     )
@@ -53,7 +49,6 @@ def _services(tmp_path: Path) -> tuple[PipelineServices, dict[str, Mock]]:
         "identity": identity,
         "enrichment": enrichment,
         "exporter": exporter,
-        "deployment": deployment,
     }
 
 
@@ -61,7 +56,7 @@ def test_pipeline_runs_single_ordered_service_path(tmp_path: Path) -> None:
     services, mocks = _services(tmp_path)
     pipeline = Pipeline(PipelineConfig(), services)
 
-    result = pipeline.run(skip_deployment=False)
+    result = pipeline.run()
 
     assert result.success
     assert result.reviews == 2
@@ -70,7 +65,6 @@ def test_pipeline_runs_single_ordered_service_path(tmp_path: Path) -> None:
     mocks["identity"].run.assert_called_once_with()
     mocks["enrichment"].run.assert_called_once()
     mocks["exporter"].run.assert_called_once()
-    mocks["deployment"].deploy.assert_called_once()
     mocks["database"].finish_run.assert_called_once()
     assert mocks["database"].finish_run.call_args.kwargs["status"] == "complete"
     summary = mocks["database"].finish_run.call_args.kwargs["summary"]
@@ -83,7 +77,7 @@ def test_failed_ingestion_stops_before_processing(tmp_path: Path) -> None:
     services, mocks = _services(tmp_path)
     mocks["ingestion"].run.return_value = IngestionSummary(0, (), ("source",))
 
-    result = Pipeline(PipelineConfig(), services).run(skip_deployment=True)
+    result = Pipeline(PipelineConfig(), services).run()
 
     assert not result.success
     assert result.error == "Every enabled source failed ingestion"
@@ -100,7 +94,7 @@ def test_incomplete_source_enrichment_prevents_graph_deployment(
         StageSummary("cimple.emotion", eligible=2, cached=1, missing=1)
     ]
 
-    result = Pipeline(PipelineConfig(), services).run(skip_deployment=True)
+    result = Pipeline(PipelineConfig(), services).run()
 
     assert result.success
     assert result.degraded
@@ -127,41 +121,22 @@ def _seed_snapshot_dirs(tmp_path: Path) -> list[Path]:
     return dirs
 
 
-def test_pipeline_prunes_old_snapshots_after_successful_deployment(
-    tmp_path: Path,
-) -> None:
+def test_pipeline_prunes_old_snapshots_after_export(tmp_path: Path) -> None:
     services, _mocks = _services(tmp_path)
     dirs = _seed_snapshot_dirs(tmp_path)
 
-    result = Pipeline(_retention_config(tmp_path, keep_latest=1), services).run(
-        skip_deployment=False
-    )
+    result = Pipeline(_retention_config(tmp_path, keep_latest=1), services).run()
 
     assert result.success
     assert not dirs[0].exists()
     assert dirs[1].is_dir()
 
 
-def test_pipeline_does_not_prune_on_deployment_failure(tmp_path: Path) -> None:
-    services, mocks = _services(tmp_path)
-    mocks["deployment"].deploy.return_value = ArtifactDeploymentReport(False, [], 1)
-    dirs = _seed_snapshot_dirs(tmp_path)
-
-    result = Pipeline(_retention_config(tmp_path, keep_latest=1), services).run(
-        skip_deployment=False
-    )
-
-    assert not result.success
-    assert all(path.is_dir() for path in dirs)
-
-
-def test_pipeline_does_not_prune_when_skipping_deployment(tmp_path: Path) -> None:
+def test_pipeline_keeps_snapshots_when_retention_disabled(tmp_path: Path) -> None:
     services, _mocks = _services(tmp_path)
     dirs = _seed_snapshot_dirs(tmp_path)
 
-    result = Pipeline(_retention_config(tmp_path, keep_latest=1), services).run(
-        skip_deployment=True
-    )
+    result = Pipeline(_retention_config(tmp_path, keep_latest=0), services).run()
 
     assert result.success
     assert all(path.is_dir() for path in dirs)

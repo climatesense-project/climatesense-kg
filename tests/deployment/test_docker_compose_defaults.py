@@ -6,7 +6,6 @@ from typing import Any
 import yaml
 
 _COMPOSE_PATH = Path(__file__).parents[2] / "docker" / "docker-compose.yml"
-_DAILY_CONFIG_PATH = Path(__file__).parents[2] / "config" / "daily.yaml"
 
 
 def _compose_services() -> dict[str, dict[str, Any]]:
@@ -20,17 +19,6 @@ def test_pipeline_requires_reachable_factors_api_url() -> None:
     assert pipeline_environment["CIMPLE_FACTORS_API_URL"] == (
         "${CIMPLE_FACTORS_API_URL:?CIMPLE_FACTORS_API_URL must point to a Factors API "
         "reachable from the pipeline container}"
-    )
-
-
-def test_qlever_index_deployment_is_separate_from_pipeline() -> None:
-    services = _compose_services()
-    daily_config = yaml.safe_load(_DAILY_CONFIG_PATH.read_text())
-
-    assert daily_config["deployment"]["backend"] == "none"
-    assert "QLEVER_ENDPOINT" not in services["pipeline"]["environment"]
-    assert services["analytics-api"]["environment"]["ANALYTICS_SPARQL_ENDPOINT"] == (
-        "${ANALYTICS_SPARQL_ENDPOINT:-${QLEVER_ENDPOINT:-http://qlever:7019}}"
     )
 
 

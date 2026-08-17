@@ -111,8 +111,6 @@ just run config/minimal.yaml
    - `VIRTUOSO_PORT`: Virtuoso HTTP/SPARQL port (default `8890`)
    - `VIRTUOSO_USER`: Virtuoso database user (default `dba`)
    - `VIRTUOSO_PASSWORD`: Virtuoso database password (required; no default)
-   - `VIRTUOSO_ISQL_SERVICE_URL`: Virtuoso ISQL HTTP endpoint (default `http://isql-service:8080`)
-   - `ISQL_SERVICE_TOKEN`: Required bearer token shared by the pipeline and the internal ISQL helper
    - `QLEVER_ENDPOINT`: Internal QLever SPARQL endpoint used by analytics (default `http://qlever:7019`)
    - `QLEVER_PORT`: Published QLever port (default `7019`)
    - `QLEVER_ACCESS_TOKEN`: Token for QLever administrative operations
@@ -142,7 +140,7 @@ just run config/minimal.yaml
    - `ANALYTICS_API_PORT`: Published port for the analytics API container (default `8000`)
    - `ANALYTICS_UI_PORT`: Published port for the analytics UI container (default `3000`)
 
-3. Start the required services. Virtuoso can receive RDF directly from the pipeline:
+3. Start the required services:
 
    - **Option 1. Virtuoso**
 
@@ -152,20 +150,27 @@ just run config/minimal.yaml
      just virtuoso-up
      ```
 
-   QLever is started after the complete RDF snapshot has been generated in step 4.
+     Virtuoso only reads RDF files under `/database/data` when `DirsAllowed` in the
+     generated `virtuoso.ini` includes it (set via `VIRT_PARAMETERS_DIRSALLOWED` in
+     `.env`). This is applied when the `virtuoso_data` volume is first created. For a
+     volume created before this setting existed, add `/database/data` to the
+     `DirsAllowed` line in the container's `/database/virtuoso.ini` and restart
+     `climatesense-virtuoso`.
+
+   - **Option 2. QLever** — start it after the snapshot exists (see step 4).
 
 4. Run the pipeline with minimal configuration to verify the setup:
 
    ```bash
    docker compose -f docker/docker-compose.yml run --rm pipeline \
-     run --config config/minimal.yaml --skip-deployment
+     run --config config/minimal.yaml
    ```
 
-   A complete daily snapshot can then be indexed and served by QLever:
+   A complete daily snapshot can then be deployed to the selected triplestore:
 
    ```bash
-   just qlever-deploy
-   just qlever-up
+   just virtuoso-deploy              # Virtuoso
+   just qlever-deploy && just qlever-up   # QLever
    ```
 
 ## Configuration
@@ -240,14 +245,10 @@ output:
 cache:
   cache_dir: "cache"
   default_ttl_hours: 24.0
-
-deployment:
-  backend: "none" # none or virtuoso
-  graph_template: "http://data.climatesense-project.eu/graph/{SOURCE}"
 ```
 
-QLever consumes completed RDF snapshots through `just qlever-deploy`; it is not an
-HTTP deployment backend of the pipeline.
+Deployment is not part of the pipeline: complete RDF snapshots are pushed to the
+selected triplestore with `just virtuoso-deploy` or `just qlever-deploy`.
 
 `data/organizations.ttl` is the fixed, manually maintained source of truth for fact-checker identity and metadata. Each entry has an explicit stable ClimateSense IRI, one curated name, one or more website URLs, country-level location, and memberships or parent relationships where applicable. Every processor must provide an organization website, and extracted organizations resolve exclusively by normalized URL.
 
@@ -432,8 +433,8 @@ uv run climatesense-kg run --config config/daily.yaml --skip-download --force-re
 # Restore stored extractions without fetching fact-check documents
 uv run climatesense-kg run --config config/daily.yaml --skip-extraction
 
-# Replace the organization catalog and redeploy existing RDF to Virtuoso
-uv run climatesense-kg redeploy --config config/daily.yaml --rdf-dir data/rdf
+# Redeploy existing RDF snapshots to the selected triplestore
+just virtuoso-deploy
 
 # Build and activate QLever from the latest complete RDF snapshot
 just qlever-deploy

@@ -13,8 +13,6 @@ from .config.graphs import (
 from .config.organizations import ORGANIZATION_CATALOG_PATH, OrganizationCatalog
 from .data_manager import DataManager
 from .database import Database
-from .deployment import ArtifactDeployer
-from .deployment.factory import create_deployment_handler
 from .enrichers import (
     CimpleModelEnricher,
     DBpediaPropertyEnricher,
@@ -38,7 +36,6 @@ class PipelineServices:
     identity: IdentityService
     enrichment: EnrichmentService
     exporter: RdfExporter
-    deployment: ArtifactDeployer
     source_enrichments: frozenset[str]
     graph_enrichments: dict[str, frozenset[str]]
 
@@ -92,7 +89,6 @@ def build_services(config: PipelineConfig) -> PipelineServices:
             batch_size=config.batch_size,
             progress_interval_seconds=config.progress_interval_seconds,
         ),
-        deployment=ArtifactDeployer(create_deployment_handler(config.deployment)),
         source_enrichments=frozenset(
             enricher.name
             for enricher in enrichers
