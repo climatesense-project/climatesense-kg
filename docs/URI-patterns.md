@@ -1,37 +1,29 @@
 # URI Design Patterns
 
-This document describes the URI design patterns used in the ClimateSense Knowledge
-Graph pipeline. Claim reviews receive persistent identifiers, immutable value
-resources use deterministic hashes, and curated resources use explicitly assigned
-identifiers.
+The ClimateSense Knowledge Graph pipeline uses three identifier strategies. Claim reviews receive persistent identifiers, claims, people, and source ratings use deterministic hashes, and organizations and normalized ratings use explicitly assigned identifiers.
 
 ## Base URI Configuration
 
-The base URI is configurable via the `output.base_uri` setting in YAML configuration
-files:
+The base URI is configurable through the `output.base_uri` setting in YAML configuration files:
 
 ```yaml
 output:
   base_uri: "http://data.climatesense-project.eu"
 ```
 
-Relative URIs are resolved against this base URI. Curated organizations and DBpedia
-entities supply absolute URIs, which the RDF generator uses directly.
+Relative URIs are resolved against this base URI. Curated organizations and DBpedia entities supply absolute URIs, which the RDF generator uses directly.
 
 ## URI Generation Strategy
 
-The pipeline uses three identifier strategies:
-
-1. Claim reviews receive random UUIDs that are assigned once and persisted in
-   PostgreSQL.
-2. Claims, people, and source ratings receive deterministic SHA-256 hashes derived
-   from their immutable identifying values.
+1. Claim reviews receive random UUIDs that are assigned once and persisted in a PostgreSQL database.
+2. Claims, people, and source ratings receive deterministic SHA-256 hashes derived from their immutable identifying values.
 3. Organizations and normalized ratings use curated, human-readable identifiers.
 
-Hash inputs are encoded as compact JSON arrays containing a namespace followed by the
-identifying values. The UTF-8 JSON representation is hashed with SHA-256 and rendered
-as a lowercase hexadecimal string. Namespacing and structured encoding prevent
-collisions caused by ambiguous string concatenation.
+Claim reviews don't use deterministic hashing because a review's identity cannot be derived from its content. Two reviews can quote the same claim text, and a review's text, rating, or URLs can change when a document is re-extracted or corrected. A content hash would rename the review every time that happened and would merge reviews that only share the same wording. The review is instead a stable node that gathers every observation of one claim made by one organization on one document.
+
+The identity service assigns the UUIDs. It resolves the document first, from URL aliases and the normalized text hash, and gives it a UUID. Each review is keyed by its document and claim pair. The service checks whether a review already exists for that pair; if not, it generates a fresh UUID and inserts the row. Every observation of that document and claim is linked to the review, and on later runs the observations already carry the review ID, so the same UUID is reused without recomputing it from content.
+
+Hash inputs are encoded as compact JSON arrays with a namespace followed by the identifying values. The UTF-8 JSON representation is hashed with SHA-256 and rendered as a lowercase hexadecimal string. Namespacing and structured encoding prevent collisions caused by ambiguous string concatenation.
 
 ## Entity URI Patterns
 
@@ -39,19 +31,9 @@ collisions caused by ambiguous string concatenation.
 
 **Pattern**: `{base_uri}/claim-review/{uuid}`
 
-**Assignment**: Identity resolution assigns and persists one UUID for each canonical
-claim review.
+**Assignment**: Identity resolution assigns and persists one UUID for each canonical claim review.
 
-**Example**:
-`http://data.climatesense-project.eu/claim-review/550e8400-e29b-41d4-a716-446655440000`
-
-The persisted UUID is the complete identifier component. Claim text, rating,
-publication date, and document content are RDF attributes. The review's known URLs
-are emitted as `schema:url` aliases on the same resource.
-
-Claim-review UUIDs are not recomputed from review content. A PostgreSQL backup and
-restore therefore preserves the same identifiers across deployments; initializing a
-fresh database creates an independent set of claim-review identifiers.
+**Example**: `http://data.climatesense-project.eu/claim-review/550e8400-e29b-41d4-a716-446655440000`
 
 ### Claims
 
@@ -61,62 +43,35 @@ fresh database creates an independent set of claim-review identifiers.
 
 **Example**: `http://data.climatesense-project.eu/claim/f1e2d3c4b5a6...`
 
-Claim text is canonicalized before hashing by decoding HTML entities and normalizing
-whitespace while preserving URLs and other identity-bearing content. Empty,
-URL-only, and otherwise non-meaningful claims are rejected.
+Claim text is canonicalized before hashing by decoding HTML entities and normalizing whitespace while preserving URLs and other identity-bearing content. Empty, URL-only, and otherwise non-meaningful claims are rejected.
 
 ### Organizations
 
 **Pattern**: `{base_uri}/organization/{human-readable_slug}`
 
-**Example**:
-`http://data.climatesense-project.eu/organization/les-surligneurs`
+**Example**: `http://data.climatesense-project.eu/organization/les-surligneurs`
 
-[`data/organizations.ttl`](../data/organizations.ttl) assigns stable, human-readable
-organization IRIs. Every processor provides an organization website, and runtime
-resolution maps its normalized URL to one catalog entry. A missing mapping is a
-configuration error that requires a catalog entry or URL correction.
-
-The catalog is the sole source of organization metadata. Claim-review source graphs
-link to organization IRIs with `schema:author`; names, websites, country-level
-locations, network memberships, and parent relationships live in
-`{base_uri}/graph/organizations`.
+[`data/organizations.ttl`](../data/organizations.ttl) assigns stable, human-readable organization IRIs. Every processor provides an organization website, and runtime resolution maps its normalized URL to one catalog entry. If an organization is missing from the catalog, the pipeline fails with an error.
 
 ### People
 
 **Pattern**: `{base_uri}/person/{sha256_hash}`
 
-**Hash input**: `["person", name, website_or_empty_string]`
+**Hash input**: `["person", name, website]`
 
 **Example**: `http://data.climatesense-project.eu/person/a1b2c3d4e5f6...`
-
-Name and website form the person's hash input. Role and external source URI are
-descriptive metadata.
 
 ### Source Ratings
 
 **Pattern**: `{base_uri}/rating/{sha256_hash}`
 
-Source-rating identity is scoped to the organization that defined the scale. The
-outer hash input is:
+**Hash input**: `["source-rating", organization_uri, rating_fingerprint]`
 
-```text
-["organization-rating", organization_uri, rating_fingerprint]
-```
+The `rating_fingerprint` is itself a SHA-256 hash of: `["rating", label, original_label, rating_value, best_rating, worst_rating]`
 
-The `rating_fingerprint` is itself a SHA-256 hash of:
-
-```text
-["rating", label, original_label, rating_value, best_rating, worst_rating]
-```
-
-Missing values are represented by empty strings. These six values determine the
-fingerprint; the explanation is descriptive metadata.
+Missing values are represented by empty strings.
 
 **Example**: `http://data.climatesense-project.eu/rating/3c2b1a9f8e7d...`
-
-Scoping prevents identical labels from different fact-checking organizations from
-being treated as the same source-scale concept.
 
 ### Normalized Ratings
 
@@ -124,14 +79,11 @@ being treated as the same source-scale concept.
 
 **Example**: `http://data.climatesense-project.eu/rating/not_credible`
 
-Normalized ratings are curated global concepts. A claim review links to its source
-rating with `schema:reviewRating` and, when normalization is available, to the global
-concept with `cimple:normalizedReviewRating`.
+Normalized ratings are curated global concepts. A claim review links to its source rating with `schema:reviewRating` and, when normalization is available, to the global concept with `cimple:normalizedReviewRating`.
 
 ## Enrichment URI Patterns
 
-The RDF generator creates model-owned classification URIs using the following
-patterns:
+For all model-owned classifications, the value is trimmed, lowercased, has spaces replaced with underscores, and is percent-encoded as one URI path segment.
 
 ### Emotions
 
@@ -167,12 +119,7 @@ patterns:
 
 **Pattern**: `{base_uri}/persuasion-technique/{value}`
 
-**Example**:
-`http://data.climatesense-project.eu/persuasion-technique/appeal_to_authority`
-
-For all model-owned classifications, the value is trimmed, lowercased, has spaces
-replaced with underscores, and is percent-encoded as one URI path segment. DBpedia
-entities and properties retain their external absolute IRIs.
+**Example**: `http://data.climatesense-project.eu/persuasion-technique/appeal_to_authority`
 
 ## RDF Namespace Declarations
 
@@ -199,29 +146,11 @@ For triple-store deployment, graph URIs follow a template pattern:
 
 **Example**: `http://data.climatesense-project.eu/graph/euroclimatecheck`
 
-The `{SOURCE}` placeholder represents a managed logical graph name. Source graphs use
-the configured data-source name, while provider-owned entity linking uses a stable
-enrichment graph name:
+The `{SOURCE}` placeholder represents a managed logical graph name. Source graphs use the configured data-source name, while provider-owned entity linking uses a stable enrichment graph name:
 
-- `{base_uri}/graph/dbpedia-enricher` contains DBpedia Spotlight `schema:mentions`
-  assertions and DBpedia entity properties.
+- `{base_uri}/graph/dbpedia-enricher` contains DBpedia Spotlight `schema:mentions` assertions and DBpedia entity properties.
 - Source graphs contain the claims and reviews referenced by those assertions.
 - The DBpedia enrichment graph owns all DBpedia entity-linking triples.
-- `{base_uri}/graph/organizations` and `{base_uri}/graph/vocabularies` contain curated
-  repository data.
+- `{base_uri}/graph/organizations` and `{base_uri}/graph/vocabularies` contain curated repository data.
 
-Each published graph IRI is described in the curated
-[`data/graphs.ttl`](../data/graphs.ttl) catalog.
-
-## Implementation Details
-
-Deterministic URI generation is implemented in the canonical
-[`domain models`](../src/climatesense_kg/domain/models.py). Claim-review UUIDs are
-assigned and persisted by the
-[`identity service`](../src/climatesense_kg/identity/service.py). Organization
-resolution is implemented by the
-[`organization catalog`](../src/climatesense_kg/config/organizations.py).
-
-The [`RDFGenerator`](../src/climatesense_kg/rdf_generation/generator.py) resolves
-relative URIs against the configured base URI and manages namespace bindings and RDF
-serialization.
+Each published graph IRI is described in the curated [`data/graphs.ttl`](../data/graphs.ttl) catalog.
