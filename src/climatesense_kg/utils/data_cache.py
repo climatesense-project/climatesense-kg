@@ -14,7 +14,7 @@ import shutil
 import tempfile
 import threading
 import time
-from typing import Any, BinaryIO
+from typing import Any, BinaryIO, cast
 
 logger = logging.getLogger(__name__)
 
@@ -160,7 +160,7 @@ class DataCache:
                     source_name,
                     cache_path.stat().st_size,
                 )
-                yield stream
+                yield cast(BinaryIO, stream)
             finally:
                 stream.close()
 

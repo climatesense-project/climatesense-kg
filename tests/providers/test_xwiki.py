@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 from src.climatesense_kg.config.schemas import XWikiProviderConfig
-from src.climatesense_kg.providers.xwiki import XWikiProvider
+from src.climatesense_kg.providers.xwiki import PageSummary, XWikiProvider
 
 
 class TestXWikiProvider:
@@ -55,7 +55,7 @@ class TestXWikiProvider:
         }
         mock_fetch.return_value = response
         provider = XWikiProvider("xwiki")
-        page_data = {
+        page_data: PageSummary = {
             "pageApiUrl": (
                 "https://defacto-observatoire.fr/rest/wikis/xwiki/spaces/Medias/"
                 "spaces/Les-Surligneurs/spaces/Fact-checks/spaces/Example/"

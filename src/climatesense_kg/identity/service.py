@@ -179,9 +179,10 @@ class IdentityService:
         content = extracted if isinstance(extracted, str) else source
         fingerprint = fingerprint_text(content if isinstance(content, str) else None)
         text_hash = row["normalized_text_hash"] or fingerprint.normalized_text_hash
+        word_count_value = row["word_count"]
         word_count = (
-            int(row["word_count"])
-            if row["word_count"] is not None
+            word_count_value
+            if isinstance(word_count_value, int)
             else fingerprint.word_count
         )
         raw_urls = (

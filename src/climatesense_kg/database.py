@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from importlib.resources import files
 import logging
 import os
-from typing import Any, Literal
+from typing import Any, Literal, LiteralString, cast
 from uuid import UUID, uuid4
 
 from psycopg import Connection
@@ -98,7 +98,9 @@ class Database:
                 if cursor.fetchone() is not None:
                     return
                 logger.info("Applying database schema %s", migration.name)
-                cursor.execute(migration.read_text(encoding="utf-8"), prepare=False)
+                cursor.execute(
+                    cast(LiteralString, migration.read_text(encoding="utf-8"))
+                )
                 cursor.execute(
                     "INSERT INTO schema_migrations (name) VALUES (%s)",
                     (migration.name,),

@@ -5,7 +5,16 @@ import json
 
 import pytest
 
+from climatesense_kg.domain.models import SourceReviewRecord
 from climatesense_kg.processors.claimreviewdata import ClaimReviewDataProcessor
+
+
+def _claim_rating_pairs(results: list[SourceReviewRecord]) -> list[tuple[str, str]]:
+    pairs = []
+    for result in results:
+        assert result.rating is not None
+        pairs.append((result.claim.text, result.rating.label))
+    return pairs
 
 
 def test_malformed_item_does_not_abort_later_records() -> None:
@@ -42,7 +51,7 @@ def test_emits_every_positionally_paired_claim_and_review() -> None:
 
     results = list(processor.process(json.dumps(payload).encode()))
 
-    assert [(result.claim.text, result.rating.label) for result in results] == [
+    assert _claim_rating_pairs(results) == [
         ("first claim", "credible"),
         ("second claim", "not_credible"),
     ]
@@ -103,9 +112,7 @@ def test_skips_only_the_invalid_pair_in_a_multi_claim_record() -> None:
 
     results = list(processor.process(json.dumps(payload).encode()))
 
-    assert [(result.claim.text, result.rating.label) for result in results] == [
-        ("A meaningful claim", "credible")
-    ]
+    assert _claim_rating_pairs(results) == [("A meaningful claim", "credible")]
 
 
 def test_ignores_null_values_in_optional_appearances() -> None:
