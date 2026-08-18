@@ -226,6 +226,7 @@ services:
       - ../logs:/app/logs
       - ../cache:/app/cache
       - ../config:/app/config:ro
+      - ../samples:/app/samples:ro
     depends_on:
       postgres:
         condition: service_healthy
