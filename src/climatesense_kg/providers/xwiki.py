@@ -8,10 +8,10 @@ from urllib.parse import quote, urlsplit, urlunsplit
 import defusedxml.ElementTree as ET
 import requests
 
-from ..config.schemas import ProviderConfig
+from ..config.schemas import XWikiProviderConfig
 from ..utils.text_processing import (
     _fetch_public_url,
-    _redact_url_credentials,
+    redact_url_credentials,
     sanitize_url,
 )
 from .base import BaseProvider
@@ -35,10 +35,10 @@ class PageDetails(TypedDict, total=False):
     language: str
 
 
-class XWikiProvider(BaseProvider):
+class XWikiProvider(BaseProvider[XWikiProviderConfig]):
     """Provider for fetching data from REST APIs."""
 
-    def fetch(self, config: ProviderConfig) -> bytes:
+    def fetch(self, config: XWikiProviderConfig) -> bytes:
         """Fetch data from REST API.
 
         Args:
@@ -224,7 +224,7 @@ class XWikiProvider(BaseProvider):
         if not property_url:
             self.logger.error(
                 "Could not derive media site property from XWiki page URL: %s",
-                _redact_url_credentials(page_api_url),
+                redact_url_credentials(page_api_url),
             )
             return None
 
@@ -251,7 +251,7 @@ class XWikiProvider(BaseProvider):
         except Exception as exc:
             self.logger.error(
                 "Failed to fetch organization site from %s: %s",
-                _redact_url_credentials(property_url),
+                redact_url_credentials(property_url),
                 exc,
             )
             cache[property_url] = None
@@ -298,12 +298,12 @@ class XWikiProvider(BaseProvider):
         except Exception as e:
             self.logger.error(
                 "Failed to fetch page details from %s: %s",
-                _redact_url_credentials(page_api_url),
+                redact_url_credentials(page_api_url),
                 e,
             )
             return None
 
-    def get_cache_key_fields(self, config: ProviderConfig) -> dict[str, Any]:
+    def get_cache_key_fields(self, config: XWikiProviderConfig) -> dict[str, Any]:
         """Base URL and tags affect cache."""
         return {
             "base_url": config.base_url,

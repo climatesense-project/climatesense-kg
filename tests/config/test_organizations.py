@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from climatesense_kg.config.models import CanonicalOrganization
 from climatesense_kg.config.organizations import OrganizationCatalog
+from climatesense_kg.domain import OrganizationReference
 
 
 def _write_catalog(tmp_path: Path, organizations: str) -> Path:
@@ -25,12 +25,15 @@ def _write_catalog(tmp_path: Path, organizations: str) -> Path:
 def test_repository_catalog_uses_readable_organization_iris() -> None:
     path = Path(__file__).parents[2] / "data" / "organizations.ttl"
     catalog = OrganizationCatalog(path)
-    organization = CanonicalOrganization(
+    organization = OrganizationReference(
         name="Source label is not used",
         website="https://www.lessurligneurs.eu/article",
     )
 
-    assert catalog.resolve(organization) == (
+    resolved = catalog.resolve(organization)
+
+    assert resolved is not None
+    assert resolved.uri == (
         "http://data.climatesense-project.eu/organization/les-surligneurs"
     )
 
@@ -45,12 +48,15 @@ org:example a schema:Organization ;
 """,
     )
     catalog = OrganizationCatalog(path)
-    organization = CanonicalOrganization(
+    organization = OrganizationReference(
         name="Unknown", website="http://www.example.org/article"
     )
 
-    assert catalog.resolve(organization) is not None
-    assert organization.uri.endswith("/example")
+    resolved = catalog.resolve(organization)
+
+    assert resolved is not None
+    assert resolved.uri.endswith("/example")
+    assert resolved.name == "Example"
 
 
 def test_resolves_any_curated_website_for_one_organization(tmp_path: Path) -> None:
@@ -63,13 +69,15 @@ org:example a schema:Organization ;
 """,
     )
     catalog = OrganizationCatalog(path)
-    organization = CanonicalOrganization(
+    organization = OrganizationReference(
         name="Unrelated source label",
         website="http://www.factcheck.example.net/article",
     )
 
-    assert catalog.resolve(organization) is not None
-    assert organization.uri.endswith("/example")
+    resolved = catalog.resolve(organization)
+
+    assert resolved is not None
+    assert resolved.uri.endswith("/example")
 
 
 def test_rejects_url_shared_by_different_organizations(tmp_path: Path) -> None:
@@ -99,13 +107,11 @@ org:example a schema:Organization ;
 """,
     )
     catalog = OrganizationCatalog(path)
-    organization = CanonicalOrganization(
+    organization = OrganizationReference(
         name="Shared", website="https://unrelated.example"
     )
 
     assert catalog.resolve(organization) is None
-    with pytest.raises(ValueError, match="has not been resolved"):
-        _ = organization.uri
 
 
 def test_requires_one_name_per_organization(tmp_path: Path) -> None:
@@ -128,6 +134,6 @@ def test_requires_a_website_per_organization(tmp_path: Path) -> None:
         OrganizationCatalog(path)
 
 
-def test_canonical_organization_requires_valid_website() -> None:
+def test_organization_reference_requires_valid_website() -> None:
     with pytest.raises(ValueError, match=r"requires a valid HTTP\(S\) website URL"):
-        CanonicalOrganization(name="Example", website="not a URL")
+        OrganizationReference(name="Example", website="not a URL")

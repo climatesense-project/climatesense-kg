@@ -90,7 +90,7 @@ async def run_query(
     stmt = text(raw_sql)
 
     type_hints: dict[str, Any] = {
-        "step": String(),
+        "stage_name": String(),
         "from_ts": DateTime(timezone=True),
         "to_ts": DateTime(timezone=True),
         "limit": Integer(),

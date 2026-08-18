@@ -1,20 +1,9 @@
 """Command-line interface."""
 
 import argparse
-import logging
-from pathlib import Path
 import sys
-from typing import TYPE_CHECKING
 
 from . import __version__
-from .config.organizations import ORGANIZATION_CATALOG_PATH, ORGANIZATION_SOURCE_NAME
-
-if TYPE_CHECKING:
-    from .pipeline import (
-        DeploymentResults,
-        PipelineResults,
-        RDFGenerationResults,
-    )
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -47,287 +36,74 @@ Examples:
         help="Skip data downloads and use only cached/already downloaded data",
     )
     run_parser.add_argument(
+        "--skip-extraction",
+        action="store_true",
+        help="Skip external document fetches; apply stored successful results",
+    )
+    run_parser.add_argument(
         "--skip-enrichment",
         action="store_true",
-        help=("Skip running enrichers; apply cached enrichment data if available"),
+        help=("Skip external enrichment calls; apply stored successful results"),
     )
     run_parser.add_argument(
-        "--skip-deployment",
+        "--no-cache-extraction",
         action="store_true",
-        help="Skip deployment step (e.g., Virtuoso upload)",
+        help="Ignore stored successes and refetch/recompute all document extractions",
     )
     run_parser.add_argument(
-        "--force-regenerate",
+        "--no-cache-enrichment",
         action="store_true",
-        help="Force regeneration of RDF for all items, ignoring cache",
+        help="Ignore stored successes and re-run all enrichment",
     )
 
-    redeploy_parser = subparsers.add_parser(
-        "redeploy",
-        help="Redeploy existing RDF files without re-running the pipeline",
+    purge_parser = subparsers.add_parser(
+        "purge-processing-results",
+        help="Delete recomputable extraction and enrichment results",
     )
-    redeploy_parser.add_argument(
-        "--config", "-c", type=str, required=True, help="Configuration file path"
-    )
-    redeploy_parser.add_argument(
-        "--rdf-dir",
-        type=str,
-        default="data/rdf",
-        help="Directory to scan for RDF files (default: data/rdf)",
-    )
-    redeploy_parser.add_argument(
-        "--debug",
+    purge_parser.add_argument(
+        "--yes",
         action="store_true",
-        help="Enable DEBUG level logging",
-    )
-    redeploy_parser.add_argument(
-        "--replace",
-        action="store_true",
-        help=(
-            "Replace generated named graphs from a full snapshot; requires exactly "
-            "one RDF file per graph"
-        ),
+        help="Confirm deletion of all persisted processing results",
     )
 
     return parser
 
 
-def _print_rdf_generation_summary(rdf_data: "RDFGenerationResults") -> None:
-    """Print RDF generation summary in a safe way."""
-    if rdf_data.get("error"):
-        print(f"RDF Generation: Failed - {rdf_data['error']}")
-        return
+def _print_pipeline_summary(summary: object) -> None:
+    """Print the compact result of one successful pipeline run."""
 
-    generated_files = rdf_data.get("generated_files", [])
-    total_files = rdf_data.get("total_files", 0)
-    total_size = rdf_data.get("total_file_size", 0)
-    failed_items = rdf_data.get("failed_items", 0)
+    from .pipeline import PipelineSummary
 
-    if not generated_files:
-        print("RDF Generation: No files generated")
-        return
-
-    print(f"RDF Generation: {total_files} files generated ({total_size} bytes total)")
-
-    if failed_items:
-        print(f"RDF Generation: {failed_items} items failed")
-
-    for file_info in generated_files:
-        failure_summary = ""
-        if file_info["failed_items"]:
-            failure_summary = f", {file_info['failed_items']} failed"
+    if not isinstance(summary, PipelineSummary):
+        raise TypeError("Expected a PipelineSummary")
+    status = "with degraded coverage" if summary.degraded else "successfully"
+    print(f"Pipeline completed {status} in {summary.duration_seconds:.2f}s.")
+    print(f"Processed {summary.reviews} claim reviews.")
+    if summary.extraction:
+        stage = summary.extraction
         print(
-            f"  - {file_info['graph_name']}: {file_info['path']} "
-            f"({file_info['items']} items{failure_summary}, "
-            f"{file_info['file_size']} bytes)"
+            "Document extraction: "
+            f"eligible={stage.eligible}, cached={stage.cached}, "
+            f"fetched={stage.succeeded}, retryable={stage.retryable_failures}, "
+            f"permanent={stage.permanent_failures}, missing={stage.missing}"
         )
-
-
-def _print_deployment_summary(deployment_data: "DeploymentResults") -> None:
-    """Print deployment summary in a safe way."""
-    success = deployment_data["success"]
-    files_deployed = deployment_data["files_deployed"]
-    total_files = deployment_data["total_files"]
-
-    status = "Success" if success else "Failed"
-    print(f"Deployment: {status} ({files_deployed}/{total_files} files)")
-
-
-def _print_success_summary(results: "PipelineResults") -> None:
-    """Print pipeline success summary."""
-    print("Pipeline completed successfully!")
-    print(f"Processed {results['total_processed']} claim reviews")
-
-    duration = results.get("duration")
-    if duration is not None:
-        print(f"Duration: {duration:.2f} seconds")
-
-    # Print RDF generation summary
-    rdf_data = results.get("rdf_generation")
-    if rdf_data:
-        _print_rdf_generation_summary(rdf_data)
-
-    # Print deployment summary
-    deployment_data = results.get("deployment")
-    if deployment_data:
-        _print_deployment_summary(deployment_data)
-
-
-def _print_failure_summary(results: "PipelineResults") -> None:
-    """Print pipeline failure summary."""
-    print("Pipeline failed:", file=sys.stderr)
-
-    error = results.get("error")
-    if error:
-        print(f"Error: {error}", file=sys.stderr)
-
-
-def _graph_name_for_rdf_file(
-    rdf_file: Path, managed_graph_names: set[str]
-) -> str | None:
-    """Match an RDF artifact to a managed graph without splitting its name."""
-    matching_graphs = [
-        graph_name
-        for graph_name in managed_graph_names
-        if rdf_file.stem == graph_name or rdf_file.stem.startswith(f"{graph_name}_")
-    ]
-    if matching_graphs:
-        return max(matching_graphs, key=len)
-    return None
-
-
-def run_redeploy(args: argparse.Namespace) -> int:
-    """Redeploy existing RDF files to the configured backend."""
-    from .config import load_config
-    from .config.graphs import (
-        ENRICHMENT_GRAPH_SOURCE_NAMES,
-        GRAPH_CATALOG_PATH,
-        GRAPH_CATALOG_SOURCE_NAME,
-    )
-    from .deployment.factory import create_deployment_handler
-    from .utils.logging import setup_logging
-
-    try:
-        config = load_config(args.config)
-    except Exception as e:
-        print(f"Failed to load configuration: {e}", file=sys.stderr)
-        return 1
-
-    if getattr(args, "debug", False):
-        config.logging.level = "DEBUG"
-
-    setup_logging(config.logging)
-    logger = logging.getLogger(__name__)
-
-    try:
-        handler = create_deployment_handler(config.deployment)
-    except Exception as e:
-        print(f"Failed to initialize deployment handler: {e}", file=sys.stderr)
-        return 1
-
-    if handler is None:
-        print("No deployment backend is configured.", file=sys.stderr)
-        return 1
-
-    rdf_dir = Path(args.rdf_dir)
-    if not rdf_dir.exists():
-        print(f"RDF directory not found: {rdf_dir}", file=sys.stderr)
-        return 1
-
-    curated_paths = {
-        GRAPH_CATALOG_PATH.resolve(),
-        ORGANIZATION_CATALOG_PATH.resolve(),
-    }
-    rdf_files = sorted(
-        path
-        for pattern in ("*.nt", "*.ttl")
-        for path in rdf_dir.rglob(pattern)
-        if path.resolve() not in curated_paths
-    )
-    if not rdf_files:
-        print(f"No supported RDF files found in {rdf_dir}", file=sys.stderr)
-        return 1
-
-    managed_graph_names = {
-        *(source.name for source in config.data_sources),
-        *ENRICHMENT_GRAPH_SOURCE_NAMES,
-    }
-
-    # Group files by their longest matching managed graph name.
-    files_by_graph: dict[str, list[Path]] = {}
-    for f in rdf_files:
-        graph_name = _graph_name_for_rdf_file(f, managed_graph_names)
-        if graph_name is None:
+    for stage in summary.enrichments:
+        print(
+            f"Enrichment {stage.name}: eligible={stage.eligible}, "
+            f"cached={stage.cached}, succeeded={stage.succeeded}, "
+            f"retryable={stage.retryable_failures}, "
+            f"permanent={stage.permanent_failures}, missing={stage.missing}"
+        )
+    if summary.export:
+        print(
+            f"RDF export: {len(summary.export.artifacts)} files, "
+            f"{summary.export.total_file_size} bytes total"
+        )
+        for artifact in summary.export.artifacts:
             print(
-                f"Could not determine a managed graph for RDF file: {f}",
-                file=sys.stderr,
+                f"  - {artifact.graph_name}: {artifact.path} "
+                f"({artifact.items} reviews, {artifact.failed_items} failed)"
             )
-            return 1
-        files_by_graph.setdefault(graph_name, []).append(f)
-
-    replace_generated = getattr(args, "replace", False)
-    if replace_generated:
-        multi_file_graphs = {
-            graph_name: files
-            for graph_name, files in files_by_graph.items()
-            if len(files) != 1
-        }
-        if multi_file_graphs:
-            graph_names = ", ".join(sorted(multi_file_graphs))
-            print(
-                "Replacement requires exactly one full-snapshot RDF file per graph; "
-                f"found multiple files for: {graph_names}",
-                file=sys.stderr,
-            )
-            return 1
-
-    # Build the list of files to deploy
-    files_to_deploy = sorted(
-        ((graph, f) for graph, files in files_by_graph.items() for f in files),
-        key=lambda item: (
-            item[0] not in ENRICHMENT_GRAPH_SOURCE_NAMES,
-            item[0],
-            item[1],
-        ),
-    )
-
-    print(
-        f"Found {len(files_to_deploy)} generated file(s) to deploy "
-        f"across {len(files_by_graph)} graph(s), plus the graph and organization catalogs"
-    )
-
-    graph_catalog_uri = config.deployment.graph_template.replace(
-        "{SOURCE}", GRAPH_CATALOG_SOURCE_NAME
-    )
-    print(
-        f"  Replacing {GRAPH_CATALOG_PATH} -> {graph_catalog_uri} ...",
-        end=" ",
-        flush=True,
-    )
-    if not handler.deploy(
-        GRAPH_CATALOG_PATH,
-        GRAPH_CATALOG_SOURCE_NAME,
-        replace=True,
-    ):
-        print("FAILED")
-        return 1
-    print("OK")
-
-    organization_graph_uri = config.deployment.graph_template.replace(
-        "{SOURCE}", ORGANIZATION_SOURCE_NAME
-    )
-    print(
-        f"  Replacing {ORGANIZATION_CATALOG_PATH} -> {organization_graph_uri} ...",
-        end=" ",
-        flush=True,
-    )
-    if not handler.deploy(
-        ORGANIZATION_CATALOG_PATH,
-        ORGANIZATION_SOURCE_NAME,
-        replace=True,
-    ):
-        print("FAILED")
-        return 1
-    print("OK")
-
-    success_count = 2
-    failure_count = 0
-    for graph_name, rdf_file in files_to_deploy:
-        logger.info(f"Deploying {rdf_file} (graph: {graph_name})")
-        graph_uri = config.deployment.graph_template.replace("{SOURCE}", graph_name)
-        print(f"  Deploying {rdf_file} -> {graph_uri} ...", end=" ", flush=True)
-        ok = handler.deploy(rdf_file, graph_name, replace=replace_generated)
-        if ok:
-            print("OK")
-            success_count += 1
-        else:
-            print("FAILED")
-            failure_count += 1
-
-    print(
-        f"\nRedeployment complete: {success_count} succeeded, {failure_count} failed."
-    )
-    return 0 if failure_count == 0 else 1
 
 
 def run_pipeline(args: argparse.Namespace) -> int:
@@ -335,6 +111,23 @@ def run_pipeline(args: argparse.Namespace) -> int:
     from .config import load_config
     from .pipeline import Pipeline
 
+    if getattr(args, "no_cache_extraction", False) and getattr(
+        args, "skip_extraction", False
+    ):
+        print(
+            "--no-cache-extraction and --skip-extraction are mutually exclusive",
+            file=sys.stderr,
+        )
+        return 1
+    if getattr(args, "no_cache_enrichment", False) and getattr(
+        args, "skip_enrichment", False
+    ):
+        print(
+            "--no-cache-enrichment and --skip-enrichment are mutually exclusive",
+            file=sys.stderr,
+        )
+        return 1
+
     try:
         config = load_config(args.config)
     except Exception as e:
@@ -345,25 +138,60 @@ def run_pipeline(args: argparse.Namespace) -> int:
         config.logging.level = "DEBUG"
 
     try:
-        pipeline = Pipeline(config)
-        results = pipeline.run(
-            skip_download=getattr(args, "skip_download", False),
-            skip_enrichment=getattr(args, "skip_enrichment", False),
-            skip_deployment=getattr(args, "skip_deployment", False),
-            force_regenerate=getattr(args, "force_regenerate", False),
+        with Pipeline(config) as pipeline:
+            summary = pipeline.run(
+                cached_sources_only=getattr(args, "skip_download", False),
+                offline_extraction=getattr(args, "skip_extraction", False),
+                offline_enrichment=getattr(args, "skip_enrichment", False),
+                ignore_cache_extraction=getattr(args, "no_cache_extraction", False),
+                ignore_cache_enrichment=getattr(args, "no_cache_enrichment", False),
+            )
+    except KeyboardInterrupt:
+        print(
+            "Pipeline interrupted; committed database results were preserved.",
+            file=sys.stderr,
         )
+        return 130
     except Exception as e:
         print(f"Pipeline execution failed: {e}", file=sys.stderr)
         return 1
 
-    success = results["success"]
-
-    if success:
-        _print_success_summary(results)
+    if summary.success:
+        _print_pipeline_summary(summary)
         return 0
-    else:
-        _print_failure_summary(results)
+    print(f"Pipeline failed: {summary.error or 'unknown error'}", file=sys.stderr)
+    return 1
+
+
+def run_purge_processing_results(args: argparse.Namespace) -> int:
+    """Delete recomputable processing state without touching identity tables."""
+
+    if not getattr(args, "yes", False):
+        print(
+            "Refusing to purge processing results without --yes; identity data is "
+            "never deleted by this command.",
+            file=sys.stderr,
+        )
         return 1
+
+    from dotenv import load_dotenv
+
+    from .database import Database
+    from .enrichment import clear_processing_results
+
+    load_dotenv()
+    try:
+        with Database.from_environment() as database:
+            deleted = clear_processing_results(database.pool)
+    except Exception as exc:
+        print(f"Failed to purge processing results: {exc}", file=sys.stderr)
+        return 1
+
+    print(
+        f"Deleted {deleted} recomputable processing result(s); identities were "
+        "preserved."
+    )
+    return 0
 
 
 def main() -> int:
@@ -376,8 +204,8 @@ def main() -> int:
         return 1
 
     handlers = {
+        "purge-processing-results": run_purge_processing_results,
         "run": run_pipeline,
-        "redeploy": run_redeploy,
     }
 
     handler = handlers.get(args.command)

@@ -1,4 +1,4 @@
-"""Pipeline metrics endpoints."""
+"""Pipeline stage metrics endpoints."""
 
 from __future__ import annotations
 
@@ -10,26 +10,27 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_session
 from ..schemas.pipeline import (
-    EnricherDomainFailure,
-    EnricherErrorBreakdown,
-    EnricherRecentActivity,
-    EnricherSuccessRate,
+    StageDomainFailure,
+    StageErrorBreakdown,
+    StageRecentActivity,
+    StageRetryQueue,
+    StageSuccessRate,
 )
 from ..services.sql import run_query
 
-router = APIRouter(prefix="/metrics/enrichers", tags=["pipeline"])
+router = APIRouter(prefix="/metrics/stages", tags=["pipeline"])
 
 
-class BaseEnricherParams(TypedDict, total=False):
-    """Base parameters for enricher queries."""
+class BaseStageParams(TypedDict, total=False):
+    """Shared parameters for semantic-stage queries."""
 
-    step: str | None
+    stage_name: str | None
     from_ts: datetime | None
     to_ts: datetime | None
 
 
-class EnricherParamsWithLimit(BaseEnricherParams, total=False):
-    """Enricher parameters with optional limit."""
+class StageParamsWithLimit(BaseStageParams, total=False):
+    """Semantic-stage parameters with an optional result limit."""
 
     limit: int
 
@@ -38,9 +39,11 @@ def _default_from_ts(hours: int = 24) -> datetime:
     return datetime.now(UTC) - timedelta(hours=hours)
 
 
-@router.get("/success-rate", response_model=list[EnricherSuccessRate])
+@router.get("/success-rate", response_model=list[StageSuccessRate])
 async def success_rate(
-    step: str | None = Query(default=None, description="Filter by enricher step name"),
+    stage_name: str | None = Query(
+        default=None, description="Filter by semantic stage name"
+    ),
     from_ts: datetime | None = Query(
         default=None, description="ISO timestamp lower bound (inclusive)"
     ),
@@ -48,19 +51,18 @@ async def success_rate(
         default=None, description="ISO timestamp upper bound (inclusive)"
     ),
     session: AsyncSession = Depends(get_session),
-) -> list[EnricherSuccessRate]:
-    params: BaseEnricherParams = {
-        "step": step,
+) -> list[StageSuccessRate]:
+    params: BaseStageParams = {
+        "stage_name": stage_name,
         "from_ts": from_ts,
         "to_ts": to_ts,
     }
-    rows = await run_query(
-        session, "pipeline", "enrichers_success_rate.sql", dict(params)
-    )
+    rows = await run_query(session, "pipeline", "stages_success_rate.sql", dict(params))
     return [
-        EnricherSuccessRate(
-            step=row["step"],
-            total_entries=row["total_entries"],
+        StageSuccessRate(
+            stage_name=row["stage_name"],
+            stage_version=row["stage_version"],
+            total_results=row["total_results"],
             successful=row["successful"],
             failed=row["failed"],
             success_rate_percent=float(row["success_rate_percent"] or 0.0),
@@ -69,53 +71,57 @@ async def success_rate(
     ]
 
 
-@router.get("/error-types", response_model=list[EnricherErrorBreakdown])
+@router.get("/error-types", response_model=list[StageErrorBreakdown])
 async def error_types(
-    step: str | None = Query(default=None),
+    stage_name: str | None = Query(default=None),
     from_ts: datetime | None = Query(default=None),
     to_ts: datetime | None = Query(default=None),
     limit: int = Query(default=200, ge=1, le=1000),
     session: AsyncSession = Depends(get_session),
-) -> list[EnricherErrorBreakdown]:
-    params: EnricherParamsWithLimit = {
-        "step": step,
+) -> list[StageErrorBreakdown]:
+    params: StageParamsWithLimit = {
+        "stage_name": stage_name,
         "from_ts": from_ts,
         "to_ts": to_ts,
         "limit": limit,
     }
-    rows = await run_query(
-        session, "pipeline", "enrichers_error_types.sql", dict(params)
-    )
+    rows = await run_query(session, "pipeline", "stages_error_types.sql", dict(params))
     return [
-        EnricherErrorBreakdown(
-            step=row["step"],
+        StageErrorBreakdown(
+            stage_name=row["stage_name"],
+            stage_version=row["stage_version"],
+            status=row["status"],
             error_type=row.get("error_type"),
+            failure_category=row.get("failure_category"),
+            http_status=row.get("http_status"),
             error_count=row["error_count"],
         )
         for row in rows
     ]
 
 
-@router.get("/domain-failures", response_model=list[EnricherDomainFailure])
+@router.get("/domain-failures", response_model=list[StageDomainFailure])
 async def domain_failures(
-    step: str | None = Query(default="enricher.url_text_extractor"),
+    stage_name: str | None = Query(default="document.extract"),
     from_ts: datetime | None = Query(default=None),
     to_ts: datetime | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=500),
     session: AsyncSession = Depends(get_session),
-) -> list[EnricherDomainFailure]:
-    params: EnricherParamsWithLimit = {
-        "step": step,
+) -> list[StageDomainFailure]:
+    params: StageParamsWithLimit = {
+        "stage_name": stage_name,
         "from_ts": from_ts,
         "to_ts": to_ts,
         "limit": limit,
     }
     rows = await run_query(
-        session, "pipeline", "enrichers_domain_failures.sql", dict(params)
+        session, "pipeline", "stages_domain_failures.sql", dict(params)
     )
     return [
-        EnricherDomainFailure(
-            step=row["step"],
+        StageDomainFailure(
+            stage_name=row["stage_name"],
+            stage_version=row["stage_version"],
+            status=row["status"],
             domain=row.get("domain", "unknown"),
             failure_count=row["failure_count"],
         )
@@ -123,9 +129,38 @@ async def domain_failures(
     ]
 
 
-@router.get("/recent-activity", response_model=list[EnricherRecentActivity])
+@router.get("/retry-queue", response_model=list[StageRetryQueue])
+async def retry_queue(
+    stage_name: str | None = Query(default=None),
+    from_ts: datetime | None = Query(default=None),
+    to_ts: datetime | None = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=1000),
+    session: AsyncSession = Depends(get_session),
+) -> list[StageRetryQueue]:
+    params: StageParamsWithLimit = {
+        "stage_name": stage_name,
+        "from_ts": from_ts,
+        "to_ts": to_ts,
+        "limit": limit,
+    }
+    rows = await run_query(session, "pipeline", "stages_retry_queue.sql", dict(params))
+    return [
+        StageRetryQueue(
+            stage_name=row["stage_name"],
+            stage_version=row["stage_version"],
+            status=row["status"],
+            failure_category=row.get("failure_category"),
+            http_status=row.get("http_status"),
+            result_count=row["result_count"],
+            next_retry_at=row.get("next_retry_at"),
+        )
+        for row in rows
+    ]
+
+
+@router.get("/recent-activity", response_model=list[StageRecentActivity])
 async def recent_activity(
-    step: str | None = Query(default=None),
+    stage_name: str | None = Query(default=None),
     from_ts: datetime | None = Query(
         default=None,
         description="Lower bound on updated_at; defaults to last 24 hours if omitted",
@@ -133,21 +168,22 @@ async def recent_activity(
     to_ts: datetime | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=200),
     session: AsyncSession = Depends(get_session),
-) -> list[EnricherRecentActivity]:
+) -> list[StageRecentActivity]:
     effective_from = from_ts or _default_from_ts()
-    params: EnricherParamsWithLimit = {
-        "step": step,
+    params: StageParamsWithLimit = {
+        "stage_name": stage_name,
         "from_ts": effective_from,
         "to_ts": to_ts,
         "limit": limit,
     }
     rows = await run_query(
-        session, "pipeline", "enrichers_recent_activity.sql", dict(params)
+        session, "pipeline", "stages_recent_activity.sql", dict(params)
     )
     return [
-        EnricherRecentActivity(
-            step=row["step"],
-            recent_entries=row["recent_entries"],
+        StageRecentActivity(
+            stage_name=row["stage_name"],
+            stage_version=row["stage_version"],
+            recent_results=row["recent_results"],
             earliest=row.get("earliest"),
             latest=row.get("latest"),
             successful=row["successful"],

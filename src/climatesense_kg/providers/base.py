@@ -2,12 +2,12 @@
 
 from abc import ABC, abstractmethod
 import logging
-from typing import Any
+from typing import Any, Generic, TypeVar
 
-from ..config.schemas import ProviderConfig
+ProviderConfigT = TypeVar("ProviderConfigT")
 
 
-class BaseProvider(ABC):
+class BaseProvider(ABC, Generic[ProviderConfigT]):
     """Abstract base class for data providers."""
 
     def __init__(self, name: str):
@@ -20,7 +20,7 @@ class BaseProvider(ABC):
         self.logger = logging.getLogger(f"provider.{name}")
 
     @abstractmethod
-    def fetch(self, config: ProviderConfig) -> bytes:
+    def fetch(self, config: ProviderConfigT) -> bytes:
         """Fetch raw data from the source.
 
         Args:
@@ -35,7 +35,7 @@ class BaseProvider(ABC):
         pass
 
     @abstractmethod
-    def get_cache_key_fields(self, config: ProviderConfig) -> dict[str, Any]:
+    def get_cache_key_fields(self, config: ProviderConfigT) -> dict[str, Any]:
         """Get config fields and values that should be included in cache key.
 
         Args:
@@ -45,9 +45,3 @@ class BaseProvider(ABC):
             Dict of cache-relevant field names and their values
         """
         pass
-
-    def get_cache_fallback_key_fields(
-        self, config: ProviderConfig
-    ) -> dict[str, Any] | None:
-        """Return a stable cache-only lookup key when a provider supports one."""
-        return None

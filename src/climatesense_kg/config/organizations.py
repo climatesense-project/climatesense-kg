@@ -8,8 +8,8 @@ from pathlib import Path
 from rdflib import Graph, Literal, URIRef
 from rdflib.namespace import RDF
 
+from ..domain import CanonicalOrganization, OrganizationReference
 from ..utils.text_processing import normalize_organization_url
-from .models import CanonicalOrganization
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +19,6 @@ SCHEMA_URL = URIRef("http://schema.org/url")
 
 ORGANIZATION_URI_PREFIX = "http://data.climatesense-project.eu/organization/"
 ORGANIZATION_CATALOG_PATH = Path("data/organizations.ttl")
-ORGANIZATION_SOURCE_NAME = "organizations"
 
 
 class OrganizationCatalog:
@@ -38,7 +37,7 @@ class OrganizationCatalog:
                 f"Failed to parse organization catalog {catalog_path}: {exc}"
             ) from exc
 
-        self._urls: dict[str, URIRef] = {}
+        self._urls: dict[str, CanonicalOrganization] = {}
         self._build_index(graph, catalog_path)
 
     def _build_index(self, graph: Graph, catalog_path: Path) -> None:
@@ -71,6 +70,7 @@ class OrganizationCatalog:
                 raise ValueError(
                     f"Organization {organization_uri} must have at least one schema:url"
                 )
+            normalized_websites: list[str] = []
             for website in websites:
                 if not isinstance(website, URIRef):
                     raise ValueError(
@@ -81,13 +81,21 @@ class OrganizationCatalog:
                     raise ValueError(
                         f"Organization {organization_uri} has an invalid schema:url"
                     )
+                normalized_websites.append(normalized_url)
+
+            organization = CanonicalOrganization(
+                uri=str(organization_uri),
+                name=str(names[0]).strip(),
+                website=sorted(normalized_websites)[0],
+            )
+            for normalized_url in normalized_websites:
                 existing = self._urls.get(normalized_url)
-                if existing is not None and existing != organization_uri:
+                if existing is not None and existing.uri != organization.uri:
                     raise ValueError(
                         f"Normalized organization URL {normalized_url!r} is shared "
-                        f"by {existing} and {organization_uri}"
+                        f"by {existing.uri} and {organization_uri}"
                     )
-                self._urls[normalized_url] = organization_uri
+                self._urls[normalized_url] = organization
 
         logger.info(
             "Loaded %d canonical organizations from %s",
@@ -95,14 +103,9 @@ class OrganizationCatalog:
             catalog_path,
         )
 
-    def resolve(self, organization: CanonicalOrganization) -> str | None:
-        """Assign the canonical URI matching one extracted organization."""
+    def resolve(
+        self, organization: OrganizationReference
+    ) -> CanonicalOrganization | None:
+        """Return the curated organization matching one source reference."""
 
-        organization.canonical_uri = None
-        candidate = self._urls.get(organization.website)
-
-        if candidate is None:
-            return None
-
-        organization.canonical_uri = str(candidate)
-        return str(candidate)
+        return self._urls.get(organization.website)

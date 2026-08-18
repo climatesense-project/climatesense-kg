@@ -26,7 +26,7 @@ def test_result_cache_distinguishes_bound_parameters() -> None:
         sql.run_query(
             session,
             "pipeline",
-            "enrichers_error_types.sql",
+            "stages_error_types.sql",
             {"limit": 1},
         )
     )
@@ -34,7 +34,7 @@ def test_result_cache_distinguishes_bound_parameters() -> None:
         sql.run_query(
             session,
             "pipeline",
-            "enrichers_error_types.sql",
+            "stages_error_types.sql",
             {"limit": 2},
         )
     )
@@ -42,7 +42,7 @@ def test_result_cache_distinguishes_bound_parameters() -> None:
         sql.run_query(
             session,
             "pipeline",
-            "enrichers_error_types.sql",
+            "stages_error_types.sql",
             {"limit": 1},
         )
     )
@@ -64,12 +64,12 @@ def test_expired_sql_result_is_refreshed(monkeypatch) -> None:
         ]
     )
 
-    first = asyncio.run(sql.run_query(session, "pipeline", "enrichers_error_types.sql"))
-    cache_key = sql._result_cache_key("pipeline", "enrichers_error_types.sql", None)
+    first = asyncio.run(sql.run_query(session, "pipeline", "stages_error_types.sql"))
+    cache_key = sql._result_cache_key("pipeline", "stages_error_types.sql", None)
     inserted_at, rows = sql._RESULT_CACHE[cache_key]
     sql._RESULT_CACHE[cache_key] = (inserted_at - 11, rows)
     refreshed = asyncio.run(
-        sql.run_query(session, "pipeline", "enrichers_error_types.sql")
+        sql.run_query(session, "pipeline", "stages_error_types.sql")
     )
 
     assert first == [{"error_count": 1}]
@@ -91,7 +91,7 @@ def test_clear_discards_in_flight_query_result() -> None:
         session = Mock()
         session.execute = AsyncMock(side_effect=delayed_result)
         task = asyncio.create_task(
-            sql.run_query(session, "pipeline", "enrichers_error_types.sql")
+            sql.run_query(session, "pipeline", "stages_error_types.sql")
         )
 
         await query_started.wait()

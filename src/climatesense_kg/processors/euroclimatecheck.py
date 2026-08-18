@@ -7,11 +7,11 @@ from urllib.parse import urlparse
 
 from dateutil import parser
 
-from ..config.models import (
+from ..domain import (
     CanonicalClaim,
-    CanonicalClaimReview,
-    CanonicalOrganization,
     CanonicalRating,
+    OrganizationReference,
+    SourceReviewRecord,
 )
 from .base import BaseProcessor
 
@@ -19,8 +19,8 @@ from .base import BaseProcessor
 class EuroClimateCheckProcessor(BaseProcessor):
     """Processor for EuroClimateCheck data."""
 
-    def process(self, raw_data: bytes) -> Iterator[CanonicalClaimReview]:
-        """Process EuroClimateCheck raw data into CanonicalClaimReview objects."""
+    def process(self, raw_data: bytes) -> Iterator[SourceReviewRecord]:
+        """Process EuroClimateCheck raw data into source observations."""
         try:
             data = json.loads(raw_data.decode("utf-8"))
 
@@ -42,8 +42,8 @@ class EuroClimateCheckProcessor(BaseProcessor):
         except Exception as e:
             self.logger.error(f"Error processing EuroClimateCheck data: {e}")
 
-    def _normalize_item(self, item: dict[str, Any]) -> CanonicalClaimReview:
-        """Convert EuroClimateCheck item to CanonicalClaimReview."""
+    def _normalize_item(self, item: dict[str, Any]) -> SourceReviewRecord:
+        """Convert a EuroClimateCheck item to a source observation."""
         claim_text = self._extract_claim_text(item)
 
         claim = CanonicalClaim(
@@ -51,7 +51,7 @@ class EuroClimateCheckProcessor(BaseProcessor):
             appearances=[item.get("url", "")] if item.get("url") else [],
         )
 
-        organization = CanonicalOrganization(
+        organization = OrganizationReference(
             name=item.get("source", ""),
             website=self._extract_website_from_url(item.get("url", "")),
             language=item.get("language", ""),
@@ -63,15 +63,14 @@ class EuroClimateCheckProcessor(BaseProcessor):
             original_label=category,
         )
 
-        return CanonicalClaimReview(
+        return self._source_record(
+            source_type="euroclimatecheck",
             claim=claim,
             organization=organization,
             review_url=item.get("url", ""),
             date_published=self._convert_timestamp(item.get("date", "")),
             language=item.get("language", ""),
             rating=rating,
-            source_type="euroclimatecheck",
-            source_name=self.name,
         )
 
     def _extract_website_from_url(self, url: str) -> str:

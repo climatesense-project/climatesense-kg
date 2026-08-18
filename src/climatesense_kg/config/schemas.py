@@ -4,17 +4,22 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
+from .enrichment import default_cimple_model_versions
+
 
 @dataclass
-class ProviderConfig:
-    """Configuration for data providers."""
+class FileProviderConfig:
+    """Local-file provider configuration."""
 
-    provider_type: Literal["file", "github", "graphql", "xwiki", "http"]
+    provider_type: Literal["file"]
+    file_path: str | Path
 
-    # Common parameters
-    file_path: str | Path | None = None
 
-    # GitHub provider parameters
+@dataclass
+class GitHubProviderConfig:
+    """GitHub release-asset or repository-file configuration."""
+
+    provider_type: Literal["github"]
     repository: str = ""
     asset_pattern: str = "*.json"
     extract_file: str | None = None
@@ -25,30 +30,61 @@ class ProviderConfig:
     max_extract_size: str = "256MB"
     download_spool_threshold_bytes: int = 8 * 1024 * 1024
 
-    # GraphQL provider parameters
+    timeout: int = 30
+
+    def __post_init__(self) -> None:
+        if self.download_spool_threshold_bytes <= 0:
+            raise ValueError(
+                "GitHub download spool threshold must be greater than zero"
+            )
+
+
+@dataclass
+class GraphQLProviderConfig:
+    """Paginated GraphQL provider configuration."""
+
+    provider_type: Literal["graphql"]
     endpoint: str = ""
     query: str = ""
     variables: dict[str, Any] = field(default_factory=dict[str, Any])
     batch_size: int = 100
     max_retries: int = 3
 
-    # REST API provider parameters
-    base_url: str = ""
-    url: str = ""
-    tags: list[str] = field(default_factory=list[str])
-
-    # Common network parameters
     rate_limit_delay: float = 1.0
     timeout: int = 30
 
     def __post_init__(self) -> None:
-        """Validate provider-specific values that affect control flow."""
-        if self.provider_type == "graphql" and self.batch_size <= 0:
+        if self.batch_size <= 0:
             raise ValueError("GraphQL provider batch_size must be greater than zero")
-        if self.provider_type == "github" and self.download_spool_threshold_bytes <= 0:
-            raise ValueError(
-                "GitHub download spool threshold must be greater than zero"
-            )
+
+
+@dataclass
+class XWikiProviderConfig:
+    """XWiki fact-check API provider configuration."""
+
+    provider_type: Literal["xwiki"]
+    base_url: str = ""
+    tags: list[str] = field(default_factory=list[str])
+    rate_limit_delay: float = 1.0
+    timeout: int = 30
+
+
+@dataclass
+class HttpProviderConfig:
+    """Static HTTP download provider configuration."""
+
+    provider_type: Literal["http"]
+    url: str = ""
+    timeout: int = 30
+
+
+ProviderConfig = (
+    FileProviderConfig
+    | GitHubProviderConfig
+    | GraphQLProviderConfig
+    | XWikiProviderConfig
+    | HttpProviderConfig
+)
 
 
 @dataclass
@@ -71,13 +107,37 @@ class DataSourceConfig:
 
 
 @dataclass
-class UrlTextExtractionConfig:
-    """Configuration for URL text extraction."""
+class DocumentExtractionConfig:
+    """Configuration for pre-identity document extraction."""
 
-    enabled: bool = False
+    enabled: bool = True
+    max_workers: int = 32
     rate_limit_delay: float = 0.5
     timeout: int = 15
     max_retries: int = 2
+    transient_retry_delay_hours: float = 1
+    blocked_retry_delay_hours: float = 24 * 30
+    dns_retry_delay_hours: float = 24 * 7
+    content_retry_delay_hours: float = 24 * 30
+    progress_interval_seconds: float = 10.0
+
+    def __post_init__(self) -> None:
+        if self.max_workers <= 0:
+            raise ValueError("Document extraction max_workers must be positive")
+        if any(
+            delay < 0
+            for delay in (
+                self.transient_retry_delay_hours,
+                self.blocked_retry_delay_hours,
+                self.dns_retry_delay_hours,
+                self.content_retry_delay_hours,
+            )
+        ):
+            raise ValueError("Document extraction retry delays must be non-negative")
+        if self.progress_interval_seconds < 0:
+            raise ValueError(
+                "Document extraction progress_interval_seconds must be non-negative"
+            )
 
 
 @dataclass
@@ -85,11 +145,16 @@ class DbpediaSpotlightConfig:
     """Configuration for DBpedia Spotlight entity extraction."""
 
     enabled: bool = False
-    api_url: str = "https://api.dbpedia-spotlight.org/en/annotate"
+    api_url: str = "https://dbpedia-spotlight.tools.eurecom.fr/rest/annotate"
+    model_id: str = "dbpedia-spotlight-en"
     confidence: float = 0.5
     support: int = 20
     timeout: int = 20
-    rate_limit_delay: float = 0.1
+    max_workers: int = 8
+
+    def __post_init__(self) -> None:
+        if self.max_workers <= 0:
+            raise ValueError("DBpedia Spotlight max_workers must be positive")
 
 
 @dataclass
@@ -105,39 +170,71 @@ class DbpediaEntityPropertiesConfig:
 
 
 @dataclass
-class BertFactorsConfig:
-    """Configuration for BERT factors enrichment."""
+class CimpleConfig:
+    """Configuration for individually persisted CIMPLE models."""
 
     enabled: bool = False
+    model_versions: dict[str, str] = field(
+        default_factory=default_cimple_model_versions
+    )
     batch_size: int = 32
     max_length: int = 128
     timeout: int = 60
     rate_limit_delay: float = 0.1
+    max_workers: int = 1
+
+    def __post_init__(self) -> None:
+        if self.batch_size <= 0:
+            raise ValueError("CIMPLE batch_size must be positive")
+        if self.max_workers <= 0:
+            raise ValueError("CIMPLE max_workers must be positive")
 
 
 @dataclass
 class EnrichmentConfig:
     """Configuration for enrichment methods."""
 
+    progress_interval_seconds: float = 10.0
     dbpedia_spotlight: DbpediaSpotlightConfig = field(
         default_factory=DbpediaSpotlightConfig
     )
     dbpedia_entity_properties: DbpediaEntityPropertiesConfig = field(
         default_factory=DbpediaEntityPropertiesConfig
     )
-    bert_factors: BertFactorsConfig = field(default_factory=BertFactorsConfig)
-    url_text_extraction: UrlTextExtractionConfig = field(
-        default_factory=UrlTextExtractionConfig
-    )
+    cimple: CimpleConfig = field(default_factory=CimpleConfig)
+
+    def __post_init__(self) -> None:
+        if self.progress_interval_seconds < 0:
+            raise ValueError(
+                "Enrichment progress_interval_seconds must be non-negative"
+            )
+        if (
+            self.dbpedia_entity_properties.enabled
+            and not self.dbpedia_spotlight.enabled
+        ):
+            raise ValueError(
+                "DBpedia entity properties require DBpedia Spotlight to be enabled"
+            )
+
+
+@dataclass
+class SnapshotRetentionConfig:
+    """Retention policy for full RDF snapshot runs."""
+
+    keep_latest: int = 0
 
 
 @dataclass
 class OutputConfig:
     """Configuration for RDF output."""
 
-    format: Literal["turtle", "nt", "rdf/xml", "n3"] = "nt"
-    output_path: str | Path = "output/knowledge_graph.nt"
+    output_path: str | Path = "data/rdf/{DATETIME}/{SOURCE}.nt.gz"
     base_uri: str = "http://data.climatesense-project.eu"
+    retention: SnapshotRetentionConfig = field(default_factory=SnapshotRetentionConfig)
+
+    def __post_init__(self) -> None:
+        if self.retention.keep_latest < 0:
+            raise ValueError("Output retention keep_latest must be non-negative")
 
 
 @dataclass
@@ -149,14 +246,6 @@ class LoggingConfig:
     file_path: str | Path | None = None
     max_file_size: str = "10MB"
     backup_count: int = 5
-
-
-@dataclass
-class DeploymentConfig:
-    """Configuration for deployment settings."""
-
-    backend: Literal["none", "virtuoso", "qlever"] = "none"
-    graph_template: str = "http://data.climatesense-project.eu/graph/{SOURCE}"
 
 
 @dataclass
@@ -172,8 +261,18 @@ class PipelineConfig:
     """Main pipeline configuration."""
 
     data_sources: list[DataSourceConfig] = field(default_factory=list[DataSourceConfig])
+    batch_size: int = 500
+    progress_interval_seconds: float = 10.0
+    document_extraction: DocumentExtractionConfig = field(
+        default_factory=DocumentExtractionConfig
+    )
     enrichment: EnrichmentConfig = field(default_factory=EnrichmentConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
-    deployment: DeploymentConfig = field(default_factory=DeploymentConfig)
     cache: CacheConfig = field(default_factory=CacheConfig)
+
+    def __post_init__(self) -> None:
+        if self.batch_size <= 0:
+            raise ValueError("Pipeline batch_size must be positive")
+        if self.progress_interval_seconds < 0:
+            raise ValueError("Pipeline progress interval must be non-negative")

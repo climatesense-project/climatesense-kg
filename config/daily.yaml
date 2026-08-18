@@ -54,21 +54,32 @@ data_sources:
       timeout: 120
     cache_ttl_hours: 8760
 
-# Enrichment configuration
+batch_size: 500
+progress_interval_seconds: 10
+
+document_extraction:
+  enabled: true
+  max_workers: 32
+  rate_limit_delay: 0.5
+  timeout: 15
+  max_retries: 2
+  transient_retry_delay_hours: 1
+  blocked_retry_delay_hours: 720
+  dns_retry_delay_hours: 168
+  content_retry_delay_hours: 720
+  progress_interval_seconds: 10
+
 enrichment:
-  url_text_extraction:
-    enabled: true
-    rate_limit_delay: 0
-    timeout: 15
-    max_retries: 2
+  progress_interval_seconds: 10
 
   dbpedia_spotlight:
     enabled: true
-    api_url: "https://api.dbpedia-spotlight.org/en/annotate"
+    api_url: "https://dbpedia-spotlight.tools.eurecom.fr/rest/annotate"
+    model_id: "dbpedia-spotlight-en"
     confidence: 0.6
     support: 30
     timeout: 20
-    rate_limit_delay: 0
+    max_workers: 8
 
   dbpedia_entity_properties:
     enabled: true
@@ -82,30 +93,32 @@ enrichment:
     timeout: 30
     rate_limit_delay: 0
 
-  bert_factors:
+  cimple:
     enabled: true
+    model_versions:
+      emotion: "1"
+      sentiment: "1"
+      political_leaning: "1"
+      tropes: "1"
+      persuasion_techniques: "1"
+      conspiracies: "1"
+      climate_related: "1"
     batch_size: 64
     max_length: 128
     timeout: 300
     rate_limit_delay: 0
+    max_workers: 1
 
-# Output configuration
 output:
-  format: "nt"
-  output_path: "data/rdf/{DATE}/{SOURCE}_{DATETIME}.nt"
+  output_path: "data/rdf/{DATETIME}/{SOURCE}.nt.gz"
   base_uri: "http://data.climatesense-project.eu"
+  retention:
+    keep_latest: 3
 
-# Cache configuration
 cache:
   cache_dir: "cache"
   default_ttl_hours: 24.0
 
-# Deployment configuration
-deployment:
-  backend: "qlever"
-  graph_template: "http://data.climatesense-project.eu/graph/{SOURCE}"
-
-# Logging configuration
 logging:
   level: "INFO"
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

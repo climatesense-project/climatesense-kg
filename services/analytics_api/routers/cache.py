@@ -145,22 +145,22 @@ async def refresh_cache(
     try:
         # Pipeline metrics queries
         await pipeline_router.success_rate(
-            step=None, from_ts=None, to_ts=None, session=session
+            stage_name=None, from_ts=None, to_ts=None, session=session
         )
         sql_queries_warmed += 1
 
         await pipeline_router.error_types(
-            step=None, from_ts=None, to_ts=None, limit=200, session=session
+            stage_name=None, from_ts=None, to_ts=None, limit=200, session=session
         )
         sql_queries_warmed += 1
 
         await pipeline_router.domain_failures(
-            step=None, from_ts=None, to_ts=None, limit=50, session=session
+            stage_name=None, from_ts=None, to_ts=None, limit=50, session=session
         )
         sql_queries_warmed += 1
 
         await pipeline_router.recent_activity(
-            step=None, from_ts=None, to_ts=None, limit=20, session=session
+            stage_name=None, from_ts=None, to_ts=None, limit=20, session=session
         )
         sql_queries_warmed += 1
 

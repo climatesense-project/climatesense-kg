@@ -9,9 +9,10 @@ data_sources:
       max_extract_size: "512MB"
 
 output:
-  format: "nt"
-  output_path: "data/rdf/{DATE}/{SOURCE}_{DATETIME}.nt"
+  output_path: "data/rdf/{DATETIME}/{SOURCE}.nt.gz"
   base_uri: "http://data.climatesense-project.eu"
+  retention:
+    keep_latest: 3
 
 cache:
   cache_dir: "cache"

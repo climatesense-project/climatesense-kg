@@ -2,7 +2,7 @@
 
 import pytest
 
-from climatesense_kg.config.models import CanonicalClaim
+from climatesense_kg.domain import CanonicalClaim
 
 
 @pytest.mark.parametrize(

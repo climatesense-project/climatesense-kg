@@ -12,7 +12,8 @@ import zipfile
 import requests
 from tqdm import tqdm
 
-from ..config.schemas import ProviderConfig
+from .. import USER_AGENT
+from ..config.schemas import GitHubProviderConfig
 from ..utils.logging import parse_file_size
 from .base import BaseProvider
 
@@ -24,7 +25,7 @@ class GitHubAsset:
     size: int
 
 
-class GitHubProvider(BaseProvider):
+class GitHubProvider(BaseProvider[GitHubProviderConfig]):
     """Provider for fetching data from GitHub releases or repositories."""
 
     def __init__(self, name: str):
@@ -38,7 +39,7 @@ class GitHubProvider(BaseProvider):
         self.github_token = os.getenv("GITHUB_TOKEN")
         self.api_base = "https://api.github.com"
 
-    def fetch(self, config: ProviderConfig) -> bytes:
+    def fetch(self, config: GitHubProviderConfig) -> bytes:
         """Fetch data from GitHub based on configured mode."""
         repository = config.repository
         if not repository:
@@ -67,7 +68,7 @@ class GitHubProvider(BaseProvider):
 
         return self._fetch_latest_release_asset(config)
 
-    def _fetch_latest_release_asset(self, config: ProviderConfig) -> bytes:
+    def _fetch_latest_release_asset(self, config: GitHubProviderConfig) -> bytes:
         repository = config.repository
         asset_pattern = config.asset_pattern
         extract_file = config.extract_file
@@ -165,7 +166,7 @@ class GitHubProvider(BaseProvider):
         """Download asset data."""
         response = requests.get(
             asset.url,
-            headers=self._build_headers("application/octet-stream", for_download=True),
+            headers=self._build_headers("application/octet-stream"),
             timeout=timeout,
             stream=True,
         )
@@ -289,7 +290,7 @@ class GitHubProvider(BaseProvider):
                 chunks.append(chunk)
         return b"".join(chunks)
 
-    def get_cache_key_fields(self, config: ProviderConfig) -> dict[str, Any]:
+    def get_cache_key_fields(self, config: GitHubProviderConfig) -> dict[str, Any]:
         """Repository and asset pattern affect cache."""
         fields: dict[str, Any] = {
             "repository": config.repository,
@@ -305,18 +306,11 @@ class GitHubProvider(BaseProvider):
 
         return fields
 
-    def _build_headers(
-        self, accept: str, *, for_download: bool = False
-    ) -> dict[str, str]:
+    def _build_headers(self, accept: str) -> dict[str, str]:
         """Build headers for GitHub API requests."""
-        user_agent = (
-            "ClimateSense-Pipeline/1.0 (+https://github.com/climatesense-project)"
-            if for_download
-            else "ClimateSense-Pipeline/2.0"
-        )
         headers = {
             "Accept": accept,
-            "User-Agent": user_agent,
+            "User-Agent": USER_AGENT,
         }
 
         if self.github_token:
@@ -379,7 +373,7 @@ class GitHubProvider(BaseProvider):
         """Download raw file content using provided URL."""
         response = requests.get(
             url,
-            headers=self._build_headers("application/octet-stream", for_download=True),
+            headers=self._build_headers("application/octet-stream"),
             timeout=timeout,
         )
         response.raise_for_status()

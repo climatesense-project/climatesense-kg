@@ -8,11 +8,7 @@ from urllib.parse import urlparse
 
 from dateutil import parser
 
-from ..config.models import (
-    CanonicalClaim,
-    CanonicalClaimReview,
-    CanonicalOrganization,
-)
+from ..domain import CanonicalClaim, OrganizationReference, SourceReviewRecord
 from ..utils.text_processing import sanitize_url
 from .base import BaseProcessor
 
@@ -20,8 +16,8 @@ from .base import BaseProcessor
 class DefactoProcessor(BaseProcessor):
     """Processor for DE FACTO data."""
 
-    def process(self, raw_data: bytes) -> Iterator[CanonicalClaimReview]:
-        """Process DE FACTO raw data into CanonicalClaimReview objects."""
+    def process(self, raw_data: bytes) -> Iterator[SourceReviewRecord]:
+        """Process DE FACTO raw data into source observations."""
         try:
             data = json.loads(raw_data.decode("utf-8"))
 
@@ -34,8 +30,8 @@ class DefactoProcessor(BaseProcessor):
         except Exception as e:
             self.logger.error(f"Error processing DE FACTO data: {e}")
 
-    def _process_page(self, page_data: dict[str, Any]) -> CanonicalClaimReview | None:
-        """Process a single page and return a canonical review."""
+    def _process_page(self, page_data: dict[str, Any]) -> SourceReviewRecord | None:
+        """Process a single page and return a source observation."""
         try:
             return self._create_canonical_review(page_data)
         except Exception as e:
@@ -46,8 +42,8 @@ class DefactoProcessor(BaseProcessor):
 
     def _create_canonical_review(
         self, page_data: dict[str, Any]
-    ) -> CanonicalClaimReview | None:
-        """Create a CanonicalClaimReview from page data."""
+    ) -> SourceReviewRecord | None:
+        """Create a source observation from page data."""
         try:
             claim_text = self._extract_claim_text(page_data)
             if not claim_text:
@@ -71,15 +67,15 @@ class DefactoProcessor(BaseProcessor):
 
             review_text = self._clean_xwiki_content(page_data.get("content", ""))
 
-            return CanonicalClaimReview(
+            return self._source_record(
+                source_type="defacto",
                 claim=claim,
                 organization=organization,
                 review_url=review_url,
+                native_id=str(page_data["id"]),
                 date_published=date_published,
                 language=language,
                 review_text=review_text if review_text else None,
-                source_type="defacto",
-                source_name=self.name,
             )
 
         except Exception as e:
@@ -150,7 +146,7 @@ class DefactoProcessor(BaseProcessor):
 
     def _extract_organization(
         self, page_data: dict[str, Any]
-    ) -> CanonicalOrganization | None:
+    ) -> OrganizationReference | None:
         """Extract organization data from page information."""
         page_id = page_data.get("id", "")
         org_name = self._extract_organization_name_from_page_id(page_id)
@@ -158,4 +154,4 @@ class DefactoProcessor(BaseProcessor):
         if not org_name or not isinstance(organization_url, str):
             return None
 
-        return CanonicalOrganization(name=org_name, website=organization_url)
+        return OrganizationReference(name=org_name, website=organization_url)

@@ -17,7 +17,7 @@ The Analytics API provides metrics and statistics about the knowledge graph and 
          ▼
 ┌─────────────────┐      ┌──────────────┐
 │  Analytics API  │─────▶│  PostgreSQL  │
-│    (FastAPI)    │      │   (cache)    │
+│    (FastAPI)    │      │  (pipeline)  │
 └────────┬────────┘      └──────────────┘
          │
          │                ┌───────────────┐
@@ -30,10 +30,11 @@ The Analytics API provides metrics and statistics about the knowledge graph and 
 
 ### Pipeline Metrics
 
-- `GET /metrics/enrichers/success-rate` - Enricher success rates
-- `GET /metrics/enrichers/error-types` - Error type breakdown
-- `GET /metrics/enrichers/domain-failures` - Domain-specific failures
-- `GET /metrics/enrichers/recent-activity` - Recent enricher activity
+- `GET /metrics/stages/success-rate` - Success rates by semantic stage version
+- `GET /metrics/stages/error-types` - Stage error type breakdown
+- `GET /metrics/stages/domain-failures` - Document extraction failures by domain
+- `GET /metrics/stages/recent-activity` - Recent semantic-stage activity
+- `GET /metrics/stages/retry-queue` - Current deferred and permanent stage failures
 
 ### Knowledge Graph Metrics
 
@@ -44,7 +45,7 @@ The Analytics API provides metrics and statistics about the knowledge graph and 
 - `GET /metrics/kg/entity-types` - Entity type counts
 - `GET /metrics/kg/claim-factors` - Claim factor distributions
 
-### Cache Management
+### Analytics result cache management
 
 - `GET /cache/status` - Cache status overview
 - `POST /cache/clear` - Clear cache data
@@ -63,7 +64,12 @@ Environment variables:
 - `ANALYTICS_SPARQL_PASSWORD` - Optional SPARQL authentication password
 - `ANALYTICS_ALLOWED_ORIGINS` - CORS allowed origins (comma-separated)
 - `ANALYTICS_SPARQL_TIMEOUT` - SPARQL query timeout in seconds (default: 20)
-- `POSTGRES_*` - PostgreSQL connection settings
+- `POSTGRES_*` - Durable pipeline-state PostgreSQL connection settings
+- `ANALYTICS_RESULT_CACHE_TTL` - Analytics query-result cache TTL in seconds
+
+Pipeline endpoints read the `processing_results` view, which combines the current
+document-extraction and enrichment outcomes. Results represent current retry and
+coverage state; recomputation replaces the previous outcome for that subject.
 
 Use `http://virtuoso:8890/sparql` for Virtuoso or `http://qlever:7019` for QLever.
 

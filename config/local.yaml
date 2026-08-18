@@ -1,0 +1,116 @@
+data_sources:
+  - name: "claimreviewdata"
+    type: "claimreviewdata"
+    provider:
+      provider_type: "github"
+      repository: "MartinoMensio/claimreview-data"
+      mode: "release"
+      asset_pattern: "*.zip"
+      extract_file: "claim_reviews.json"
+      max_extract_size: "512MB"
+  - name: "euroclimatecheck"
+    type: "euroclimatecheck"
+    provider:
+      provider_type: "github"
+      repository: "climatesense-project/euroclimatecheck-scraper"
+      mode: "release"
+      asset_pattern: "all_articles.json"
+  - name: "defacto"
+    type: "defacto"
+    provider:
+      provider_type: "xwiki"
+      base_url: "https://defacto-observatoire.fr"
+      tags: ["Climat", "climat", "Changement climatique"]
+  - name: "dbkf"
+    type: "dbkf"
+    provider:
+      provider_type: "github"
+      repository: "climatesense-project/dbkf-scraper"
+      mode: "release"
+      asset_pattern: "dbkf.json.gz"
+      max_extract_size: "64MB"
+  - name: "desmog"
+    type: "desmog"
+    provider:
+      provider_type: "github"
+      repository: "climatesense-project/climate-disinformation-database"
+      mode: "repository"
+      repository_path: "graphs/climate-disinformation-database.ttl"
+      repository_ref: "main"
+      timeout: 120
+  - name: "climafacts"
+    type: "climafacts"
+    provider:
+      provider_type: "github"
+      repository: "climatesense-project/climafacts-kg"
+      mode: "release"
+      asset_pattern: "climafacts_kg.ttl"
+      timeout: 120
+  - name: "climate-fever"
+    type: "climate-fever"
+    provider:
+      provider_type: "http"
+      url: "https://www.sustainablefinance.uzh.ch/dam/jcr:df02e448-baa1-4db8-921a-58507be4838e/climate-fever-dataset-r1.jsonl"
+      timeout: 120
+    cache_ttl_hours: 8760
+
+document_extraction:
+  enabled: true
+  rate_limit_delay: 1
+  timeout: 15
+  max_retries: 2
+
+enrichment:
+  dbpedia_spotlight:
+    enabled: true
+    api_url: "https://dbpedia-spotlight.tools.eurecom.fr/rest/annotate"
+    model_id: "dbpedia-spotlight-en"
+    confidence: 0.6
+    support: 30
+    timeout: 20
+    max_workers: 8
+
+  dbpedia_entity_properties:
+    enabled: true
+    sparql_endpoint: "https://dbpedia.org/sparql"
+    properties:
+      - "http://www.w3.org/2003/01/geo/wgs84_pos#geometry"
+      - "http://www.w3.org/2003/01/geo/wgs84_pos#lat"
+      - "http://www.w3.org/2003/01/geo/wgs84_pos#long"
+      - "http://www.georss.org/georss/point"
+      - "http://www.opengis.net/ont/geosparql#asWKT"
+    timeout: 30
+    rate_limit_delay: 1
+
+  cimple:
+    enabled: true
+    model_versions:
+      emotion: "1"
+      sentiment: "1"
+      political_leaning: "1"
+      tropes: "1"
+      persuasion_techniques: "1"
+      conspiracies: "1"
+      climate_related: "1"
+    batch_size: 64
+    max_length: 128
+    timeout: 300
+    rate_limit_delay: 0
+    max_workers: 1
+
+output:
+  output_path: "data/rdf/{DATETIME}/{SOURCE}.nt.gz"
+  base_uri: "http://data.climatesense-project.eu"
+  retention:
+    keep_latest: 3
+
+cache:
+  cache_dir: "cache"
+  default_ttl_hours: 24.0
+
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file_path: "logs/daily_pipeline.log"
+  max_file_size: "50MB"
+  backup_count: 10

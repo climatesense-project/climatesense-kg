@@ -69,28 +69,45 @@ run CONFIG *ARGS="":
     uv run climatesense-kg run --config {{CONFIG}} {{ARGS}}
 
 # ============================================================================
-# Docker Commands
+# Virtuoso Commands
 # ============================================================================
-
-# Build Docker images
-docker-build:
-    docker compose -f docker/docker-compose.yml build
 
 # Start the stack with Virtuoso as the triplestore
 virtuoso-up:
     COMPOSE_PROFILES=virtuoso docker compose -f docker/docker-compose.yml up -d
 
-# Build the initial QLever index from historical RDF and vocabularies
-qlever-init:
-    COMPOSE_PROFILES=qlever-init docker compose -f docker/docker-compose.yml run --rm qlever-index
+# Redeploy all Virtuoso graphs from the latest (or given) RDF snapshot
+virtuoso-deploy SNAPSHOT="":
+    ./docker/virtuoso/deploy.sh "{{SNAPSHOT}}"
+
+# Query the Virtuoso SPARQL endpoint
+virtuoso-sparql QUERY:
+    @curl -fsS -G \
+        --header "Accept: application/sparql-results+json" \
+        --data-urlencode "query={{QUERY}}" \
+        "http://localhost:${VIRTUOSO_PORT:-8890}/sparql"
+
+# Show Virtuoso named-graph statistics
+virtuoso-stats:
+    @just virtuoso-sparql "SELECT ?g (COUNT(?s) AS ?triples) WHERE { GRAPH ?g { ?s a [] } } GROUP BY ?g ORDER BY DESC(?triples)" | \
+    jq -r '.results.bindings[] | [.g.value, .triples.value] | @tsv' | \
+    awk 'BEGIN {printf "%-80s %10s\n", "Graph", "Triples"; printf "%-80s %10s\n", "-----", "-------"} {printf "%-80s %10s\n", $1, $2}'
+
+# Open an interactive Virtuoso ISQL shell
+virtuoso-isql:
+    cd docker && docker compose exec -T virtuoso isql localhost:1111 dba "$VIRTUOSO_PASSWORD"
+
+# ============================================================================
+# QLever Commands
+# ============================================================================
 
 # Start the stack with QLever as the triplestore
 qlever-up:
     COMPOSE_PROFILES=qlever docker compose -f docker/docker-compose.yml up -d
 
-# Create an administrator for the QLever UI
-qlever-ui-admin:
-    COMPOSE_PROFILES=qlever docker compose -f docker/docker-compose.yml exec qlever-ui-app python manage.py createsuperuser
+# Build and activate a complete QLever index. Defaults to the latest RDF snapshot.
+qlever-deploy SNAPSHOT="":
+    ./docker/qlever/deploy-index.sh "{{SNAPSHOT}}"
 
 # Query the QLever SPARQL endpoint
 qlever-sparql QUERY:
@@ -104,48 +121,6 @@ qlever-stats:
     @just qlever-sparql "SELECT ?g (COUNT(*) AS ?triples) WHERE { GRAPH ?g { ?s ?p ?o } } GROUP BY ?g ORDER BY DESC(?triples)" | \
     jq -r '.results.bindings[] | [.g.value, .triples.value] | @tsv' | \
     awk 'BEGIN {printf "%-80s %10s\n", "Graph", "Triples"; printf "%-80s %10s\n", "-----", "-------"} {printf "%-80s %10s\n", $1, $2}'
-
-# Fold persisted QLever updates into a fresh optimized index, then restart
-qlever-rebuild:
-    COMPOSE_PROFILES=qlever docker compose -f docker/docker-compose.yml exec -T qlever bash -lc 'qlever rebuild-index --access-token "$$QLEVER_ACCESS_TOKEN" --keep-old-index-dirs newest'
-    COMPOSE_PROFILES=qlever docker compose -f docker/docker-compose.yml restart qlever
-
-# ============================================================================
-# Cache Commands
-# ============================================================================
-
-# Flush entire PostgreSQL cache
-cache-flush:
-    @echo "WARNING: This will delete ALL cache data in PostgreSQL!"
-    @read -p "Are you sure? (y/N) " confirm; \
-    if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then \
-        cd docker && docker compose exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "TRUNCATE TABLE cache_entries;"' && \
-        echo "✅ PostgreSQL cache cleared successfully"; \
-    else \
-        echo "❌ Cache flush cancelled"; \
-    fi
-
-# Delete cache entries for a specific step
-cache-delete STEP:
-    @echo "Deleting PostgreSQL cache for step: {{STEP}}"
-    @cd docker && COUNT=$(docker compose exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -t -c "SELECT COUNT(*) FROM cache_entries WHERE step = '\''{{STEP}}'\'';"' | tr -d ' '); \
-    if [ "$COUNT" -eq 0 ]; then \
-        echo "No cache entries found for step {{STEP}}"; \
-        exit 0; \
-    fi; \
-    echo "Found $COUNT cache entries for step {{STEP}}"; \
-    read -p "Are you sure you want to delete them? (y/N) " confirm; \
-    if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then \
-        docker compose exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "DELETE FROM cache_entries WHERE step = '\''{{STEP}}'\'';"' && \
-        echo "✅ PostgreSQL cache deleted for {{STEP}}"; \
-    else \
-        echo "❌ Cache deletion cancelled"; \
-    fi
-
-# List all cache steps
-cache-list:
-    @echo "=== Cached Steps ==="
-    @cd docker && docker compose exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT step, COUNT(*) as count FROM cache_entries GROUP BY step ORDER BY count DESC;"' || true
 
 # ============================================================================
 # Database Commands
@@ -167,44 +142,3 @@ db-restore FILE:
     else \
         echo "❌ Database restore cancelled"; \
     fi
-
-# ============================================================================
-# Virtuoso Commands
-# ============================================================================
-
-# Connect to Virtuoso SQL interface
-isql:
-    cd docker && docker compose exec virtuoso isql localhost:1111 dba
-
-# Run SPARQL query against Virtuoso
-sparql QUERY:
-    @cd docker && \
-    docker compose exec -T virtuoso sh -c '\
-        tmp=$(mktemp) || exit 1; \
-        printf "%s" "$1" > "$tmp" && \
-        wget -q -O - \
-            --header="Content-Type: application/sparql-query" \
-            --header="Accept: application/json" \
-            --post-file="$tmp" \
-            "http://localhost:8890/sparql"; \
-        rc=$?; \
-        rm -f "$tmp"; \
-        exit $rc' -- "{{QUERY}}"
-
-# Show Virtuoso graph statistics
-virtuoso-stats:
-    @cd docker && \
-    docker compose exec -T virtuoso sh -c '\
-        tmp=$(mktemp) || exit 1; \
-        printf "%s" "$1" > "$tmp" && \
-        wget -q -O - \
-            --header="Content-Type: application/sparql-query" \
-            --header="Accept: application/json" \
-            --post-file="$tmp" \
-            "http://localhost:8890/sparql"; \
-        rc=$?; \
-        rm -f "$tmp"; \
-        exit $rc' -- "SELECT ?g (COUNT(?s) AS ?triples) WHERE { GRAPH ?g { ?s a [] } } GROUP BY ?g ORDER BY DESC(?triples)" | \
-    jq -r '.results.bindings[] | [.g.value, .triples.value] | @tsv' | \
-    awk 'BEGIN {printf "%-80s %10s\n", "Graph", "Triples"; printf "%-80s %10s\n", "-----", "-------"} {printf "%-80s %10s\n", $1, $2}' \
-    || echo "No data found or Virtuoso not running."

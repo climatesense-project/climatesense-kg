@@ -4,14 +4,14 @@ from typing import Any
 
 import requests
 
-from ..config.schemas import ProviderConfig
+from ..config.schemas import HttpProviderConfig
 from .base import BaseProvider
 
 
-class HttpProvider(BaseProvider):
+class HttpProvider(BaseProvider[HttpProviderConfig]):
     """Provider that downloads data from a configured HTTP(S) endpoint."""
 
-    def fetch(self, config: ProviderConfig) -> bytes:
+    def fetch(self, config: HttpProviderConfig) -> bytes:
         url = config.url
         if not url:
             raise ValueError("HttpProvider requires 'url' in configuration")
@@ -24,5 +24,5 @@ class HttpProvider(BaseProvider):
         self.logger.info("Fetched %s bytes from %s", len(response.content), url)
         return response.content
 
-    def get_cache_key_fields(self, config: ProviderConfig) -> dict[str, Any]:
+    def get_cache_key_fields(self, config: HttpProviderConfig) -> dict[str, Any]:
         return {"url": config.url}

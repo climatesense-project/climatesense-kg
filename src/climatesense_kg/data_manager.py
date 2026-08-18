@@ -4,8 +4,8 @@ from collections.abc import Iterator
 import logging
 from pathlib import Path
 
-from .config.models import CanonicalClaimReview
 from .config.schemas import DataSourceConfig, ProviderConfig
+from .domain import SourceReviewRecord
 from .processors import (
     ClaimReviewDataProcessor,
     ClimafactsProcessor,
@@ -16,13 +16,7 @@ from .processors import (
     EuroClimateCheckProcessor,
 )
 from .processors.base import BaseProcessor
-from .providers import (
-    FileProvider,
-    GitHubProvider,
-    GraphQLProvider,
-    HttpProvider,
-    XWikiProvider,
-)
+from .provider_registry import PROVIDER_REGISTRATIONS
 from .providers.base import BaseProvider
 from .utils.data_cache import DataCache
 
@@ -44,15 +38,6 @@ class DataManager:
         self.cache = DataCache(Path(cache_dir), default_ttl_hours)
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
-        # Provider type mapping
-        self._providers: dict[str, type[BaseProvider]] = {
-            "file": FileProvider,
-            "github": GitHubProvider,
-            "graphql": GraphQLProvider,
-            "http": HttpProvider,
-            "xwiki": XWikiProvider,
-        }
-
         # Processor type mapping
         self._processors: dict[str, type[BaseProcessor]] = {
             "claimreviewdata": ClaimReviewDataProcessor,
@@ -66,7 +51,7 @@ class DataManager:
 
     def get_data(
         self, source_config: DataSourceConfig, skip_download: bool = False
-    ) -> Iterator[CanonicalClaimReview]:
+    ) -> Iterator[SourceReviewRecord]:
         """Get processed data for a source, using cache when possible.
 
         Args:
@@ -74,7 +59,7 @@ class DataManager:
             skip_download: Skip data downloads and use only cached data
 
         Yields:
-            CanonicalClaimReview objects
+            SourceReviewRecord objects
         """
         source_name = source_config.name
         source_type = source_config.type
@@ -92,51 +77,44 @@ class DataManager:
 
             # 2. Check cache
             cache_key_config = provider.get_cache_key_fields(provider_config)
-            raw_data = self.cache.get(
+            processor = self._create_processor(source_name, source_type)
+            with self.cache.open_stream(
                 source_name,
                 cache_key_config,
                 cache_ttl_hours,
                 ignore_expiry=skip_download,
-            )
-
-            fallback_key_config = provider.get_cache_fallback_key_fields(
-                provider_config
-            )
-            if skip_download and raw_data is None and fallback_key_config:
-                raw_data = self.cache.get(
-                    source_name,
-                    fallback_key_config,
-                    cache_ttl_hours,
-                    ignore_expiry=True,
-                )
-
-            if skip_download and raw_data is not None:
-                self.logger.info(
-                    f"Using cached data for {source_name} (--skip-download enabled, ignoring expiry)"
-                )
-
-            # 3. If cache miss, fetch from provider (unless skip_download is True)
-            if raw_data is None:
-                if skip_download:
-                    self.logger.warning(
-                        f"No cached data found for {source_name} and --skip-download is enabled. "
-                        f"Skipping download - no data will be processed for this source."
-                    )
+            ) as cached:
+                if cached is not None:
+                    if skip_download:
+                        self.logger.info(
+                            "Using cached data for %s (--skip-download enabled, "
+                            "ignoring expiry)",
+                            source_name,
+                        )
+                    yield from processor.process_stream(cached)
                     return
-                else:
-                    self.logger.info(
-                        f"Cache miss for {source_name}, fetching from provider"
+
+            if skip_download:
+                raise RuntimeError(
+                    f"No cached data found for {source_name} and --skip-download is enabled. "
+                    "The source cannot be ingested completely."
+                )
+
+            self.logger.info("Cache miss for %s, fetching from provider", source_name)
+            raw_data = provider.fetch(provider_config)
+            self.cache.put(source_name, cache_key_config, raw_data)
+            del raw_data
+            with self.cache.open_stream(
+                source_name,
+                cache_key_config,
+                cache_ttl_hours,
+                ignore_expiry=True,
+            ) as cached:
+                if cached is None:  # pragma: no cover - validated by cache.put
+                    raise RuntimeError(
+                        f"Failed to reopen cached data for {source_name}"
                     )
-                    raw_data = provider.fetch(provider_config)
-
-                    # Store in cache
-                    self.cache.put(source_name, cache_key_config, raw_data)
-                    if fallback_key_config and fallback_key_config != cache_key_config:
-                        self.cache.put(source_name, fallback_key_config, raw_data)
-
-            # 4. Process data
-            processor = self._create_processor(source_name, source_type)
-            yield from processor.process(raw_data)
+                yield from processor.process_stream(cached)
 
         except Exception as e:
             self.logger.error(f"Failed to get data for {source_name}: {e}")
@@ -147,11 +125,10 @@ class DataManager:
     ) -> BaseProvider:
         """Create provider instance from config."""
         provider_type = provider_config.provider_type
-        if provider_type not in self._providers:
+        registration = PROVIDER_REGISTRATIONS.get(provider_type)
+        if registration is None:
             raise ValueError(f"Unknown provider type: {provider_type}")
-
-        provider_class = self._providers[provider_type]
-        return provider_class(source_name)
+        return registration.provider_type(source_name)
 
     def _create_processor(self, source_name: str, source_type: str) -> BaseProcessor:
         """Create processor instance from source type."""

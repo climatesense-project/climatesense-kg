@@ -1,7 +1,5 @@
-"""RDF generation module for converting canonical data to RDF."""
+"""RDF vocabulary projection."""
 
 from .generator import RDFGenerator
 
-__all__ = [
-    "RDFGenerator",
-]
+__all__ = ["RDFGenerator"]

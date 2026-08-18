@@ -10,7 +10,7 @@ services:
     container_name: climatesense-postgres
     shm_size: 1gb
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-climatesense_cache}
+      POSTGRES_DB: ${POSTGRES_DB:-climatesense}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
     ports:
@@ -22,7 +22,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-climatesense_cache}",
+          "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-climatesense}",
         ]
       interval: 15s
       timeout: 5s
@@ -52,38 +52,9 @@ services:
     profiles:
       - virtuoso
 
-  isql-service:
-    build:
-      context: ./isql-service
-      dockerfile: Dockerfile
-    container_name: climatesense-isql
-    environment:
-      VIRTUOSO_HOST: virtuoso
-      VIRTUOSO_ISQL_PORT: 1111
-      VIRTUOSO_USER: dba
-      VIRTUOSO_PASSWORD: ${VIRTUOSO_PASSWORD}
-      ISQL_SERVICE_TOKEN: ${ISQL_SERVICE_TOKEN:-}
-      HOST: 0.0.0.0
-      PORT: 8080
-    depends_on:
-      - virtuoso
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-    profiles:
-      - virtuoso
-
-  qlever-volume-init:
+  qlever-volume-admin:
     image: alpine:3.22
-    container_name: climatesense-qlever-volume-init
-    command:
-      - sh
-      - -c
-      - chown -R ${QLEVER_UID:-999}:${QLEVER_GID:-999} /data
+    command: ["true"]
     volumes:
       - type: volume
         source: qlever_data
@@ -92,14 +63,12 @@ services:
           nocopy: true
     restart: "no"
     profiles:
-      - qlever
       - qlever-init
 
   qlever-index:
     image: docker.io/adfreiburg/qlever:commit-8d7945d
     container_name: climatesense-qlever-index
     working_dir: /data
-    env_file: .env
     environment:
       UID: ${QLEVER_UID:-999}
       GID: ${QLEVER_GID:-999}
@@ -107,19 +76,18 @@ services:
     command:
       - -c
       - >-
+        cp /config/Qleverfile /data/index-next/Qleverfile &&
+        cd /data/index-next &&
         qlever index
-        --stxxl-memory "${QLEVER_INDEX_MEMORY:-1G}"
+        --stxxl-memory "$${QLEVER_INDEX_MEMORY:-1G}"
     volumes:
       - type: volume
         source: qlever_data
         target: /data
         volume:
           nocopy: true
-      - ./qlever/Qleverfile:/data/Qleverfile:ro
+      - ${QLEVER_DEPLOY_QLEVERFILE:-./qlever/Qleverfile}:/config/Qleverfile:ro
       - ../data:/data/source:ro
-    depends_on:
-      qlever-volume-init:
-        condition: service_completed_successfully
     restart: "no"
     profiles:
       - qlever-init
@@ -128,7 +96,6 @@ services:
     image: docker.io/adfreiburg/qlever:commit-8d7945d
     container_name: climatesense-qlever
     working_dir: /data
-    env_file: .env
     environment:
       UID: ${QLEVER_UID:-999}
       GID: ${QLEVER_GID:-999}
@@ -136,17 +103,16 @@ services:
       QLEVER_MEMORY_FOR_QUERIES: ${QLEVER_MEMORY_FOR_QUERIES:-5G}
       QLEVER_CACHE_MAX_SIZE: ${QLEVER_CACHE_MAX_SIZE:-2G}
       QLEVER_QUERY_TIMEOUT: ${QLEVER_QUERY_TIMEOUT:-30s}
-      QLEVER_REQUEST_BODY_LIMIT: ${QLEVER_REQUEST_BODY_LIMIT:-3G}
     command:
       - -c
       - >-
+        cd /data/index-current &&
         qlever start
         --run-in-foreground
         --access-token "${QLEVER_ACCESS_TOKEN:-}"
         --memory-for-queries "${QLEVER_MEMORY_FOR_QUERIES:-5G}"
         --cache-max-size "${QLEVER_CACHE_MAX_SIZE:-2G}"
         --timeout "${QLEVER_QUERY_TIMEOUT:-30s}"
-        request-body-limit="${QLEVER_REQUEST_BODY_LIMIT:-3G}"
     ports:
       - "${QLEVER_PORT:-7019}:7019"
     volumes:
@@ -155,10 +121,6 @@ services:
         target: /data
         volume:
           nocopy: true
-      - ./qlever/Qleverfile:/data/Qleverfile:ro
-    depends_on:
-      qlever-volume-init:
-        condition: service_completed_successfully
     restart: unless-stopped
     healthcheck:
       test:
@@ -255,24 +217,18 @@ services:
       GITHUB_TOKEN: ${GITHUB_TOKEN}
       POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
       POSTGRES_PORT: "5432"
-      POSTGRES_DB: ${POSTGRES_DB:-climatesense_cache}
+      POSTGRES_DB: ${POSTGRES_DB:-climatesense}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      VIRTUOSO_HOST: ${VIRTUOSO_HOST:-virtuoso}
-      VIRTUOSO_PORT: ${VIRTUOSO_PORT:-8890}
-      VIRTUOSO_USER: ${VIRTUOSO_USER:-dba}
-      VIRTUOSO_PASSWORD: ${VIRTUOSO_PASSWORD}
-      VIRTUOSO_ISQL_SERVICE_URL: http://isql-service:8080
-      ISQL_SERVICE_TOKEN: ${ISQL_SERVICE_TOKEN:-}
-      QLEVER_ENDPOINT: ${QLEVER_ENDPOINT:-http://qlever:7019}
-      QLEVER_ACCESS_TOKEN: ${QLEVER_ACCESS_TOKEN:-}
-      QLEVER_UPLOAD_TIMEOUT_SECONDS: ${QLEVER_UPLOAD_TIMEOUT_SECONDS:-7200}
       CIMPLE_FACTORS_API_URL: ${CIMPLE_FACTORS_API_URL:?CIMPLE_FACTORS_API_URL must point to a Factors API reachable from the pipeline container}
     volumes:
       - ../data:/app/data
       - ../logs:/app/logs
       - ../cache:/app/cache
       - ../config:/app/config:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
     profiles:
       - manual
 
@@ -287,9 +243,10 @@ services:
       ANALYTICS_SPARQL_PASSWORD: ${ANALYTICS_SPARQL_PASSWORD:-}
       ANALYTICS_ALLOWED_ORIGINS: ${ANALYTICS_ALLOWED_ORIGINS:-http://localhost:3000}
       ANALYTICS_SPARQL_TIMEOUT: ${ANALYTICS_SPARQL_TIMEOUT:-20}
+      ANALYTICS_RESULT_CACHE_TTL: ${ANALYTICS_RESULT_CACHE_TTL:-300}
       POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
       POSTGRES_PORT: "5432"
-      POSTGRES_DB: ${POSTGRES_DB:-climatesense_cache}
+      POSTGRES_DB: ${POSTGRES_DB:-climatesense}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     depends_on:

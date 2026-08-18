@@ -6,12 +6,12 @@ from typing import Any
 from rdflib import BNode, Graph, Literal, URIRef
 from rdflib.namespace import RDF, Namespace
 
-from ..config.models import (
+from ..domain import (
     CanonicalClaim,
-    CanonicalClaimReview,
-    CanonicalOrganization,
     CanonicalPerson,
     CanonicalRating,
+    OrganizationReference,
+    SourceReviewRecord,
 )
 from ..utils.ratings import normalize_rating_label
 from ..utils.text_processing import sanitize_url
@@ -27,7 +27,7 @@ SCHEMA_CLAIM_REVIEW_TYPE = SCHEMA_NS["ClaimReview"]
 class ClimafactsProcessor(BaseProcessor):
     """Processor for Climafacts RDF Turtle releases."""
 
-    def process(self, raw_data: bytes) -> Iterator[CanonicalClaimReview]:
+    def process(self, raw_data: bytes) -> Iterator[SourceReviewRecord]:
         graph = Graph()
         try:
             graph.parse(data=raw_data.decode("utf-8"), format="turtle")
@@ -58,7 +58,8 @@ class ClimafactsProcessor(BaseProcessor):
         self,
         claim: CanonicalClaim,
         review_url: str,
-        organization: CanonicalOrganization,
+        organization: OrganizationReference,
+        native_id: str,
         date_published: str | None,
         language: str | None,
         rating: CanonicalRating | None,
@@ -68,12 +69,14 @@ class ClimafactsProcessor(BaseProcessor):
         keywords: list[str],
         authors: list[CanonicalPerson],
         license_url: str | None,
-    ) -> CanonicalClaimReview:
-        """Create a CanonicalClaimReview with the given parameters."""
-        return CanonicalClaimReview(
+    ) -> SourceReviewRecord:
+        """Create a source review record with the given parameters."""
+        return self._source_record(
+            source_type="climafacts",
             claim=claim,
             review_url=review_url,
             organization=organization,
+            native_id=native_id,
             date_published=date_published,
             language=language,
             rating=rating,
@@ -83,13 +86,11 @@ class ClimafactsProcessor(BaseProcessor):
             keywords=keywords,
             authors=authors,
             license_url=license_url,
-            source_type="climafacts",
-            source_name=self.name,
         )
 
     def _build_claim_review(
         self, graph: Graph, review_uri: URIRef
-    ) -> CanonicalClaimReview:
+    ) -> SourceReviewRecord:
         review_url = self._first_term_str(graph, review_uri, "url")
         if not review_url:
             raise ValueError("claim review missing schema:url")
@@ -133,6 +134,7 @@ class ClimafactsProcessor(BaseProcessor):
             claim=claim,
             review_url=review_url,
             organization=organization,
+            native_id=str(review_uri),
             date_published=date_published,
             language=language,
             rating=rating,
@@ -298,7 +300,7 @@ class ClimafactsProcessor(BaseProcessor):
 
     def _build_organization(
         self, graph: Graph, resource: Any
-    ) -> CanonicalOrganization | None:
+    ) -> OrganizationReference | None:
         if isinstance(resource, Literal):
             return None
 
@@ -321,7 +323,7 @@ class ClimafactsProcessor(BaseProcessor):
         if not name or not sanitized:
             return None
 
-        return CanonicalOrganization(name=name, website=sanitized)
+        return OrganizationReference(name=name, website=sanitized)
 
     def _resource_types(self, graph: Graph, resource: Any) -> set[URIRef]:
         types: set[URIRef] = set()
@@ -366,7 +368,7 @@ class ClimafactsProcessor(BaseProcessor):
 
     def _extract_organization(
         self, graph: Graph, review_uri: URIRef
-    ) -> CanonicalOrganization | None:
+    ) -> OrganizationReference | None:
         for candidate in self._objects(graph, review_uri, "publisher"):
             organization = self._build_organization(graph, candidate)
             if organization:
