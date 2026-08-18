@@ -49,7 +49,6 @@
   - [📋 Prerequisites](#-prerequisites)
   - [Table of Contents](#table-of-contents)
   - [Quick Start](#quick-start)
-  - [Docker Setup](#docker-setup)
   - [Configuration](#configuration)
   - [Querying the Knowledge Graph](#querying-the-knowledge-graph)
     - [Example SPARQL Queries](#example-sparql-queries)
@@ -61,65 +60,41 @@
 
 ## Quick Start
 
+The quickest way to get started is by using Docker, which brings up every required service (including PostgreSQL).
+
 **Install:**
 
 ```bash
 git clone https://github.com/climatesense-project/climatesense-kg.git
 cd climatesense-kg
 just install
+cp docker/.env.example docker/.env
 ```
 
-**Run:**
+At minimum, set the required secrets in `docker/.env` (`VIRTUOSO_PASSWORD`, `QLEVERUI_SECRET_KEY`, `QLEVER_ACCESS_TOKEN`, `POSTGRES_PASSWORD`) and confirm `COMPOSE_PROFILES` selects the triplestore you want.
+
+**Run the minimal pipeline:**
 
 ```bash
-just run config/minimal.yaml
+docker compose -f docker/docker-compose.yml run --rm pipeline \
+  run --config config/minimal.yaml
 ```
 
-## Docker Setup
+This ingests the bundled sample documents and writes an RDF snapshot under `data/rdf/`.
 
-**Requirements:**
+**Deploy the snapshot to your chosen triplestore:**
 
-- [Docker](https://docs.docker.com/get-docker/)
-- [Docker Compose](https://docs.docker.com/compose/install/)
-- [just](https://github.com/casey/just)
+- **Virtuoso**
 
-**Initial Setup:**
+  ```bash
+  just virtuoso-deploy && just virtuoso-up
+  ```
 
-1. Clone the repository and navigate to the project directory:
+- **QLever**
 
-   ```bash
-   git clone https://github.com/climatesense-project/climatesense-kg.git
-   cd climatesense-kg
-   ```
-
-2. Copy and configure environment variables:
-
-   ```bash
-   cp docker/.env.example docker/.env
-   ```
-
-   At minimum, set the required secrets (`VIRTUOSO_PASSWORD`, `QLEVERUI_SECRET_KEY`, `CIMPLE_FACTORS_API_URL`, `POSTGRES_PASSWORD`) and confirm `COMPOSE_PROFILES` selects the triplestore you want.
-
-3. Run the pipeline with minimal configuration to verify the setup:
-
-   ```bash
-   docker compose -f docker/docker-compose.yml run --rm pipeline \
-     run --config config/minimal.yaml
-   ```
-
-4. Deploy the snapshot to your chosen triplestore:
-
-   - **Virtuoso**
-
-     ```bash
-     just virtuoso-deploy && just virtuoso-up
-     ```
-
-   - **QLever**
-
-     ```bash
-     just qlever-deploy && just qlever-up
-     ```
+  ```bash
+  just qlever-deploy && just qlever-up
+  ```
 
 ## Configuration
 
@@ -255,6 +230,8 @@ LIMIT 10
 ```
 
 ## Development
+
+> Running the pipeline directly on the host (via `just run ...` or `uv run climatesense-kg run ...`) requires a running PostgreSQL instance. The Docker commands above are the easiest way to get one set-up.
 
 ### Setup
 
