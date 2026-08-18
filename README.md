@@ -294,7 +294,7 @@ uv run climatesense-kg run --config config/daily.yaml --skip-extraction
 # just qlever-deploy data/rdf/2026-08-15_143734    # QLever
 
 # Delete recomputable extraction and enrichment results without deleting identities
-uv run climatesense-kg flush-processing-results --yes
+uv run climatesense-kg purge-processing-results --yes
 ```
 
 ## Acknowledgments

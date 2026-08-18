@@ -56,11 +56,11 @@ Examples:
         help="Ignore stored successes and re-run all enrichment",
     )
 
-    flush_parser = subparsers.add_parser(
-        "flush-processing-results",
+    purge_parser = subparsers.add_parser(
+        "purge-processing-results",
         help="Delete recomputable extraction and enrichment results",
     )
-    flush_parser.add_argument(
+    purge_parser.add_argument(
         "--yes",
         action="store_true",
         help="Confirm deletion of all persisted processing results",
@@ -163,12 +163,12 @@ def run_pipeline(args: argparse.Namespace) -> int:
     return 1
 
 
-def run_flush_processing_results(args: argparse.Namespace) -> int:
+def run_purge_processing_results(args: argparse.Namespace) -> int:
     """Delete recomputable processing state without touching identity tables."""
 
     if not getattr(args, "yes", False):
         print(
-            "Refusing to flush processing results without --yes; identity data is "
+            "Refusing to purge processing results without --yes; identity data is "
             "never deleted by this command.",
             file=sys.stderr,
         )
@@ -184,7 +184,7 @@ def run_flush_processing_results(args: argparse.Namespace) -> int:
         with Database.from_environment() as database:
             deleted = clear_processing_results(database.pool)
     except Exception as exc:
-        print(f"Failed to flush processing results: {exc}", file=sys.stderr)
+        print(f"Failed to purge processing results: {exc}", file=sys.stderr)
         return 1
 
     print(
@@ -204,7 +204,7 @@ def main() -> int:
         return 1
 
     handlers = {
-        "flush-processing-results": run_flush_processing_results,
+        "purge-processing-results": run_purge_processing_results,
         "run": run_pipeline,
     }
 

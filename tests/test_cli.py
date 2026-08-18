@@ -6,8 +6,8 @@ from unittest.mock import Mock, patch
 
 from src.climatesense_kg.cli import (
     create_parser,
-    run_flush_processing_results,
     run_pipeline,
+    run_purge_processing_results,
 )
 
 
@@ -64,11 +64,11 @@ def test_run_pipeline_rejects_no_cache_with_skip_enrichment() -> None:
     assert exit_code == 1
 
 
-def test_flush_processing_results_requires_explicit_confirmation() -> None:
-    assert run_flush_processing_results(Namespace(yes=False)) == 1
+def test_purge_processing_results_requires_explicit_confirmation() -> None:
+    assert run_purge_processing_results(Namespace(yes=False)) == 1
 
 
-def test_flush_processing_results_deletes_only_recomputable_results() -> None:
+def test_purge_processing_results_deletes_only_recomputable_results() -> None:
     database = Mock()
     database.__enter__ = Mock(return_value=database)
     database.__exit__ = Mock(return_value=None)
@@ -82,7 +82,7 @@ def test_flush_processing_results_deletes_only_recomputable_results() -> None:
             return_value=7,
         ) as clear,
     ):
-        exit_code = run_flush_processing_results(Namespace(yes=True))
+        exit_code = run_purge_processing_results(Namespace(yes=True))
 
     assert exit_code == 0
     clear.assert_called_once_with(database.pool)
