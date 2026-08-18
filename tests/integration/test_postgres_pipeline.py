@@ -405,12 +405,14 @@ def test_permanent_enrichment_failure_is_retained_until_forced(
     assert retained.permanent_failures == 1
     assert enricher.compute_calls == 1
 
-    forced = service.run(force=True)[0]
+    forced = service.run(ignore_cache=True)[0]
     assert forced.succeeded == 1
     assert enricher.compute_calls == 2
 
 
-def test_extraction_reuse_retry_retention_and_force(database: Database) -> None:
+def test_extraction_reuse_retry_retention_and_ignore_cache(
+    database: Database,
+) -> None:
     record = _records()[0]
     _install(database, [record], batch_size=1)
     key = normalize_document_url(record.document.observed_url)
@@ -433,8 +435,8 @@ def test_extraction_reuse_retry_retention_and_force(database: Database) -> None:
         side_effect=lambda targets, _executor: [success] * len(targets)
     )
 
-    computed = service._process_batch([target], offline=False, force=False)
-    cached = service._process_batch([target], offline=False, force=False)
+    computed = service._process_batch([target], offline=False, ignore_cache=False)
+    cached = service._process_batch([target], offline=False, ignore_cache=False)
 
     assert computed.succeeded == 1
     assert cached.cached == 1
@@ -451,7 +453,7 @@ def test_extraction_reuse_retry_retention_and_force(database: Database) -> None:
             )
         ]
     )
-    deferred = service._process_batch([target], offline=False, force=False)
+    deferred = service._process_batch([target], offline=False, ignore_cache=False)
     assert deferred.retryable_failures == 1
     assert service._compute_many.call_count == 1
 
@@ -463,8 +465,8 @@ def test_extraction_reuse_retry_retention_and_force(database: Database) -> None:
             )
         ]
     )
-    retained = service._process_batch([target], offline=False, force=False)
-    forced = service._process_batch([target], offline=False, force=True)
+    retained = service._process_batch([target], offline=False, ignore_cache=False)
+    forced = service._process_batch([target], offline=False, ignore_cache=True)
     assert retained.permanent_failures == 1
     assert forced.succeeded == 1
     assert service._compute_many.call_count == 2

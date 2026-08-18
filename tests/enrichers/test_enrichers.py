@@ -238,7 +238,7 @@ def test_enrichment_work_units_are_bounded_checkpointed_and_mapped(
             enricher,
             reviews,
             offline=False,
-            force=False,
+            ignore_cache=False,
             batch_start=1,
             batch_end=6,
             total_reviews=6,

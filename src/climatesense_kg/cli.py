@@ -46,9 +46,14 @@ Examples:
         help=("Skip external enrichment calls; apply stored successful results"),
     )
     run_parser.add_argument(
-        "--force-regenerate",
+        "--no-cache-extraction",
         action="store_true",
-        help="Recompute stage results instead of restoring stored successes",
+        help="Ignore stored successes and refetch/recompute all document extractions",
+    )
+    run_parser.add_argument(
+        "--no-cache-enrichment",
+        action="store_true",
+        help="Ignore stored successes and re-run all enrichment",
     )
 
     flush_parser = subparsers.add_parser(
@@ -106,6 +111,23 @@ def run_pipeline(args: argparse.Namespace) -> int:
     from .config import load_config
     from .pipeline import Pipeline
 
+    if getattr(args, "no_cache_extraction", False) and getattr(
+        args, "skip_extraction", False
+    ):
+        print(
+            "--no-cache-extraction and --skip-extraction are mutually exclusive",
+            file=sys.stderr,
+        )
+        return 1
+    if getattr(args, "no_cache_enrichment", False) and getattr(
+        args, "skip_enrichment", False
+    ):
+        print(
+            "--no-cache-enrichment and --skip-enrichment are mutually exclusive",
+            file=sys.stderr,
+        )
+        return 1
+
     try:
         config = load_config(args.config)
     except Exception as e:
@@ -121,7 +143,8 @@ def run_pipeline(args: argparse.Namespace) -> int:
                 cached_sources_only=getattr(args, "skip_download", False),
                 offline_extraction=getattr(args, "skip_extraction", False),
                 offline_enrichment=getattr(args, "skip_enrichment", False),
-                force=getattr(args, "force_regenerate", False),
+                ignore_cache_extraction=getattr(args, "no_cache_extraction", False),
+                ignore_cache_enrichment=getattr(args, "no_cache_enrichment", False),
             )
     except KeyboardInterrupt:
         print(

@@ -280,7 +280,7 @@ uv run climatesense-kg --help
 uv run climatesense-kg run --config config/minimal.yaml --debug
 
 # Recompute extraction and enrichment results while using cached source data
-uv run climatesense-kg run --config config/daily.yaml --skip-download --force-regenerate
+uv run climatesense-kg run --config config/daily.yaml --skip-download --no-cache-extraction --no-cache-enrichment
 
 # Restore stored extractions without fetching fact-check documents
 uv run climatesense-kg run --config config/daily.yaml --skip-extraction

@@ -59,7 +59,8 @@ class Pipeline:
         cached_sources_only: bool = False,
         offline_extraction: bool = False,
         offline_enrichment: bool = False,
-        force: bool = False,
+        ignore_cache_extraction: bool = False,
+        ignore_cache_enrichment: bool = False,
     ) -> PipelineSummary:
         started = time.monotonic()
         run: PipelineRun | None = None
@@ -76,7 +77,7 @@ class Pipeline:
             extraction = (
                 self.services.extraction.run(
                     offline=offline_extraction,
-                    force=force,
+                    ignore_cache=ignore_cache_extraction,
                 )
                 if self.services.extraction
                 else None
@@ -85,7 +86,7 @@ class Pipeline:
             enrichments = tuple(
                 self.services.enrichment.run(
                     offline=offline_enrichment,
-                    force=force,
+                    ignore_cache=ignore_cache_enrichment,
                 )
             )
             incomplete = self._incomplete_graph_stages(

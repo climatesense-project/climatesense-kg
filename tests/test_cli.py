@@ -19,6 +19,51 @@ def test_run_parser_accepts_skip_extraction() -> None:
     assert args.skip_extraction is True
 
 
+def test_run_parser_accepts_no_cache_flags() -> None:
+    args = create_parser().parse_args(
+        [
+            "run",
+            "--config",
+            "config/local.yaml",
+            "--no-cache-extraction",
+            "--no-cache-enrichment",
+        ]
+    )
+
+    assert args.no_cache_extraction is True
+    assert args.no_cache_enrichment is True
+
+
+def test_run_pipeline_rejects_no_cache_with_skip_extraction() -> None:
+    exit_code = run_pipeline(
+        Namespace(
+            config="config.yaml",
+            debug=False,
+            no_cache_extraction=True,
+            skip_extraction=True,
+            no_cache_enrichment=False,
+            skip_enrichment=False,
+        )
+    )
+
+    assert exit_code == 1
+
+
+def test_run_pipeline_rejects_no_cache_with_skip_enrichment() -> None:
+    exit_code = run_pipeline(
+        Namespace(
+            config="config.yaml",
+            debug=False,
+            no_cache_extraction=False,
+            skip_extraction=False,
+            no_cache_enrichment=True,
+            skip_enrichment=True,
+        )
+    )
+
+    assert exit_code == 1
+
+
 def test_flush_processing_results_requires_explicit_confirmation() -> None:
     assert run_flush_processing_results(Namespace(yes=False)) == 1
 

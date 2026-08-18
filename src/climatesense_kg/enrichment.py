@@ -52,7 +52,9 @@ class EnrichmentService:
         self.progress_interval_seconds = progress_interval_seconds
         self._availability: dict[str, bool] = {}
 
-    def run(self, *, offline: bool = False, force: bool = False) -> list[StageSummary]:
+    def run(
+        self, *, offline: bool = False, ignore_cache: bool = False
+    ) -> list[StageSummary]:
         """Process all canonical reviews in bounded batches."""
 
         self._availability.clear()
@@ -79,7 +81,7 @@ class EnrichmentService:
                         enricher,
                         items,
                         offline=offline,
-                        force=force,
+                        ignore_cache=ignore_cache,
                         batch_start=batch_start,
                         batch_end=batch_end,
                         total_reviews=total,
@@ -120,7 +122,7 @@ class EnrichmentService:
         items: list[Any],
         *,
         offline: bool,
-        force: bool,
+        ignore_cache: bool,
         batch_start: int = 1,
         batch_end: int | None = None,
         total_reviews: int | None = None,
@@ -131,7 +133,7 @@ class EnrichmentService:
         summary = StageSummary(enricher.name, eligible=len(subjects))
         stored = (
             {}
-            if force
+            if ignore_cache
             else self._load(
                 enricher.name,
                 [subject.key for subject in subjects],

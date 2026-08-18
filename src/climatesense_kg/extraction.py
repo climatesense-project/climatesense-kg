@@ -130,7 +130,7 @@ class DocumentExtractionService:
         self.input_config_hash = stable_hash({})
         self._host_cooldowns: dict[str, _HostCooldown] = {}
 
-    def run(self, *, offline: bool = False, force: bool = False) -> StageSummary:
+    def run(self, *, offline: bool = False, ignore_cache: bool = False) -> StageSummary:
         """Restore current results and optionally fetch missing or due URLs."""
 
         self._host_cooldowns.clear()
@@ -173,7 +173,9 @@ class DocumentExtractionService:
                         for row in rows
                     ]
                     summary.merge(
-                        self._process_batch(targets, offline=offline, force=force)
+                        self._process_batch(
+                            targets, offline=offline, ignore_cache=ignore_cache
+                        )
                     )
                     processed += len(targets)
                     progress.update(
@@ -225,10 +227,10 @@ class DocumentExtractionService:
         targets: list[DocumentTarget],
         *,
         offline: bool,
-        force: bool,
+        ignore_cache: bool,
     ) -> StageSummary:
         summary = StageSummary(self.name, available=None if offline else True)
-        stored = {} if force else self._load([target.key for target in targets])
+        stored = {} if ignore_cache else self._load([target.key for target in targets])
         pending: list[DocumentTarget] = []
         now = datetime.now(UTC)
         for target in targets:
