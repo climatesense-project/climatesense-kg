@@ -2,17 +2,23 @@ data_sources:
   - name: "claimreviewdata"
     type: "claimreviewdata"
     provider:
-      provider_type: "github"
-      repository: "MartinoMensio/claimreview-data"
-      asset_pattern: "*.zip"
-      extract_file: "claim_reviews.json"
-      max_extract_size: "512MB"
+      provider_type: "file"
+      file_path: "samples/claimreviewdata-data/claim_reviews.json"
+  - name: "euroclimatecheck"
+    type: "euroclimatecheck"
+    provider:
+      provider_type: "file"
+      file_path: "samples/euroclimatecheck-data/all_articles.json"
 
 output:
   output_path: "data/rdf/{DATETIME}/{SOURCE}.nt.gz"
   base_uri: "http://data.climatesense-project.eu"
   retention:
     keep_latest: 3
+
+enrichment:
+  cimple:
+    enabled: false
 
 cache:
   cache_dir: "cache"
