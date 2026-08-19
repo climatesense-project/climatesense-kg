@@ -1,6 +1,7 @@
 """Command-line interface."""
 
 import argparse
+import faulthandler
 import sys
 
 from . import __version__
@@ -196,6 +197,7 @@ def run_purge_processing_results(args: argparse.Namespace) -> int:
 
 def main() -> int:
     """Main CLI entry point."""
+    faulthandler.enable()
     parser = create_parser()
     args = parser.parse_args()
 
