@@ -25,6 +25,8 @@ MULTI_INPUT_JSON = [{ "cmd": "gunzip -c {}", "format": "nt", "graph": "http://da
 
 STXXL_MEMORY = 1G
 VOCABULARY_TYPE = on-disk-compressed
+TEXT_INDEX = from_literals
+ADD_HAS_WORD_TRIPLES = true
 
 [server]
 HOST_NAME = 0.0.0.0
