@@ -56,6 +56,8 @@
     - [Setup](#setup)
     - [Common Tasks](#common-tasks)
     - [CLI Usage](#cli-usage)
+      - [`run` - Run the pipeline](#run---run-the-pipeline)
+      - [`purge-processing-results` - Delete recomputable results](#purge-processing-results---delete-recomputable-results)
   - [Acknowledgments](#acknowledgments)
 
 ## Quick Start
@@ -248,6 +250,28 @@ just pre-commit-all  # Run pre-commit on all files
 ```
 
 ### CLI Usage
+
+The CLI is invoked as `uv run climatesense-kg`. Available commands:
+
+#### `run` - Run the pipeline
+
+| Argument                | Description                                                            |
+| ----------------------- | ---------------------------------------------------------------------- |
+| `-c, --config CONFIG`   | Configuration file path                                                |
+| `--debug`               | Enable DEBUG level logging                                             |
+| `--skip-download`       | Skip data downloads and use only cached/already downloaded data        |
+| `--skip-extraction`     | Skip external document fetches; apply stored successful results        |
+| `--skip-enrichment`     | Skip external enrichment calls; apply stored successful results        |
+| `--no-cache-extraction` | Ignore stored successes and refetch/recompute all document extractions |
+| `--no-cache-enrichment` | Ignore stored successes and re-run all enrichment                      |
+
+#### `purge-processing-results` - Delete recomputable results
+
+| Argument | Description                                          |
+| -------- | ---------------------------------------------------- |
+| `--yes`  | Confirm deletion of all persisted processing results |
+
+**Examples:**
 
 ```bash
 # Display help
