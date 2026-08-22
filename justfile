@@ -137,7 +137,8 @@ db-restore FILE:
     @echo "Restoring database from {{FILE}}"
     @read -p "This will overwrite the current database. Are you sure? (y/N) " confirm; \
     if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then \
-        gunzip -c "{{FILE}}" | docker compose -f docker/docker-compose.yml exec -T postgres sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists' && \
+        docker compose -f docker/docker-compose.yml exec -T postgres sh -c 'dropdb -U "$POSTGRES_USER" --if-exists "$POSTGRES_DB" && createdb -U "$POSTGRES_USER" "$POSTGRES_DB"' && \
+        gunzip -c "{{FILE}}" | docker compose -f docker/docker-compose.yml exec -T postgres sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB"' && \
         echo "✅ Database restored from {{FILE}}"; \
     else \
         echo "❌ Database restore cancelled"; \
