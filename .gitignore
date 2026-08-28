@@ -4,6 +4,7 @@
 /data/rdf/
 /cache/
 /config/dev.yaml
+/ops/deploy.env
 *.ttl
 *.nt.gz
 *.rdf
