@@ -1,5 +1,6 @@
 volumes:
   virtuoso_data:
+  rdf-workbench-imports:
 
 services:
   virtuoso:
@@ -15,6 +16,7 @@ services:
       - virtuoso_data:/database
       - ./virtuoso/initdb.d:/initdb.d:ro
       - ../data:/database/data:ro
+      - rdf-workbench-imports:/app/imports
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8890/sparql || exit 1"]
@@ -22,3 +24,47 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+
+  workbench:
+    environment:
+      TRIPLESTORE_PROVIDER: virtuoso
+      SPARQL_ENDPOINT: ${SPARQL_ENDPOINT:-http://virtuoso:8890/sparql}
+      SESSION_SECRET: ${SESSION_SECRET}
+      VIRTUOSO_ADAPTER_URL: http://virtuoso-adapter:50118
+      VIRTUOSO_ADAPTER_TOKEN: ${VIRTUOSO_ADAPTER_TOKEN}
+      VIRTUOSO_EXPORT_BASE_PATH: ${VIRTUOSO_EXPORT_BASE_PATH:-/app/imports/exports}
+      GRAPH_EXPORT_FILE_LIMIT: ${GRAPH_EXPORT_FILE_LIMIT:-50000000000}
+      GRAPH_EXPORT_POLL_INTERVAL_MS: ${GRAPH_EXPORT_POLL_INTERVAL_MS:-1000}
+      GRAPH_EXPORT_POLL_ATTEMPTS: ${GRAPH_EXPORT_POLL_ATTEMPTS:-60}
+    depends_on:
+      virtuoso-adapter:
+        condition: service_healthy
+
+  virtuoso-adapter:
+    image: ghcr.io/ehrhart/rdf-workbench-virtuoso-adapter:latest
+    container_name: climatesense-virtuoso-adapter
+    environment:
+      VIRTUOSO_ADAPTER_TOKEN: ${VIRTUOSO_ADAPTER_TOKEN}
+      VIRTUOSO_HOST: ${VIRTUOSO_HOST:-virtuoso}
+      VIRTUOSO_ISQL_PORT: ${VIRTUOSO_ISQL_PORT:-1111}
+      VIRTUOSO_DBA_USER: ${VIRTUOSO_DBA_USER:-dba}
+      VIRTUOSO_DBA_PASSWORD: ${VIRTUOSO_DBA_PASSWORD:-${VIRTUOSO_PASSWORD}}
+      VIRTUOSO_IMPORTS_PATH: ${VIRTUOSO_IMPORTS_PATH:-/app/imports}
+      VIRTUOSO_ADAPTER_MAX_UPLOAD_BYTES: ${VIRTUOSO_ADAPTER_MAX_UPLOAD_BYTES:-107374182400}
+      VIRTUOSO_ADAPTER_SESSION_TTL_MS: ${VIRTUOSO_ADAPTER_SESSION_TTL_MS:-86400000}
+      VIRTUOSO_ADAPTER_SESSION_CLEANUP_INTERVAL_MS: ${VIRTUOSO_ADAPTER_SESSION_CLEANUP_INTERVAL_MS:-300000}
+    volumes:
+      - rdf-workbench-imports:/app/imports
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:50118/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped

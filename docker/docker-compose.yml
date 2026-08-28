@@ -89,3 +89,31 @@ services:
     ports:
       - "${ANALYTICS_UI_PORT:-3000}:3000"
     restart: unless-stopped
+
+  workbench:
+    image: ghcr.io/ehrhart/rdf-workbench:latest
+    container_name: climatesense-workbench
+    environment:
+      TRIPLESTORE_PROVIDER: ${TRIPLESTORE_PROVIDER}
+      SPARQL_ENDPOINT: ${SPARQL_ENDPOINT}
+      SPARQL_TIMEOUT_MS: ${SPARQL_TIMEOUT_MS:-60000}
+      WORKBENCH_NAME: ${WORKBENCH_NAME:-RDF Workbench}
+      WORKBENCH_URL: ${WORKBENCH_URL:-http://localhost:${WORKBENCH_PORT:-3001}}
+      RESOURCE_BASE_URI: ${RESOURCE_BASE_URI:-}
+    ports:
+      - "${WORKBENCH_PORT:-3001}:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped

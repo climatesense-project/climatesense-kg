@@ -1,6 +1,7 @@
 volumes:
   qlever_data:
   qlever_ui_data:
+  qlever-workbench-data:
 
 services:
   qlever-volume-admin:
@@ -149,3 +150,14 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+
+  workbench:
+    environment:
+      TRIPLESTORE_PROVIDER: qlever
+      SPARQL_ENDPOINT: ${SPARQL_ENDPOINT:-${QLEVER_ENDPOINT:-http://qlever:7019}}
+      WORKBENCH_DB_PATH: /data/workbench.sqlite
+      BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME:-admin}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD}
+      QLEVER_ACCESS_TOKEN: ${QLEVER_ACCESS_TOKEN:-}
+    volumes:
+      - qlever-workbench-data:/data

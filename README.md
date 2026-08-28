@@ -73,7 +73,7 @@ just install
 cp docker/.env.example docker/.env
 ```
 
-At minimum, set the required secrets in `docker/.env` (`VIRTUOSO_PASSWORD`, `QLEVERUI_SECRET_KEY`, `QLEVER_ACCESS_TOKEN`, `POSTGRES_PASSWORD`). The triplestore is chosen by which compose overlay you load: `docker/docker-compose.virtuoso.yml` or `docker/docker-compose.qlever.yml`.
+At minimum, set the required secrets in `docker/.env` (`VIRTUOSO_PASSWORD`, `QLEVERUI_SECRET_KEY`, `QLEVER_ACCESS_TOKEN`, `POSTGRES_PASSWORD`), and the RDF Workbench secrets (`BOOTSTRAP_ADMIN_PASSWORD` for QLever, `SESSION_SECRET` and `VIRTUOSO_ADAPTER_TOKEN` for Virtuoso). The triplestore is chosen by which compose overlay you load: `docker/docker-compose.virtuoso.yml` or `docker/docker-compose.qlever.yml`.
 
 **Run the minimal pipeline:**
 
@@ -97,6 +97,8 @@ This ingests the bundled sample documents and writes an RDF snapshot under `data
   ```bash
   just qlever-deploy && just qlever-up
   ```
+
+The stack also includes the [RDF Workbench](https://github.com/ehrhart/rdf-workbench), a UI for exploring and managing the triplestore, available at `http://localhost:3001`. It starts with either overlay. For Virtuoso, uploads and exports live in the `rdf-workbench-imports` volume, which is shared with the Virtuoso container for bulk loading.
 
 ## Configuration
 
