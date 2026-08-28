@@ -73,7 +73,7 @@ just install
 cp docker/.env.example docker/.env
 ```
 
-At minimum, set the required secrets in `docker/.env` (`VIRTUOSO_PASSWORD`, `QLEVERUI_SECRET_KEY`, `QLEVER_ACCESS_TOKEN`, `POSTGRES_PASSWORD`) and confirm `COMPOSE_PROFILES` selects the triplestore you want.
+At minimum, set the required secrets in `docker/.env` (`VIRTUOSO_PASSWORD`, `QLEVERUI_SECRET_KEY`, `QLEVER_ACCESS_TOKEN`, `POSTGRES_PASSWORD`). The triplestore is chosen by which compose overlay you load: `docker/docker-compose.virtuoso.yml` or `docker/docker-compose.qlever.yml`.
 
 **Run the minimal pipeline:**
 

@@ -20,7 +20,7 @@ if [[ -f "$DEPLOY_ENV_FILE" ]]; then
 	source "$DEPLOY_ENV_FILE"
 fi
 
-DOCKER_COMPOSE_FILE=${DOCKER_COMPOSE_FILE:-docker/docker-compose.yml}
+TRIPLESTORE=${TRIPLESTORE:-qlever}
 CONFIG_FILE=${CONFIG_FILE:-config/daily.yaml}
 LOCK_FILE=${LOCK_FILE:-/tmp/climatesense_deploy.lock}
 HEALTHCHECK_BASE_URL=${HEALTHCHECK_BASE_URL:?Set HEALTHCHECK_BASE_URL in $DEPLOY_ENV_FILE}
@@ -32,6 +32,29 @@ mkdir -p "$LOG_DIR"
 
 log() {
 	echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"
+}
+
+case "$TRIPLESTORE" in
+	qlever)
+		COMPOSE_FILES="docker/docker-compose.yml docker/docker-compose.qlever.yml"
+		DEPLOY_SCRIPT="docker/qlever/deploy-index.sh"
+		;;
+	virtuoso)
+		COMPOSE_FILES="docker/docker-compose.yml docker/docker-compose.virtuoso.yml"
+		DEPLOY_SCRIPT="docker/virtuoso/deploy.sh"
+		;;
+	*)
+		log "Error: TRIPLESTORE must be 'qlever' or 'virtuoso', got '$TRIPLESTORE'"
+		exit 1
+		;;
+esac
+
+compose() {
+	local args=()
+	for f in $COMPOSE_FILES; do
+		args+=(-f "$f")
+	done
+	docker compose "${args[@]}" "$@"
 }
 
 notify_healthcheck() {
@@ -99,10 +122,12 @@ notify_healthcheck "start"
 log "Navigating to project directory: $PROJECT_DIR"
 cd "$PROJECT_DIR"
 
-if [[ ! -f "$DOCKER_COMPOSE_FILE" ]]; then
-	log "Error: Docker compose file not found: $DOCKER_COMPOSE_FILE"
-	exit 1
-fi
+for f in $COMPOSE_FILES; do
+	if [[ ! -f "$f" ]]; then
+		log "Error: Docker compose file not found: $f"
+		exit 1
+	fi
+done
 
 if [[ ! -f "$CONFIG_FILE" ]]; then
 	log "Error: Configuration file not found: $CONFIG_FILE"
@@ -121,35 +146,35 @@ NEW_COMMIT=$(git rev-parse HEAD)
 log "Updated to commit: $NEW_COMMIT"
 
 log "Building Docker containers..."
-if ! docker compose -f "$DOCKER_COMPOSE_FILE" build; then
+if ! compose build; then
 	log "Error: Failed to start Docker containers"
 	exit 1
 fi
 
 log "Running daily pipeline..."
-if ! docker compose -f "$DOCKER_COMPOSE_FILE" run --build pipeline run -c "$CONFIG_FILE"; then
+if ! compose run --build pipeline run -c "$CONFIG_FILE"; then
 	log "Error: Pipeline execution failed"
 	exit 1
 fi
 
 log "Pipeline execution completed successfully"
 
-log "Deploying new RDF snapshot to QLever..."
-if ! ./docker/qlever/deploy-index.sh; then
-	log "Error: QLever index deployment failed"
+log "Deploying new RDF snapshot to $TRIPLESTORE..."
+if ! ./"$DEPLOY_SCRIPT"; then
+	log "Error: $TRIPLESTORE deployment failed"
 	exit 1
 fi
-log "QLever index updated successfully"
+log "$TRIPLESTORE deployment updated successfully"
 
-log "Starting QLever stack..."
-if ! COMPOSE_PROFILES=qlever docker compose -f "$DOCKER_COMPOSE_FILE" up -d; then
-	log "Error: QLever stack start failed"
+log "Starting $TRIPLESTORE stack..."
+if ! compose up -d; then
+	log "Error: $TRIPLESTORE stack start failed"
 	exit 1
 fi
-log "QLever stack started"
+log "$TRIPLESTORE stack started"
 
 log "Refreshing analytics API cache..."
-if docker compose -f "$DOCKER_COMPOSE_FILE" exec -T analytics-api python -m analytics_api.scripts.refresh_cache >/dev/null 2>&1; then
+if compose exec -T analytics-api python -m analytics_api.scripts.refresh_cache >/dev/null 2>&1; then
 	log "Analytics API cache refreshed successfully"
 else
 	log "Error: Failed to refresh analytics API cache"

@@ -74,7 +74,7 @@ run CONFIG *ARGS="":
 
 # Start the stack with Virtuoso as the triplestore
 virtuoso-up:
-    COMPOSE_PROFILES=virtuoso docker compose -f docker/docker-compose.yml up -d
+    docker compose -f docker/docker-compose.yml -f docker/docker-compose.virtuoso.yml up -d
 
 # Redeploy all Virtuoso graphs from the latest (or given) RDF snapshot
 virtuoso-deploy SNAPSHOT="":
@@ -95,7 +95,7 @@ virtuoso-stats:
 
 # Open an interactive Virtuoso ISQL shell
 virtuoso-isql:
-    cd docker && docker compose exec -T virtuoso isql localhost:1111 dba "$VIRTUOSO_PASSWORD"
+    cd docker && docker compose -f docker-compose.yml -f docker-compose.virtuoso.yml exec -T virtuoso isql localhost:1111 dba "$VIRTUOSO_PASSWORD"
 
 # ============================================================================
 # QLever Commands
@@ -103,7 +103,7 @@ virtuoso-isql:
 
 # Start the stack with QLever as the triplestore
 qlever-up:
-    COMPOSE_PROFILES=qlever docker compose -f docker/docker-compose.yml up -d
+    docker compose -f docker/docker-compose.yml -f docker/docker-compose.qlever.yml up -d
 
 # Build and activate a complete QLever index. Defaults to the latest RDF snapshot.
 qlever-deploy SNAPSHOT="":

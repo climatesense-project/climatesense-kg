@@ -5,6 +5,7 @@ set -eu
 repo_root=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 data_dir="$repo_root/data"
 compose_file="$repo_root/docker/docker-compose.yml"
+qlever_compose_file="$repo_root/docker/docker-compose.qlever.yml"
 template="$repo_root/docker/qlever/Qleverfile"
 snapshot_path=${1:-}
 qlever_uid=${QLEVER_UID:-999}
@@ -78,7 +79,7 @@ sed \
     "$template" >"$temporary_dir/Qleverfile"
 
 compose() {
-    docker compose -f "$compose_file" "$@"
+    docker compose -f "$compose_file" -f "$qlever_compose_file" "$@"
 }
 
 volume_admin() {
@@ -108,7 +109,6 @@ volume_admin "
 "
 QLEVER_DEPLOY_QLEVERFILE="$temporary_dir/Qleverfile" \
     compose --profile qlever-init run --rm qlever-index
-
 echo "Switching QLever to the completed candidate index"
 compose stop qlever >/dev/null 2>&1 || true
 volume_admin '
@@ -120,7 +120,7 @@ volume_admin '
     mv /data/index-next /data/index-current
 '
 
-compose --profile qlever up -d --force-recreate qlever
+compose up -d --force-recreate qlever
 if wait_for_qlever; then
     echo "QLever is serving snapshot $snapshot_id"
     exit 0
@@ -141,7 +141,7 @@ if ! volume_admin '
     exit 1
 fi
 
-compose --profile qlever up -d --force-recreate qlever
+compose up -d --force-recreate qlever
 if wait_for_qlever; then
     echo "Previous QLever index restored." >&2
 else

@@ -1,0 +1,24 @@
+volumes:
+  virtuoso_data:
+
+services:
+  virtuoso:
+    image: openlink/virtuoso-opensource-7:7.2.16
+    container_name: climatesense-virtuoso
+    env_file: .env
+    environment:
+      DBA_PASSWORD: ${VIRTUOSO_PASSWORD:?VIRTUOSO_PASSWORD must be set}
+      SPARQL_UPDATE: true
+    ports:
+      - "${VIRTUOSO_BIND_ADDRESS:-127.0.0.1}:${VIRTUOSO_PORT:-8890}:8890"
+    volumes:
+      - virtuoso_data:/database
+      - ./virtuoso/initdb.d:/initdb.d:ro
+      - ../data:/database/data:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8890/sparql || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

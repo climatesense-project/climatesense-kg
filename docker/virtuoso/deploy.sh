@@ -12,6 +12,7 @@ set -eu
 repo_root=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 data_dir="$repo_root/data"
 compose_file="$repo_root/docker/docker-compose.yml"
+virtuoso_compose_file="$repo_root/docker/docker-compose.virtuoso.yml"
 snapshot_arg=${1:-}
 virtuoso_password=${VIRTUOSO_PASSWORD:-}
 container_data_dir="/database/data"
@@ -88,8 +89,12 @@ container_path() {
 # Run one SQL batch through isql, failing loudly if Virtuoso reports an error.
 # isql itself exits 0 even when a statement fails, so the output is scanned for
 # the "*** Error" marker that Virtuoso emits for failed statements.
+compose() {
+    docker compose -f "$compose_file" -f "$virtuoso_compose_file" "$@"
+}
+
 isql() {
-    if output=$(docker compose -f "$compose_file" exec -T virtuoso \
+    if output=$(compose exec -T virtuoso \
         isql localhost:1111 dba "$virtuoso_password" 2>&1); then
         rc=0
     else
@@ -130,7 +135,7 @@ SQL
 wait_for_virtuoso() {
     attempts=0
     while [ "$attempts" -lt 30 ]; do
-        if docker compose -f "$compose_file" exec -T virtuoso sh -c \
+        if compose exec -T virtuoso sh -c \
             'wget -q -O - http://localhost:8890/sparql >/dev/null 2>&1'; then
             return 0
         fi
@@ -143,7 +148,7 @@ wait_for_virtuoso() {
 # --- Deploy -------------------------------------------------------------------
 
 echo "Deploying Virtuoso graphs from snapshot $snapshot_name"
-COMPOSE_PROFILES=virtuoso docker compose -f "$compose_file" up -d
+compose up -d
 
 for graph in $graphs; do
     deploy_file "$snapshot_dir/${graph}.nt.gz" "$graph"
