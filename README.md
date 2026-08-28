@@ -73,7 +73,7 @@ just install
 cp docker/.env.example docker/.env
 ```
 
-At minimum, set the required secrets in `docker/.env` (`VIRTUOSO_PASSWORD`, `QLEVERUI_SECRET_KEY`, `QLEVER_ACCESS_TOKEN`, `POSTGRES_PASSWORD`), and the RDF Workbench secrets (`BOOTSTRAP_ADMIN_PASSWORD` for QLever, `SESSION_SECRET` and `VIRTUOSO_ADAPTER_TOKEN` for Virtuoso). The triplestore is chosen by which compose overlay you load: `docker/docker-compose.virtuoso.yml` or `docker/docker-compose.qlever.yml`.
+At minimum, set the required secrets in `docker/.env` (`VIRTUOSO_PASSWORD`, `QLEVER_ACCESS_TOKEN`, `POSTGRES_PASSWORD`), and the RDF Workbench secrets (`BOOTSTRAP_ADMIN_PASSWORD` for QLever, `SESSION_SECRET` and `VIRTUOSO_ADAPTER_TOKEN` for Virtuoso). The triplestore is chosen by which compose overlay you load: `docker/docker-compose.virtuoso.yml` or `docker/docker-compose.qlever.yml`.
 
 **Run the minimal pipeline:**
 
@@ -201,7 +201,7 @@ Once loaded into the selected triplestore, query the knowledge graph using SPARQ
 - **Virtuoso SPARQL Endpoint**: http://localhost:8890/sparql
 - **Virtuoso Faceted Browser**: http://localhost:8890/fct
 - **QLever SPARQL Endpoint**: http://localhost:7019
-- **QLever UI**: http://localhost:7018
+- **RDF Workbench**: http://localhost:3001
 
 ### Example SPARQL Queries
 

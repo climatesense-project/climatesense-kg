@@ -1,6 +1,5 @@
 volumes:
   qlever_data:
-  qlever_ui_data:
   qlever-workbench-data:
 
 services:
@@ -84,72 +83,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 15s
-
-  qlever-ui-app:
-    build:
-      context: ./qlever-ui
-      dockerfile: Dockerfile
-    container_name: climatesense-qlever-ui-app
-    env_file: .env
-    environment:
-      QLEVERUI_SECRET_KEY: ${QLEVERUI_SECRET_KEY:-}
-      QLEVERUI_DEBUG: ${QLEVERUI_DEBUG:-False}
-      QLEVERUI_ALLOWED_HOSTS: ${QLEVERUI_ALLOWED_HOSTS:-localhost,127.0.0.1}
-      QLEVERUI_CSRF_TRUSTED_ORIGINS: ${QLEVERUI_CSRF_TRUSTED_ORIGINS:-http://localhost:7018}
-      QLEVER_UI_BACKEND_URL: ${QLEVER_UI_BACKEND_URL:-http://localhost:7018/qlever}
-    command:
-      - sh
-      - -c
-      - |
-        if [ -z "$$QLEVERUI_SECRET_KEY" ]; then
-          echo "QLEVERUI_SECRET_KEY is required" >&2
-          exit 1
-        fi
-        python manage.py migrate --noinput
-        python manage.py shell < /opt/climatesense/bootstrap.py
-        exec gunicorn --bind :7000 --workers 3 --limit-request-line 10000 qlever.wsgi:application
-    volumes:
-      - qlever_ui_data:/app/db
-    depends_on:
-      qlever:
-        condition: service_healthy
-    restart: unless-stopped
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import urllib.request; urllib.request.urlopen('http://localhost:7000/', timeout=5)",
-        ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-
-  qlever-ui:
-    image: nginx:1.29-alpine
-    container_name: climatesense-qlever-ui
-    ports:
-      - "${QLEVER_UI_PORT:-7018}:7000"
-    volumes:
-      - ./qlever-ui/nginx.conf:/etc/nginx/nginx.conf:ro
-    depends_on:
-      qlever:
-        condition: service_healthy
-      qlever-ui-app:
-        condition: service_healthy
-    restart: unless-stopped
-    healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "wget -qO- http://127.0.0.1:7000/ >/dev/null && wget --header='Accept: application/sparql-results+json' -qO- 'http://127.0.0.1:7000/qlever?query=ASK%20%7B%20%3Fs%20%3Fp%20%3Fo%20%7D' >/dev/null",
-        ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
 
   workbench:
     environment:
