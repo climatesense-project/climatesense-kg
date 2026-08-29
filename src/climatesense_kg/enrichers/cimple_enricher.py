@@ -6,6 +6,7 @@ import json
 import os
 import time
 from typing import Any, cast
+from urllib.parse import urlparse
 
 import requests
 
@@ -49,7 +50,11 @@ class CimpleModelEnricher(Enricher):
             max_workers=max_workers,
         )
         self.model = model
-        self.api_url = os.environ.get("CIMPLE_FACTORS_API_URL", "http://localhost:8000")
+        api_url = os.environ.get("CIMPLE_FACTORS_API_URL", "").strip().rstrip("/")
+        parsed_url = urlparse(api_url)
+        if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
+            raise ValueError("CIMPLE_FACTORS_API_URL must be an absolute HTTP(S) URL")
+        self.api_url = api_url
         self.batch_size = effective_batch_size
         self.max_length = max_length
         self.timeout = timeout

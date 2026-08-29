@@ -6,6 +6,8 @@ import time
 from unittest.mock import Mock, patch
 from uuid import uuid4
 
+import pytest
+
 from climatesense_kg.domain import (
     CanonicalClaim,
     CanonicalClaimReview,
@@ -98,6 +100,10 @@ def test_spotlight_worker_count_is_operational_configuration() -> None:
     assert serial.config_hash == concurrent.config_hash
 
 
+@patch.dict(
+    "os.environ",
+    {"CIMPLE_FACTORS_API_URL": "https://factors.example.test"},
+)
 def test_cimple_semantic_configuration_controls_cache_identity() -> None:
     first = CimpleModelEnricher(
         model="emotion", model_version="1", max_length=128, rate_limit_delay=0
@@ -117,6 +123,10 @@ def test_cimple_semantic_configuration_controls_cache_identity() -> None:
     assert first.config_hash != semantic_change.config_hash
 
 
+@patch.dict(
+    "os.environ",
+    {"CIMPLE_FACTORS_API_URL": "https://factors.example.test"},
+)
 def test_cimple_batch_result_is_applied_to_claim_analysis() -> None:
     enricher = CimpleModelEnricher(model="emotion", rate_limit_delay=0)
     review = _review()
@@ -131,6 +141,17 @@ def test_cimple_batch_result_is_applied_to_claim_analysis() -> None:
 
     assert result == ProcessingResult.success({"value": "concern"})
     assert review.claim.analysis.emotion == "concern"
+
+
+def test_cimple_requires_absolute_api_url() -> None:
+    with (
+        patch.dict("os.environ", {"CIMPLE_FACTORS_API_URL": ""}),
+        pytest.raises(
+            ValueError,
+            match="CIMPLE_FACTORS_API_URL must be an absolute HTTP\\(S\\) URL",
+        ),
+    ):
+        CimpleModelEnricher(model="emotion")
 
 
 def test_property_enricher_groups_and_applies_entity_properties() -> None:
