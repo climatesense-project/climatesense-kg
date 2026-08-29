@@ -96,11 +96,12 @@ def _print_pipeline_summary(summary: object) -> None:
             f"permanent={stage.permanent_failures}, missing={stage.missing}"
         )
     if summary.export:
+        artifacts = summary.export.published_artifacts
         print(
-            f"RDF export: {len(summary.export.artifacts)} files, "
+            f"RDF export: {len(artifacts)} files, "
             f"{summary.export.total_file_size} bytes total"
         )
-        for artifact in summary.export.artifacts:
+        for artifact in artifacts:
             print(
                 f"  - {artifact.graph_name}: {artifact.path} "
                 f"({artifact.items} reviews, {artifact.failed_items} failed)"

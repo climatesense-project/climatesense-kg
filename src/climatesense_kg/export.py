@@ -50,6 +50,14 @@ class ExportSummary:
     total_file_size: int
     errors: tuple[str, ...]
 
+    @property
+    def published_artifacts(self) -> tuple[RdfArtifact, ...]:
+        return tuple(artifact for artifact in self.artifacts if artifact.complete)
+
+    @property
+    def withheld_artifacts(self) -> tuple[RdfArtifact, ...]:
+        return tuple(artifact for artifact in self.artifacts if not artifact.complete)
+
 
 @dataclass
 class _Stream:
@@ -231,7 +239,20 @@ class RdfExporter:
             file_size = raw_size
             incomplete_stages = tuple(sorted(incomplete.get(stream.graph_name, set())))
             if stream.failed_items or incomplete_stages:
+                reasons = []
+                if stream.failed_items:
+                    reasons.append(f"{stream.failed_items} projection failure(s)")
+                if incomplete_stages:
+                    reasons.append(
+                        "incomplete required stages: " + ", ".join(incomplete_stages)
+                    )
+                logger.error(
+                    "RDF artifact withheld: %s; %s",
+                    stream.graph_name,
+                    "; ".join(reasons),
+                )
                 stream.temp_path.unlink()
+                file_size = 0
             else:
                 unique_path: Path | None = None
                 compressed_path: Path | None = None

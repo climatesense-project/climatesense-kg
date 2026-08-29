@@ -30,8 +30,10 @@ def _services(tmp_path: Path) -> tuple[PipelineServices, dict[str, Mock]]:
     enrichment = Mock()
     enrichment.run.return_value = [StageSummary("cimple.emotion", eligible=2, cached=2)]
     exporter = Mock()
-    artifact = RdfArtifact("source", "source", tmp_path / "source.nt.gz", 2, 0, 10)
-    exporter.run.return_value = ExportSummary((artifact,), 2, 2, 0, 10, ())
+    artifact_path = tmp_path / "source.nt.gz"
+    artifact_path.write_bytes(b"published graph")
+    artifact = RdfArtifact("source", "source", artifact_path, 2, 0, 15)
+    exporter.run.return_value = ExportSummary((artifact,), 2, 2, 0, 15, ())
     services = PipelineServices(
         database=database,
         ingestion=ingestion,
@@ -86,7 +88,26 @@ def test_failed_ingestion_stops_before_processing(tmp_path: Path) -> None:
     assert mocks["database"].finish_run.call_args.kwargs["status"] == "failed"
 
 
-def test_incomplete_source_enrichment_prevents_graph_deployment(
+def test_partial_ingestion_cannot_publish_snapshot(tmp_path: Path) -> None:
+    services, mocks = _services(tmp_path)
+    mocks["ingestion"].run.return_value = IngestionSummary(
+        2,
+        ("source",),
+        ("failed-source",),
+    )
+
+    result = Pipeline(PipelineConfig(), services).run()
+
+    assert not result.success
+    assert result.error == (
+        "RDF snapshot requires every enabled source; ingestion failed for: "
+        "failed-source"
+    )
+    mocks["exporter"].run.assert_not_called()
+    assert mocks["database"].finish_run.call_args.kwargs["status"] == "failed"
+
+
+def test_incomplete_source_enrichment_fails_before_export(
     tmp_path: Path,
 ) -> None:
     services, mocks = _services(tmp_path)
@@ -96,10 +117,13 @@ def test_incomplete_source_enrichment_prevents_graph_deployment(
 
     result = Pipeline(PipelineConfig(), services).run()
 
-    assert result.success
-    assert result.degraded
-    incomplete = mocks["exporter"].run.call_args.kwargs["incomplete_stages_by_graph"]
-    assert incomplete == {"source": {"cimple.emotion"}}
+    assert not result.success
+    assert result.error == (
+        "Required enrichment is incomplete; RDF snapshot was not exported: "
+        "source (cimple.emotion)"
+    )
+    mocks["exporter"].run.assert_not_called()
+    assert mocks["database"].finish_run.call_args.kwargs["status"] == "failed"
 
 
 def _retention_config(tmp_path: Path, keep_latest: int) -> PipelineConfig:

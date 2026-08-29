@@ -218,6 +218,7 @@ def test_streaming_projection_errors_are_summarized_per_graph(tmp_path: Path) ->
     assert report.errors == (
         "claimreviewdata: 100 reviews failed projection; first error: invalid review",
     )
+    assert report.total_file_size == 0
     assert not (tmp_path / "claimreviewdata.nt.gz").exists()
 
 
@@ -247,6 +248,7 @@ def test_incomplete_export_preserves_previous_complete_snapshot(tmp_path: Path) 
     )
 
     assert not report.artifacts[0].complete
+    assert report.total_file_size == 0
     assert gzip.decompress(output.read_bytes()) == b"previous complete graph\n"
     assert not list(tmp_path.glob("*.tmp"))
 

@@ -74,6 +74,11 @@ class Pipeline:
             )
             if not ingestion.successful_sources:
                 raise RuntimeError("Every enabled source failed ingestion")
+            if ingestion.failed_sources:
+                raise RuntimeError(
+                    "RDF snapshot requires every enabled source; ingestion failed for: "
+                    + ", ".join(sorted(ingestion.failed_sources))
+                )
             extraction = (
                 self.services.extraction.run(
                     offline=offline_extraction,
@@ -93,11 +98,13 @@ class Pipeline:
                 ingestion.successful_sources,
                 enrichments,
             )
+            self._require_complete_enrichment(incomplete)
             exported = self.services.exporter.run(
                 ingestion.successful_sources,
                 datetime.now(),
                 incomplete_stages_by_graph=incomplete,
             )
+            self._require_deployable_export(exported)
             keep_latest = self.config.output.retention.keep_latest
             if keep_latest > 0:
                 rdf_root = Path(self.config.output.output_path).parent.parent
@@ -174,6 +181,46 @@ class Pipeline:
         for graph, required in self.services.graph_enrichments.items():
             result[graph] = incomplete & required
         return result
+
+    @staticmethod
+    def _require_complete_enrichment(incomplete: dict[str, set[str]]) -> None:
+        blocked = [
+            f"{graph} ({', '.join(sorted(stages))})"
+            for graph, stages in sorted(incomplete.items())
+            if stages
+        ]
+        if blocked:
+            raise RuntimeError(
+                "Required enrichment is incomplete; RDF snapshot was not exported: "
+                + "; ".join(blocked)
+            )
+
+    @staticmethod
+    def _require_deployable_export(exported: ExportSummary) -> None:
+        if not exported.artifacts:
+            raise RuntimeError("RDF export produced no graph artifacts")
+
+        failures: list[str] = []
+        for artifact in exported.artifacts:
+            reasons: list[str] = []
+            if artifact.failed_items:
+                reasons.append(f"{artifact.failed_items} projection failure(s)")
+            if artifact.incomplete_stages:
+                reasons.append(
+                    "incomplete stages: " + ", ".join(artifact.incomplete_stages)
+                )
+            if artifact.complete and (
+                not artifact.path.is_file() or artifact.path.stat().st_size == 0
+            ):
+                reasons.append(f"missing or empty file: {artifact.path}")
+            if reasons:
+                failures.append(f"{artifact.graph_name} ({'; '.join(reasons)})")
+
+        if failures:
+            raise RuntimeError(
+                "RDF export did not produce a complete deployable snapshot: "
+                + "; ".join(failures)
+            )
 
     def close(self) -> None:
         self.services.close()
