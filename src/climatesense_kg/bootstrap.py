@@ -6,10 +6,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from .config import PipelineConfig
-from .config.graphs import (
-    DBPEDIA_ENRICHER_SOURCE_NAME,
-    ENRICHMENT_GRAPH_ENTITY_SOURCES,
-)
+from .config.graphs import ENRICHMENT_GRAPH_ENTITY_SOURCES
 from .config.organizations import ORGANIZATION_CATALOG_PATH, OrganizationCatalog
 from .data_manager import DataManager
 from .database import Database
@@ -36,8 +33,6 @@ class PipelineServices:
     identity: IdentityService
     enrichment: EnrichmentService
     exporter: RdfExporter
-    source_enrichments: frozenset[str]
-    graph_enrichments: dict[str, frozenset[str]]
 
     def close(self) -> None:
         self.database.close()
@@ -89,18 +84,6 @@ def build_services(config: PipelineConfig) -> PipelineServices:
             batch_size=config.batch_size,
             progress_interval_seconds=config.progress_interval_seconds,
         ),
-        source_enrichments=frozenset(
-            enricher.name
-            for enricher in enrichers
-            if enricher.name.startswith("cimple.")
-        ),
-        graph_enrichments={
-            DBPEDIA_ENRICHER_SOURCE_NAME: frozenset(
-                enricher.name
-                for enricher in enrichers
-                if enricher.name.startswith("dbpedia")
-            )
-        },
     )
 
 

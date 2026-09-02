@@ -222,34 +222,49 @@ def test_streaming_projection_errors_are_summarized_per_graph(tmp_path: Path) ->
     assert not (tmp_path / "claimreviewdata.nt.gz").exists()
 
 
-def test_incomplete_export_preserves_previous_complete_snapshot(tmp_path: Path) -> None:
-    output = tmp_path / "claimreviewdata.nt.gz"
-    output.write_bytes(gzip.compress(b"previous complete graph\n"))
+def test_missing_enrichment_results_publish_the_enrichment_graph(
+    tmp_path: Path,
+) -> None:
     organization = CanonicalOrganization(
         uri=f"{BASE}/organization/factual",
         name="Factual",
         website="https://factual.ro",
     )
+    review = _review(organization)
+    entity_uri = "http://dbpedia.org/resource/Colombia"
+    review.claim.analysis.entities.append(
+        EntityMention(uri=entity_uri, source="dbpedia_spotlight", properties={})
+    )
     reader = Mock()
     reader.count.return_value = 1
-    reader.iter_batches.return_value = iter([[_review(organization)]])
+    reader.iter_batches.return_value = iter([[review]])
     exporter = RdfExporter(
         reader,
         Mock(),
         RDFGenerator(BASE),
         output_path_template=str(tmp_path / "{SOURCE}.nt.gz"),
-        enrichment_graphs={},
+        enrichment_graphs={"dbpedia-enricher": frozenset({"dbpedia_spotlight"})},
     )
 
-    report = exporter.run(
-        ("claimreviewdata",),
-        datetime(2026, 8, 13),
-        incomplete_stages_by_graph={"claimreviewdata": {"cimple.emotion"}},
-    )
+    report = exporter.run(("claimreviewdata",), datetime(2026, 8, 13))
 
-    assert not report.artifacts[0].complete
-    assert report.total_file_size == 0
-    assert gzip.decompress(output.read_bytes()) == b"previous complete graph\n"
+    assert [artifact.graph_name for artifact in report.artifacts] == [
+        "claimreviewdata",
+        "dbpedia-enricher",
+    ]
+    assert all(artifact.complete for artifact in report.artifacts)
+    enrichment_graph = Graph().parse(
+        data=gzip.decompress((tmp_path / "dbpedia-enricher.nt.gz").read_bytes()).decode(
+            "utf-8"
+        ),
+        format="nt",
+    )
+    mention = (
+        URIRef(f"{BASE}/{review.claim.uri}"),
+        URIRef(f"{SCHEMA}mentions"),
+        URIRef(entity_uri),
+    )
+    assert mention in enrichment_graph
     assert not list(tmp_path.glob("*.tmp"))
 
 

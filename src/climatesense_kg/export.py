@@ -34,11 +34,10 @@ class RdfArtifact:
     items: int
     failed_items: int
     file_size: int
-    incomplete_stages: tuple[str, ...] = ()
 
     @property
     def complete(self) -> bool:
-        return self.failed_items == 0 and not self.incomplete_stages
+        return self.failed_items == 0
 
 
 @dataclass(frozen=True)
@@ -101,10 +100,7 @@ class RdfExporter:
         self,
         source_graphs: tuple[str, ...],
         run_datetime: datetime,
-        *,
-        incomplete_stages_by_graph: dict[str, set[str]] | None = None,
     ) -> ExportSummary:
-        incomplete = incomplete_stages_by_graph or {}
         streams = {
             graph: self._open(graph, "source", run_datetime) for graph in source_graphs
         }
@@ -139,7 +135,7 @@ class RdfExporter:
                         failed += 1
                 processed += len(reviews)
                 progress.update(processed, {"failed": failed})
-            artifacts = self._finish(streams, incomplete)
+            artifacts = self._finish(streams)
         except BaseException:
             self._abort(streams)
             raise
@@ -225,11 +221,7 @@ class RdfExporter:
             cast(BinaryIO, handle),
         )
 
-    def _finish(
-        self,
-        streams: dict[str, _Stream],
-        incomplete: dict[str, set[str]],
-    ) -> list[RdfArtifact]:
+    def _finish(self, streams: dict[str, _Stream]) -> list[RdfArtifact]:
         artifacts: list[RdfArtifact] = []
         for stream in streams.values():
             stream.handle.flush()
@@ -237,19 +229,11 @@ class RdfExporter:
             stream.handle.close()
             raw_size = stream.temp_path.stat().st_size
             file_size = raw_size
-            incomplete_stages = tuple(sorted(incomplete.get(stream.graph_name, set())))
-            if stream.failed_items or incomplete_stages:
-                reasons = []
-                if stream.failed_items:
-                    reasons.append(f"{stream.failed_items} projection failure(s)")
-                if incomplete_stages:
-                    reasons.append(
-                        "incomplete required stages: " + ", ".join(incomplete_stages)
-                    )
+            if stream.failed_items:
                 logger.error(
-                    "RDF artifact withheld: %s; %s",
+                    "RDF artifact withheld: %s; %d projection failure(s)",
                     stream.graph_name,
-                    "; ".join(reasons),
+                    stream.failed_items,
                 )
                 stream.temp_path.unlink()
                 file_size = 0
@@ -303,7 +287,6 @@ class RdfExporter:
                     items=stream.items,
                     failed_items=stream.failed_items,
                     file_size=file_size,
-                    incomplete_stages=incomplete_stages,
                 )
             )
         return artifacts

@@ -41,8 +41,6 @@ def _services(tmp_path: Path) -> tuple[PipelineServices, dict[str, Mock]]:
         identity=identity,
         enrichment=enrichment,
         exporter=exporter,
-        source_enrichments=frozenset({"cimple.emotion"}),
-        graph_enrichments={},
     )
     return services, {
         "database": database,
@@ -107,7 +105,7 @@ def test_partial_ingestion_cannot_publish_snapshot(tmp_path: Path) -> None:
     assert mocks["database"].finish_run.call_args.kwargs["status"] == "failed"
 
 
-def test_incomplete_source_enrichment_fails_before_export(
+def test_incomplete_enrichment_publishes_degraded_snapshot(
     tmp_path: Path,
 ) -> None:
     services, mocks = _services(tmp_path)
@@ -117,13 +115,10 @@ def test_incomplete_source_enrichment_fails_before_export(
 
     result = Pipeline(PipelineConfig(), services).run()
 
-    assert not result.success
-    assert result.error == (
-        "Required enrichment is incomplete; RDF snapshot was not exported: "
-        "source (cimple.emotion)"
-    )
-    mocks["exporter"].run.assert_not_called()
-    assert mocks["database"].finish_run.call_args.kwargs["status"] == "failed"
+    assert result.success
+    assert result.degraded
+    mocks["exporter"].run.assert_called_once()
+    assert mocks["database"].finish_run.call_args.kwargs["status"] == "complete"
 
 
 def _retention_config(tmp_path: Path, keep_latest: int) -> PipelineConfig:

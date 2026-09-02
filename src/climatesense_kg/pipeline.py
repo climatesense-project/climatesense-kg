@@ -94,15 +94,9 @@ class Pipeline:
                     ignore_cache=ignore_cache_enrichment,
                 )
             )
-            incomplete = self._incomplete_graph_stages(
-                ingestion.successful_sources,
-                enrichments,
-            )
-            self._require_complete_enrichment(incomplete)
             exported = self.services.exporter.run(
                 ingestion.successful_sources,
                 datetime.now(),
-                incomplete_stages_by_graph=incomplete,
             )
             self._require_deployable_export(exported)
             keep_latest = self.config.output.retention.keep_latest
@@ -170,31 +164,6 @@ class Pipeline:
             "export_errors": result.export.errors if result.export else 0,
         }
 
-    def _incomplete_graph_stages(
-        self,
-        source_graphs: tuple[str, ...],
-        enrichments: tuple[StageSummary, ...],
-    ) -> dict[str, set[str]]:
-        incomplete = {stage.name for stage in enrichments if not stage.complete}
-        source_incomplete = incomplete & self.services.source_enrichments
-        result = {graph: set(source_incomplete) for graph in source_graphs}
-        for graph, required in self.services.graph_enrichments.items():
-            result[graph] = incomplete & required
-        return result
-
-    @staticmethod
-    def _require_complete_enrichment(incomplete: dict[str, set[str]]) -> None:
-        blocked = [
-            f"{graph} ({', '.join(sorted(stages))})"
-            for graph, stages in sorted(incomplete.items())
-            if stages
-        ]
-        if blocked:
-            raise RuntimeError(
-                "Required enrichment is incomplete; RDF snapshot was not exported: "
-                + "; ".join(blocked)
-            )
-
     @staticmethod
     def _require_deployable_export(exported: ExportSummary) -> None:
         if not exported.artifacts:
@@ -205,13 +174,7 @@ class Pipeline:
             reasons: list[str] = []
             if artifact.failed_items:
                 reasons.append(f"{artifact.failed_items} projection failure(s)")
-            if artifact.incomplete_stages:
-                reasons.append(
-                    "incomplete stages: " + ", ".join(artifact.incomplete_stages)
-                )
-            if artifact.complete and (
-                not artifact.path.is_file() or artifact.path.stat().st_size == 0
-            ):
+            if not artifact.path.is_file() or artifact.path.stat().st_size == 0:
                 reasons.append(f"missing or empty file: {artifact.path}")
             if reasons:
                 failures.append(f"{artifact.graph_name} ({'; '.join(reasons)})")
