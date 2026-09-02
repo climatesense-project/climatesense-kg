@@ -166,7 +166,7 @@ class DbpediaEntityPropertiesConfig:
     properties: list[str] = field(default_factory=list[str])
     timeout: int = 20
     rate_limit_delay: float = 0.1
-    max_retries: int = 2
+    max_retries: int = 4
 
 
 @dataclass

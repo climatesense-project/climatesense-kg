@@ -7,6 +7,7 @@ from unittest.mock import Mock, patch
 from uuid import uuid4
 
 import pytest
+import requests
 
 from climatesense_kg.domain import (
     CanonicalClaim,
@@ -20,9 +21,9 @@ from climatesense_kg.enrichers import (
     DBpediaPropertyEnricher,
     DBpediaSpotlightEnricher,
 )
-from climatesense_kg.enrichers.base import Enricher
+from climatesense_kg.enrichers.base import Enricher, EnrichmentSubject
 from climatesense_kg.enrichment import EnrichmentService
-from climatesense_kg.processing import ProcessingResult, StageSummary
+from climatesense_kg.processing import ProcessingResult, ResultStatus, StageSummary
 
 
 def _review(
@@ -188,12 +189,77 @@ def test_property_enricher_groups_and_applies_entity_properties() -> None:
     )
 
 
-def test_property_dependency_healthcheck_is_bounded() -> None:
+def test_property_dependency_healthcheck_probes_the_property_query_shape() -> None:
     enricher = DBpediaPropertyEnricher(properties=[])
     response = Mock(status_code=200)
     with patch("requests.get", return_value=response) as request:
         assert enricher.is_available()
+    query = request.call_args.kwargs["params"]["query"]
+    assert query.startswith("SELECT")
+    assert "wgs84_pos#lat" in query
     request.assert_called_once()
+
+
+def _property_subjects(
+    enricher: DBpediaPropertyEnricher, entity_uri: str
+) -> list[EnrichmentSubject]:
+    review = _review()
+    review.claim.analysis.entities.append(
+        EntityMention(uri=entity_uri, source="dbpedia_spotlight")
+    )
+    return enricher.subjects([review])
+
+
+def test_property_query_retry_honors_retry_after_header() -> None:
+    property_uri = "http://example.test/property"
+    entity_uri = "http://dbpedia.org/resource/Climate_change"
+    enricher = DBpediaPropertyEnricher(properties=[property_uri], rate_limit_delay=0)
+    unavailable = Mock(status_code=503, headers={"Retry-After": "7"})
+    unavailable.raise_for_status.side_effect = requests.HTTPError(
+        "503 Server Error", response=unavailable
+    )
+    available = Mock(status_code=200)
+    available.raise_for_status.return_value = None
+    available.json.return_value = {"results": {"bindings": []}}
+    sleeps: list[float] = []
+    with (
+        patch("requests.get", side_effect=[unavailable, available]),
+        patch(
+            "climatesense_kg.enrichers.dbpedia_property_enricher.time.sleep",
+            side_effect=sleeps.append,
+        ),
+    ):
+        results = enricher.compute_batch(_property_subjects(enricher, entity_uri))
+
+    assert sleeps[0] == 7.0
+    assert [result.status for result in results] == [ResultStatus.SUCCESS]
+
+
+def test_property_query_failures_stay_retryable_with_bounded_delays() -> None:
+    property_uri = "http://example.test/property"
+    entity_uri = "http://dbpedia.org/resource/Climate_change"
+    enricher = DBpediaPropertyEnricher(
+        properties=[property_uri], rate_limit_delay=0, max_retries=3
+    )
+    unavailable = Mock(status_code=503, headers={})
+    unavailable.raise_for_status.side_effect = requests.HTTPError(
+        "503 Server Error", response=unavailable
+    )
+    sleeps: list[float] = []
+    with (
+        patch("requests.get", return_value=unavailable),
+        patch(
+            "climatesense_kg.enrichers.dbpedia_property_enricher.time.sleep",
+            side_effect=sleeps.append,
+        ),
+    ):
+        results = enricher.compute_batch(_property_subjects(enricher, entity_uri))
+
+    assert len(sleeps) == 3
+    assert all(1.0 <= delay <= 30.0 for delay in sleeps)
+    assert [result.status for result in results] == [ResultStatus.RETRYABLE_FAILURE]
+    assert results[0].payload["error_type"] == "property_query_error"
+    assert "503" in results[0].payload["error"]
 
 
 class _ConcurrentFixtureEnricher(Enricher):

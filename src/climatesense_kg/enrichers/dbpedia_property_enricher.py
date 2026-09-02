@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 import json
+import random
 import re
 import time
 from typing import Any
@@ -35,6 +36,15 @@ class DBpediaPropertyEnricher(Enricher):
     version = "1"
     availability_key = "dbpedia_sparql"
     entity_batch_size = 50
+    _MIN_RETRY_DELAY_SECONDS = 1.0
+    _MAX_RETRY_DELAY_SECONDS = 30.0
+    _AVAILABILITY_QUERY = (
+        "SELECT ?entity ?property ?value WHERE { "
+        "VALUES ?entity { <http://dbpedia.org/resource/Berlin> } "
+        "VALUES ?property { <http://www.w3.org/2003/01/geo/wgs84_pos#lat> } "
+        "?entity ?property ?value ."
+        " }"
+    )
     _FORBIDDEN_IRI_CHARACTERS = re.compile(r'[\x00-\x20<>"{}|^`\\]')
     _INVALID_PERCENT_ESCAPE = re.compile(r"%(?![0-9A-Fa-f]{2})")
 
@@ -45,7 +55,7 @@ class DBpediaPropertyEnricher(Enricher):
         properties: list[str] | None = None,
         timeout: int = 20,
         rate_limit_delay: float = 0.1,
-        max_retries: int = 2,
+        max_retries: int = 4,
     ) -> None:
         self.endpoint = sparql_endpoint
         self.properties = self._normalize_property_uris(properties or [])
@@ -69,14 +79,14 @@ class DBpediaPropertyEnricher(Enricher):
             response = requests.get(
                 self.endpoint,
                 params={
-                    "query": "ASK { }",
+                    "query": self._AVAILABILITY_QUERY,
                     "format": "application/sparql-results+json",
                 },
                 headers=self.headers,
                 timeout=self.timeout,
             )
             return response.status_code == 200
-        except Exception:
+        except requests.RequestException:
             return False
 
     def subjects(self, items: list[CanonicalClaimReview]) -> list[EnrichmentSubject]:
@@ -129,7 +139,9 @@ class DBpediaPropertyEnricher(Enricher):
             except (requests.RequestException, json.JSONDecodeError, ValueError) as exc:
                 last_exception = exc
                 if attempt < self.max_retries:
-                    time.sleep(min(2**attempt, 2))
+                    time.sleep(
+                        self._retry_delay(attempt, getattr(exc, "response", None))
+                    )
         return [
             ProcessingResult.retryable(
                 {
@@ -140,6 +152,20 @@ class DBpediaPropertyEnricher(Enricher):
             )
             for entity_uri in entity_uris
         ]
+
+    def _retry_delay(self, attempt: int, response: requests.Response | None) -> float:
+        delay = (
+            min(2**attempt, self._MAX_RETRY_DELAY_SECONDS) * random.uniform(0.8, 1.2)  # noqa: S311 # nosec B311
+        )
+        if response is not None:
+            try:
+                delay = float(response.headers.get("Retry-After", ""))
+            except ValueError:
+                pass
+        return max(
+            self._MIN_RETRY_DELAY_SECONDS,
+            min(delay, self._MAX_RETRY_DELAY_SECONDS),
+        )
 
     @staticmethod
     def _apply_result(
