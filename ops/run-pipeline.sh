@@ -173,12 +173,40 @@ if ! compose up -d; then
 fi
 log "$TRIPLESTORE stack started"
 
+log "Waiting for analytics API to serve SPARQL-backed metrics..."
+READINESS_ATTEMPTS=15
+READINESS_POLL_TIMEOUT=120
+readiness_attempt=1
+readiness_ok=0
+while [[ $readiness_attempt -le $READINESS_ATTEMPTS ]]; do
+	if compose exec -T analytics-api python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/metrics/kg/triple-volume', timeout=$READINESS_POLL_TIMEOUT).read()" >/dev/null 2>&1; then
+		readiness_ok=1
+		break
+	fi
+	log "Analytics API not ready yet (attempt $readiness_attempt/$READINESS_ATTEMPTS)"
+	readiness_attempt=$((readiness_attempt + 1))
+	sleep 10
+done
+
+if [[ $readiness_ok -ne 1 ]]; then
+	log "Warning: analytics API did not become ready before cache refresh"
+fi
+
 log "Refreshing analytics API cache..."
-if compose exec -T analytics-api python -m analytics_api.scripts.refresh_cache >/dev/null 2>&1; then
+if refresh_output=$(compose exec -T analytics-api python -m analytics_api.scripts.refresh_cache 2>&1); then
+	refresh_status=0
+else
+	refresh_status=$?
+fi
+
+while IFS= read -r line; do
+	log "refresh-cache: $line"
+done <<<"$refresh_output"
+
+if [[ $refresh_status -eq 0 ]]; then
 	log "Analytics API cache refreshed successfully"
 else
-	log "Error: Failed to refresh analytics API cache"
-	exit 1
+	log "Warning: cache refresh failed with exit code $refresh_status; caches will warm on demand"
 fi
 
 log "Deployment completed successfully"
