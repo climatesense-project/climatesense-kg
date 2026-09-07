@@ -320,6 +320,7 @@ class CanonicalClaimReview:
     abstract: str | None = None
     analysis: ReviewAnalysis = field(default_factory=ReviewAnalysis)
     observations: dict[str, SourceReviewRecord] = field(default_factory=dict)
+    retired_ids: set[UUID] = field(default_factory=set)
 
     @property
     def uri(self) -> str:

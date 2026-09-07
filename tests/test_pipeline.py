@@ -54,6 +54,7 @@ def _services(tmp_path: Path) -> tuple[PipelineServices, dict[str, Mock]]:
 
 def test_pipeline_runs_single_ordered_service_path(tmp_path: Path) -> None:
     services, mocks = _services(tmp_path)
+    mocks["identity"].run.return_value = IdentitySummary(2, 2, 2, 1, 1)
     pipeline = Pipeline(PipelineConfig(), services)
 
     result = pipeline.run()
@@ -62,13 +63,17 @@ def test_pipeline_runs_single_ordered_service_path(tmp_path: Path) -> None:
     assert result.reviews == 2
     mocks["ingestion"].run.assert_called_once()
     mocks["extraction"].run.assert_called_once()
-    mocks["identity"].run.assert_called_once_with()
+    mocks["identity"].run.assert_called_once_with(
+        mocks["database"].start_run.return_value.id
+    )
     mocks["enrichment"].run.assert_called_once()
     mocks["exporter"].run.assert_called_once()
     mocks["database"].finish_run.assert_called_once()
     assert mocks["database"].finish_run.call_args.kwargs["status"] == "complete"
     summary = mocks["database"].finish_run.call_args.kwargs["summary"]
     assert summary["reviews"] == 2
+    assert summary["identity"]["documents_merged"] == 1
+    assert summary["identity"]["reviews_merged"] == 1
     assert summary["extraction"]["name"] == "document.extract"
     assert summary["enrichments"][0]["name"] == "cimple.emotion"
 

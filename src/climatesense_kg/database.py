@@ -76,13 +76,22 @@ class Database:
                 raise RuntimeError("PostgreSQL readiness check failed")
 
     def migrate(self) -> None:
-        """Apply the single packaged schema transactionally on an empty database."""
+        """Apply ordered packaged migrations atomically, retaining existing data."""
 
-        migration = files("climatesense_kg.persistence.migrations").joinpath(
-            "0001_schema.sql"
+        migrations = sorted(
+            (
+                item
+                for item in files("climatesense_kg.persistence.migrations").iterdir()
+                if item.name.endswith(".sql")
+            ),
+            key=lambda item: item.name,
         )
         with self.pool.connection() as connection:
             with connection.transaction(), connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+                    ("climatesense.schema",),
+                )
                 cursor.execute(
                     """
                     CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -91,20 +100,31 @@ class Database:
                     )
                     """
                 )
-                cursor.execute(
-                    "SELECT 1 FROM schema_migrations WHERE name = %s",
-                    (migration.name,),
-                )
-                if cursor.fetchone() is not None:
+                cursor.execute("SELECT name FROM schema_migrations ORDER BY name")
+                applied = [row[0] for row in cursor.fetchall()]
+                names = [migration.name for migration in migrations]
+                if applied != names[: len(applied)]:
+                    raise RuntimeError(
+                        "Database migrations do not match packaged history"
+                    )
+                pending = migrations[len(applied) :]
+                if not pending:
                     return
-                logger.info("Applying database schema %s", migration.name)
                 cursor.execute(
-                    cast(LiteralString, migration.read_text(encoding="utf-8"))
+                    "SELECT pg_try_advisory_xact_lock(hashtextextended(%s, 0))",
+                    (_LOCK_NAME,),
                 )
-                cursor.execute(
-                    "INSERT INTO schema_migrations (name) VALUES (%s)",
-                    (migration.name,),
-                )
+                if cursor.fetchone() != (True,):
+                    raise RuntimeError("Cannot migrate while a pipeline run is active")
+                for migration in pending:
+                    logger.info("Applying database schema %s", migration.name)
+                    cursor.execute(
+                        cast(LiteralString, migration.read_text(encoding="utf-8"))
+                    )
+                    cursor.execute(
+                        "INSERT INTO schema_migrations (name) VALUES (%s)",
+                        (migration.name,),
+                    )
 
     def start_run(self, config_hash: str) -> PipelineRun:
         """Acquire the writer lock, recover an abandoned run, and start a run."""

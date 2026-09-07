@@ -73,6 +73,7 @@ class ReviewProjectionReader:
             document_ids = [row["document_id"] for row in reviews]
             urls = self._document_urls(connection, document_ids)
             observations = self._observation_rows(connection, review_ids)
+            retired_ids = self._retired_review_ids(connection, review_ids)
 
         records_by_review: dict[UUID, list[SourceReviewRecord]] = defaultdict(list)
         for row in observations:
@@ -111,6 +112,7 @@ class ReviewProjectionReader:
             projected.append(
                 CanonicalClaimReview(
                     id=row["id"],
+                    retired_ids=retired_ids[row["id"]],
                     claim=selected.claim,
                     organization=organization,
                     document=CanonicalReviewDocument(
@@ -137,6 +139,23 @@ class ReviewProjectionReader:
                 )
             )
         return projected
+
+    @staticmethod
+    def _retired_review_ids(
+        connection: Any, review_ids: list[UUID]
+    ) -> dict[UUID, set[UUID]]:
+        result: dict[UUID, set[UUID]] = defaultdict(set)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT survivor_id, retired_id FROM claim_review_merges
+                WHERE survivor_id = ANY(%s::uuid[])
+                """,
+                (review_ids,),
+            )
+            for survivor_id, retired_id in cursor.fetchall():
+                result[survivor_id].add(retired_id)
+        return result
 
     @staticmethod
     def _review_rows(connection: Any, review_ids: list[UUID]) -> list[dict[str, Any]]:

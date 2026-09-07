@@ -10,13 +10,18 @@ from collections.abc import Iterator
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 import gzip
+from importlib.resources import files
 import os
 from pathlib import Path
+from typing import LiteralString, cast
 from unittest.mock import Mock
 from urllib.parse import urlparse
+from uuid import UUID, uuid4
 
+from psycopg import sql
 import pytest
-from rdflib import Graph
+from rdflib import Graph, URIRef
+from rdflib.namespace import OWL, RDF
 
 from climatesense_kg.config.organizations import (
     ORGANIZATION_CATALOG_PATH,
@@ -35,7 +40,8 @@ from climatesense_kg.enrichers import Enricher
 from climatesense_kg.enrichment import EnrichmentService
 from climatesense_kg.export import RdfExporter
 from climatesense_kg.extraction import DocumentExtractionService, DocumentTarget
-from climatesense_kg.identity import IdentityService
+from climatesense_kg.identity import IdentityService, IdentitySummary
+from climatesense_kg.identity.repository import IdentityRepository
 from climatesense_kg.ingestion import IngestionService
 from climatesense_kg.processing import ProcessingResult, StageSummary
 from climatesense_kg.projection import ReviewProjectionReader
@@ -219,7 +225,7 @@ def _install(
             database.pool,
             batch_size=batch_size,
             progress_interval_seconds=0,
-        ).run()
+        ).run(run.id)
         with database.pool.connection() as connection, connection.cursor() as cursor:
             cursor.execute(
                 """
@@ -280,6 +286,341 @@ def test_identity_partition_is_independent_of_order_and_batch_size(
     assert reordered_reviews == first_reviews
     assert len(first_documents) == 2
     assert len(first_reviews) == 3
+
+
+def _reconcile(database: Database, batch_size: int = 2) -> tuple[IdentitySummary, UUID]:
+    run = database.start_run("reconcile")
+    try:
+        summary = IdentityService(
+            database.pool, batch_size=batch_size, progress_interval_seconds=0
+        ).run(run.id)
+    except Exception:
+        database.finish_run(run, status="failed")
+        raise
+    database.finish_run(run, status="complete")
+    return summary, run.id
+
+
+def _extract(
+    database: Database,
+    record: SourceReviewRecord,
+    result: ProcessingResult,
+) -> None:
+    url = record.document.observed_url
+    key = normalize_document_url(url)
+    assert key is not None
+    DocumentExtractionService(database.pool)._store(
+        [(DocumentTarget(key, url), result)]
+    )
+
+
+def _project(database: Database) -> list[CanonicalClaimReview]:
+    reader = ReviewProjectionReader(
+        database.pool, OrganizationCatalog(ORGANIZATION_CATALOG_PATH).resolve
+    )
+    return [item for batch in reader.iter_batches(batch_size=2) for item in batch]
+
+
+@pytest.mark.parametrize("batch_size", [1, 3])
+@pytest.mark.parametrize("evidence", ["url", "text", "both"])
+def test_late_extraction_reconciles_inactive_identity_and_preserves_rdf(
+    database: Database, batch_size: int, evidence: str
+) -> None:
+    original = _record(
+        "original", "https://factual.ro/article", "Same claim", "Original body."
+    )
+    variant = _record("variant", "https://factual.ro/article?page=2", "Same claim", "")
+    first_ids, _, _ = _install(database, [original], batch_size=1)
+    original_document = _project(database)[0].document.id
+    _extract(database, variant, ProcessingResult.retryable({"error": "timeout"}))
+    second_ids, _, _ = _install(database, [variant], batch_size=1)
+    retired_review = second_ids[variant.source.record_key]
+    assert retired_review != first_ids[original.source.record_key]
+    retired_document = _project(database)[0].document.id
+
+    # An enrichment's semantic claim input is unaffected by document reconciliation.
+    enricher = _FixtureEnricher([ProcessingResult.success({"value": "cached"})])
+    reader = ReviewProjectionReader(
+        database.pool, OrganizationCatalog(ORGANIZATION_CATALOG_PATH).resolve
+    )
+    enrichment = EnrichmentService(database.pool, reader, [enricher])
+    assert enrichment.run()[0].succeeded == 1
+    content = (
+        "Different and more complete article body."
+        if evidence == "url"
+        else "Original body."
+    )
+    canonical = original.document.observed_url if evidence != "text" else None
+    _extract(
+        database,
+        variant,
+        ProcessingResult.success(
+            {
+                "content": content,
+                "final_url": variant.document.observed_url,
+                "canonical_url": canonical,
+            }
+        ),
+    )
+    summary, run_id = _reconcile(database, batch_size)
+    assert (summary.documents_merged, summary.reviews_merged) == (1, 1)
+    assert (summary.documents_created, summary.reviews_created) == (0, 0)
+    (review,) = _project(database)
+    assert review.id == first_ids[original.source.record_key]
+    assert review.document.id == original_document
+    assert review.retired_ids == {retired_review}
+    assert review.document.urls == {
+        original.document.observed_url,
+        variant.document.observed_url,
+    }
+    assert review.review_text == content
+    assert review.source_record_keys == {variant.source.record_key}
+    assert enrichment.run()[0].cached == 1
+    assert enricher.compute_calls == 1
+    with database.pool.connection() as connection, connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT claim_review_id, active FROM source_observations ORDER BY active"
+        )
+        assert cursor.fetchall() == [(review.id, False), (review.id, True)]
+        cursor.execute(
+            "SELECT retired_id, survivor_id, merged_into_id, run_id, evidence FROM document_merges"
+        )
+        merge_row = cursor.fetchone()
+        assert merge_row is not None
+        retired, survivor, merged_into, recorded_run, proof = merge_row
+        assert (retired, survivor, merged_into, recorded_run) == (
+            retired_document,
+            original_document,
+            original_document,
+            run_id,
+        )
+        assert any(link["kind"] in {"url", "text_hash"} for link in proof["links"])
+    base = "http://data.climatesense-project.eu"
+    generator = RDFGenerator(base)
+    graph = Graph().parse(data=generator.generate([review], "nt"), format="nt")
+    assert (
+        URIRef(f"{base}/claim-review/{retired_review}"),
+        OWL.sameAs,
+        URIRef(f"{base}/{review.uri}"),
+    ) in graph
+    assert len(list(graph.subjects(RDF.type, generator.SCHEMA.ClaimReview))) == 1
+    repeat, _ = _reconcile(database, 1 if batch_size == 3 else 3)
+    assert (
+        repeat.documents_created,
+        repeat.reviews_created,
+        repeat.documents_merged,
+        repeat.reviews_merged,
+    ) == (0, 0, 0, 0)
+    assert _project(database)[0].id == review.id
+
+
+def test_transitive_merges_preserve_distinct_claims_and_all_sources(
+    database: Database,
+) -> None:
+    a = _record("a", "https://factual.ro/a", "Shared claim", "Body alpha")
+    b = _record("b", "https://factual.ro/b", "Shared claim", "Body beta")
+    c = _record("c", "https://factual.ro/c", "Distinct claim", "Body gamma")
+    _install(database, [a], batch_size=1)
+    oldest = _project(database)[0]
+    _install(database, [a, b, c], batch_size=1)
+    distinct = next(
+        item.id for item in _project(database) if item.claim.text == "Distinct claim"
+    )
+    # A new observation bridges A by URL to B by text; C then joins B by URL.
+    bridge = _record("bridge", a.document.observed_url, "Shared claim", "Body beta")
+    bridge = replace(bridge, source=replace(bridge.source, source_name="second-source"))
+    _extract(
+        database,
+        c,
+        ProcessingResult.success(
+            {"content": "Body gamma", "canonical_url": b.document.observed_url}
+        ),
+    )
+    run = database.start_run("bridge")
+    try:
+        ingestion = IngestionService(
+            database.pool, Mock(), OrganizationCatalog(ORGANIZATION_CATALOG_PATH)
+        )
+        ingestion.install_source(run.id, "second-source", [bridge])
+        summary = IdentityService(database.pool, batch_size=1).run(run.id)
+    finally:
+        database.finish_run(run, status="complete")
+    assert (summary.documents_merged, summary.reviews_merged) == (2, 1)
+    projected = _project(database)
+    assert {item.document.id for item in projected} == {oldest.document.id}
+    assert {item.id for item in projected} == {oldest.id, distinct}
+    shared = next(item for item in projected if item.id == oldest.id)
+    assert shared.source_graphs() == ["fixture", "second-source"]
+    assert shared.source_record_keys == {
+        a.source.record_key,
+        b.source.record_key,
+        bridge.source.record_key,
+    }
+
+
+def test_later_merge_updates_history_to_current_survivor(database: Database) -> None:
+    a = _record("a", "https://factual.ro/a", "Claim", "Body alpha")
+    b = _record("b", "https://factual.ro/b", "Claim", "Body beta")
+    c = _record("c", "https://factual.ro/c", "Claim", "Body gamma")
+    _install(database, [a], batch_size=1)
+    first = _project(database)[0]
+    _install(database, [a, b], batch_size=1)
+    middle = next(
+        item
+        for item in _project(database)
+        if item.review_url == b.document.observed_url
+    )
+    _install(database, [a, b, c], batch_size=1)
+    last = next(
+        item
+        for item in _project(database)
+        if item.review_url == c.document.observed_url
+    )
+    _extract(
+        database,
+        c,
+        ProcessingResult.success(
+            {"canonical_url": b.document.observed_url, "content": "Body gamma"}
+        ),
+    )
+    _reconcile(database)
+    _extract(
+        database,
+        b,
+        ProcessingResult.success(
+            {"canonical_url": a.document.observed_url, "content": "Body beta"}
+        ),
+    )
+    _reconcile(database)
+    (review,) = _project(database)
+    assert review.id == first.id
+    assert review.retired_ids == {middle.id, last.id}
+    with database.pool.connection() as connection, connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT survivor_id, merged_into_id FROM claim_review_merges WHERE retired_id = %s",
+            (last.id,),
+        )
+        assert cursor.fetchone() == (first.id, middle.id)
+        cursor.execute(
+            "SELECT survivor_id, merged_into_id FROM document_merges WHERE retired_id = %s",
+            (last.document.id,),
+        )
+        assert cursor.fetchone() == (first.document.id, middle.document.id)
+
+
+def test_reconciliation_failure_rolls_back_all_identity_writes(
+    database: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    a = _record("a", "https://factual.ro/a", "Claim", "Body alpha")
+    b = _record("b", "https://factual.ro/b", "Claim", "Body beta")
+    _install(database, [a, b], batch_size=1)
+    before = {
+        (item.id, item.document.id, item.review_text) for item in _project(database)
+    }
+    _extract(
+        database,
+        b,
+        ProcessingResult.success(
+            {
+                "canonical_url": a.document.observed_url,
+                "content": "New complete document content",
+            }
+        ),
+    )
+    install_evidence = IdentityRepository._install_evidence
+
+    def fail_after_writes(repository: IdentityRepository) -> None:
+        install_evidence(repository)
+        raise RuntimeError("injected transaction failure")
+
+    with monkeypatch.context() as context:
+        context.setattr(IdentityRepository, "_install_evidence", fail_after_writes)
+        with pytest.raises(RuntimeError, match="injected transaction failure"):
+            _reconcile(database)
+    assert {
+        (item.id, item.document.id, item.review_text) for item in _project(database)
+    } == before
+    with database.pool.connection() as connection, connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT (SELECT COUNT(*) FROM document_merges), (SELECT COUNT(*) FROM claim_review_merges)"
+        )
+        assert cursor.fetchone() == (0, 0)
+    summary, _ = _reconcile(database)
+    assert (summary.documents_merged, summary.reviews_merged) == (1, 1)
+
+
+def test_migrations_upgrade_existing_data_and_are_repeatable(
+    database: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    schema = f"migration_{uuid4().hex}"
+    document_id = uuid4()
+    with database.pool.connection() as connection, connection.cursor() as cursor:
+        cursor.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema)))
+        cursor.execute(
+            sql.SQL("SET LOCAL search_path TO {}").format(sql.Identifier(schema))
+        )
+        cursor.execute(
+            cast(
+                LiteralString,
+                files("climatesense_kg.persistence.migrations")
+                .joinpath("0001_schema.sql")
+                .read_text(),
+            )
+        )
+        cursor.execute(
+            "CREATE TABLE schema_migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)"
+        )
+        cursor.execute(
+            "INSERT INTO schema_migrations (name) VALUES ('0001_schema.sql')"
+        )
+        cursor.execute(
+            "INSERT INTO documents (id, organization_uri, preferred_url) VALUES (%s, 'organization', 'https://example.org/article')",
+            (document_id,),
+        )
+    try:
+        with monkeypatch.context() as context:
+            context.setenv("PGOPTIONS", f"-c search_path={schema}")
+            with _database() as upgraded:
+                upgraded.migrate()
+                with (
+                    upgraded.pool.connection() as connection,
+                    connection.cursor() as cursor,
+                ):
+                    cursor.execute("SELECT id, preferred_url FROM documents")
+                    assert cursor.fetchall() == [
+                        (document_id, "https://example.org/article")
+                    ]
+                    cursor.execute("SELECT COUNT(*) FROM document_merges")
+                    assert cursor.fetchone() == (0,)
+                    cursor.execute(
+                        "SELECT COUNT(*) FROM schema_migrations WHERE name = '0002_identity_merges.sql'"
+                    )
+                    assert cursor.fetchone() == (1,)
+    finally:
+        with database.pool.connection() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                sql.SQL("DROP SCHEMA {} CASCADE").format(sql.Identifier(schema))
+            )
+
+
+def test_identity_rejects_observation_assigned_to_another_organization(
+    database: Database,
+) -> None:
+    records = _records()
+    _install(database, records, batch_size=2)
+    foreign = next(
+        item for item in _project(database) if "africacheck.org" in item.review_url
+    )
+    with database.pool.connection() as connection, connection.cursor() as cursor:
+        cursor.execute(
+            "UPDATE source_observations SET claim_review_id = %s WHERE record_key = %s",
+            (foreign.id, records[0].source.record_key),
+        )
+    with pytest.raises(RuntimeError, match="foreign review"):
+        _reconcile(database)
+    with database.pool.connection() as connection, connection.cursor() as cursor:
+        cursor.execute("SELECT COUNT(*) FROM document_merges")
+        assert cursor.fetchone() == (0,)
 
 
 def test_failed_source_install_rolls_back_the_whole_snapshot(

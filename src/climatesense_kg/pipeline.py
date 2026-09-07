@@ -87,7 +87,7 @@ class Pipeline:
                 if self.services.extraction
                 else None
             )
-            identity = self.services.identity.run()
+            identity = self.services.identity.run(run.id)
             enrichments = tuple(
                 self.services.enrichment.run(
                     offline=offline_enrichment,
@@ -160,6 +160,7 @@ class Pipeline:
                 list(result.ingestion.failed_sources) if result.ingestion else []
             ),
             "extraction": (result.extraction.to_dict() if result.extraction else None),
+            "identity": asdict(result.identity) if result.identity else None,
             "enrichments": [stage.to_dict() for stage in result.enrichments],
             "export_errors": result.export.errors if result.export else 0,
         }

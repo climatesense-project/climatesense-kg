@@ -10,7 +10,7 @@ from typing import Any
 from urllib.parse import quote
 
 from rdflib import Graph, Literal, Namespace, URIRef
-from rdflib.namespace import RDF, XSD
+from rdflib.namespace import OWL, RDF, XSD
 
 from ..domain import (
     CanonicalClaim,
@@ -464,6 +464,9 @@ class RDFGenerator:
 
         # ClaimReview type and basic properties
         self.graph.add((review_uri, RDF.type, self.SCHEMA.ClaimReview))
+        for retired_id in sorted(claim_review.retired_ids):
+            retired_uri = URIRef(self.get_full_uri(f"claim-review/{retired_id}"))
+            self.graph.add((retired_uri, OWL.sameAs, review_uri))
 
         # Link to claim
         self.graph.add((review_uri, self.SCHEMA.itemReviewed, claim_uri))

@@ -21,7 +21,13 @@ Relative URIs are resolved against this base URI. Curated organizations and DBpe
 
 Claim reviews don't use deterministic hashing because a review's identity cannot be derived from its content. Two reviews can quote the same claim text, and a review's text, rating, or URLs can change when a document is re-extracted or corrected. A content hash would rename the review every time that happened and would merge reviews that only share the same wording. The review is instead a stable node that gathers every observation of one claim made by one organization on one document.
 
-The identity service assigns the UUIDs. It resolves the document first, from URL aliases and the normalized text hash, and gives it a UUID. Each review is keyed by its document and claim pair. The service checks whether a review already exists for that pair; if not, it generates a fresh UUID and inserts the row. Every observation of that document and claim is linked to the review, and on later runs the observations already carry the review ID, so the same UUID is reused without recomputing it from content.
+The identity service gives each new document a UUID. It recognizes the same article within one organization through matching URL aliases or identical text after normalization. If a later extraction connects two existing documents, they are merged and the older document's UUID is kept.
+
+For example, `/article` and `/article?page=2` may initially be stored separately because downloading the second URL failed. If a later download reveals that both point to the same article, the pipeline joins them and keeps both URLs.
+
+Each document can have a separate review for each claim. When documents merge, duplicate reviews of the same claim merge too, keeping the older review's UUID. Reviews of different claims stay separate, and correcting an existing review's claim text preserves its UUID. For both documents and reviews, the lowest UUID breaks a tie in creation time.
+
+The pipeline keeps the original source records and a history of each merge. In the RDF output, the surviving review carries the review properties, and `owl:sameAs` links connect retired review URIs to it. Running the pipeline again with unchanged evidence preserves the same IDs, regardless of batch size.
 
 Hash inputs are encoded as compact JSON arrays with a namespace followed by the identifying values. The UTF-8 JSON representation is hashed with SHA-256 and rendered as a lowercase hexadecimal string. Namespacing and structured encoding prevent collisions caused by ambiguous string concatenation.
 
