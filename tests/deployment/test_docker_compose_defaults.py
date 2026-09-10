@@ -22,6 +22,15 @@ def test_pipeline_requires_reachable_factors_api_url() -> None:
     )
 
 
+def test_pipeline_requires_factors_api_key() -> None:
+    pipeline_environment = _compose_services()["pipeline"]["environment"]
+
+    assert pipeline_environment["CIMPLE_FACTORS_API_KEY"] == (
+        "${CIMPLE_FACTORS_API_KEY:?CIMPLE_FACTORS_API_KEY must contain a valid "
+        "Factors API key}"
+    )
+
+
 def test_service_clients_use_postgres_container_port() -> None:
     services = _compose_services()
 

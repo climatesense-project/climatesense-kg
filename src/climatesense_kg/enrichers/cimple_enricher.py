@@ -55,6 +55,11 @@ class CimpleModelEnricher(Enricher):
         if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
             raise ValueError("CIMPLE_FACTORS_API_URL must be an absolute HTTP(S) URL")
         self.api_url = api_url
+        api_key = os.environ.get("CIMPLE_FACTORS_API_KEY", "").strip()
+        if not api_key:
+            raise ValueError(
+                "CIMPLE_FACTORS_API_KEY must be set to a non-empty API key"
+            )
         self.batch_size = effective_batch_size
         self.max_length = max_length
         self.timeout = timeout
@@ -63,6 +68,7 @@ class CimpleModelEnricher(Enricher):
             "accept": "application/json",
             "content-type": "application/json",
             "User-Agent": USER_AGENT,
+            "X-API-Key": api_key,
         }
 
     def is_available(self) -> bool:

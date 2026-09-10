@@ -42,6 +42,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       CIMPLE_FACTORS_API_URL: ${CIMPLE_FACTORS_API_URL:?CIMPLE_FACTORS_API_URL must point to a Factors API reachable from the pipeline container}
+      CIMPLE_FACTORS_API_KEY: ${CIMPLE_FACTORS_API_KEY:?CIMPLE_FACTORS_API_KEY must contain a valid Factors API key}
     volumes:
       - ../data:/app/data
       - ../logs:/app/logs

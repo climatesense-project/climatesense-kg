@@ -103,7 +103,10 @@ def test_spotlight_worker_count_is_operational_configuration() -> None:
 
 @patch.dict(
     "os.environ",
-    {"CIMPLE_FACTORS_API_URL": "https://factors.example.test"},
+    {
+        "CIMPLE_FACTORS_API_URL": "https://factors.example.test",
+        "CIMPLE_FACTORS_API_KEY": "test-key",
+    },
 )
 def test_cimple_semantic_configuration_controls_cache_identity() -> None:
     first = CimpleModelEnricher(
@@ -126,7 +129,10 @@ def test_cimple_semantic_configuration_controls_cache_identity() -> None:
 
 @patch.dict(
     "os.environ",
-    {"CIMPLE_FACTORS_API_URL": "https://factors.example.test"},
+    {
+        "CIMPLE_FACTORS_API_URL": "https://factors.example.test",
+        "CIMPLE_FACTORS_API_KEY": "test-key",
+    },
 )
 def test_cimple_batch_result_is_applied_to_claim_analysis() -> None:
     enricher = CimpleModelEnricher(model="emotion", rate_limit_delay=0)
@@ -153,6 +159,41 @@ def test_cimple_requires_absolute_api_url() -> None:
         ),
     ):
         CimpleModelEnricher(model="emotion")
+
+
+def test_cimple_requires_non_empty_api_key() -> None:
+    with (
+        patch.dict(
+            "os.environ",
+            {
+                "CIMPLE_FACTORS_API_URL": "https://factors.example.test",
+                "CIMPLE_FACTORS_API_KEY": "",
+            },
+        ),
+        pytest.raises(
+            ValueError,
+            match="CIMPLE_FACTORS_API_KEY must be set to a non-empty API key",
+        ),
+    ):
+        CimpleModelEnricher(model="emotion")
+
+
+def test_cimple_sends_api_key_header_on_model_calls() -> None:
+    with patch.dict(
+        "os.environ",
+        {
+            "CIMPLE_FACTORS_API_URL": "https://factors.example.test",
+            "CIMPLE_FACTORS_API_KEY": "secret-key",
+        },
+    ):
+        enricher = CimpleModelEnricher(model="emotion", rate_limit_delay=0)
+    response = Mock(status_code=200)
+    response.json.return_value = {"results": [{"value": "concern"}]}
+    with patch("requests.post", return_value=response) as post:
+        responses = enricher._call_model(["A climate claim"])
+
+    assert responses == [{"value": "concern"}]
+    assert post.call_args.kwargs["headers"]["X-API-Key"] == "secret-key"
 
 
 def test_property_enricher_groups_and_applies_entity_properties() -> None:
