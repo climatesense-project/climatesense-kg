@@ -93,8 +93,8 @@ enrichment:
     enabled: false
     api_url: "https://refined.tools.eurecom.fr/annotate_text"
     confidence: 0.5
-    timeout: 20
-    max_workers: 8
+    timeout: 60
+    max_workers: 6
 
   wikidata_entity_properties:
     enabled: false

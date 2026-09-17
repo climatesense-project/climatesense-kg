@@ -191,8 +191,8 @@ class RefinedConfig:
     enabled: bool = False
     api_url: str = "https://refined.tools.eurecom.fr/annotate_text"
     confidence: float = 0.5
-    timeout: int = 20
-    max_workers: int = 8
+    timeout: int = 60
+    max_workers: int = 6
 
     def __post_init__(self) -> None:
         if self.max_workers <= 0:
