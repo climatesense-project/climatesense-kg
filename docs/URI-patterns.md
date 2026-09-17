@@ -155,8 +155,9 @@ For triple-store deployment, graph URIs follow a template pattern:
 The `{SOURCE}` placeholder represents a managed logical graph name. Source graphs use the configured data-source name, while provider-owned entity linking uses a stable enrichment graph name:
 
 - `{base_uri}/graph/dbpedia-enricher` contains DBpedia Spotlight `schema:mentions` assertions and DBpedia entity properties.
+- `{base_uri}/graph/wikidata-enricher` contains OpenTapioca and ReFinED `schema:mentions` assertions and Wikidata entity properties. Both providers link to Wikidata entities, so their assertions share one graph.
 - Source graphs contain the claims and reviews referenced by those assertions.
-- The DBpedia enrichment graph owns all DBpedia entity-linking triples.
+- The DBpedia enrichment graph owns all DBpedia entity-linking triples, and the Wikidata enrichment graph owns all Wikidata entity-linking triples.
 - `{base_uri}/graph/organizations` and `{base_uri}/graph/vocabularies` contain curated repository data.
 
 Each published graph IRI is described in the curated [`data/graphs.ttl`](../data/graphs.ttl) catalog.

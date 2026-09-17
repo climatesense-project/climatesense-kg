@@ -22,7 +22,7 @@
   - [CLIMATE-FEVER](https://www.sustainablefinance.uzh.ch/en/research/climate-fever.html)
 - Data enrichment with:
   - Text extraction from URLs using [trafilatura](https://trafilatura.readthedocs.io/)
-  - Entity linking using [DBpedia Spotlight](https://www.dbpedia-spotlight.org/)
+  - Entity linking using [DBpedia Spotlight](https://www.dbpedia-spotlight.org/), [OpenTapioca](https://opentapioca.org/), and [ReFinED](https://github.com/ehrhart/ReFinED)
   - [Factors classification](https://github.com/climatesense-project/cimple-factors-server) using fine-tuned BERT models
 - RDF output using [Schema.org](https://schema.org/) and [CIMPLE ontology](https://github.com/CIMPLE-project/knowledge-base)
 - Triple store deployment through Virtuoso or QLever
@@ -155,6 +155,31 @@ enrichment:
       - "http://www.opengis.net/ont/geosparql#asWKT"
     timeout: 30
     rate_limit_delay: 0
+
+  opentapioca:
+    enabled: true
+    api_url: "https://opentapioca.tools.eurecom.fr/api/annotate"
+    confidence: 0.5
+    timeout: 20
+    max_workers: 8
+
+  refined:
+    enabled: true
+    api_url: "https://refined.tools.eurecom.fr/annotate_text"
+    confidence: 0.5
+    timeout: 20
+    max_workers: 8
+
+  wikidata_entity_properties:
+    enabled: true
+    sparql_endpoint: "https://query.wikidata.org/sparql"
+    properties:
+      - "http://www.wikidata.org/prop/direct/P31"
+      - "http://www.wikidata.org/prop/direct/P17"
+      - "http://www.wikidata.org/prop/direct/P625"
+      - "http://www.wikidata.org/prop/direct/P856"
+    timeout: 30
+    rate_limit_delay: 1
 
   cimple:
     enabled: true
