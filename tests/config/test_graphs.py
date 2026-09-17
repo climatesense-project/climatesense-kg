@@ -5,7 +5,7 @@ from rdflib.namespace import DCTERMS, RDF
 
 from climatesense_kg.config import load_config
 from climatesense_kg.config.graphs import (
-    DBPEDIA_ENRICHER_SOURCE_NAME,
+    ENRICHMENT_GRAPH_ENTITY_SOURCES,
     GRAPH_CATALOG_PATH,
 )
 
@@ -20,7 +20,7 @@ def test_graph_catalog_describes_every_published_graph() -> None:
     daily_config = load_config("config/daily.yaml")
     expected_graphs = {
         *(GRAPH[source.name] for source in daily_config.data_sources if source.enabled),
-        GRAPH[DBPEDIA_ENRICHER_SOURCE_NAME],
+        *(GRAPH[name] for name in ENRICHMENT_GRAPH_ENTITY_SOURCES),
         GRAPH.organizations,
         GRAPH.vocabularies,
     }
