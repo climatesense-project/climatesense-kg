@@ -82,10 +82,7 @@ class SparqlEntityPropertyEnricher(Enricher):
         try:
             response = requests.get(
                 self.endpoint,
-                params={
-                    "query": self.availability_query,
-                    "format": "application/sparql-results+json",
-                },
+                params={"query": self.availability_query},
                 headers=self.headers,
                 timeout=self.timeout,
             )
@@ -123,10 +120,7 @@ class SparqlEntityPropertyEnricher(Enricher):
             try:
                 response = requests.get(
                     self.endpoint,
-                    params={
-                        "query": self._build_query(entity_uris),
-                        "format": "application/sparql-results+json",
-                    },
+                    params={"query": self._build_query(entity_uris)},
                     headers=self.headers,
                     timeout=self.timeout,
                 )
