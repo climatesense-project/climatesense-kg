@@ -113,11 +113,11 @@ _OPENTAPIOCA_RESPONSE = {
                 {
                     "id": "Q3052772",
                     "label": "Emmanuel Macron",
-                    "types": ["Q5", "Q82955"],
+                    "types": {"Q5": True, "Q82955": True, "Q43229": False},
                     "score": 0.999,
                     "nb_sitelinks": 120,
                 },
-                {"id": "Q42", "types": [], "score": 0.001, "nb_sitelinks": 0},
+                {"id": "Q42", "types": {}, "score": 0.001, "nb_sitelinks": 0},
             ],
             "best_qid": "Q3052772",
             "best_tag_label": "Emmanuel Macron",
@@ -146,7 +146,7 @@ def test_opentapioca_computes_and_applies_entity_payload() -> None:
         "http://www.wikidata.org/entity/Q5",
         "http://www.wikidata.org/entity/Q82955",
     ]
-    assert entity.confidence == 0.999
+    assert entity.confidence is None
     assert entity.support == 120
     assert entity.offset == 0
 

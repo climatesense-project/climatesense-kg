@@ -140,7 +140,6 @@ class OpenTapiocaEnricher(Enricher):
             source="opentapioca",
             surface_form=self._surface_form(annotation, document_text),
             types=self._type_uris(tag),
-            confidence=confidence,
             support=self._optional_int(tag.get("nb_sitelinks")),
             offset=self._optional_int(annotation.get("start")),
         )
@@ -167,9 +166,13 @@ class OpenTapiocaEnricher(Enricher):
     @staticmethod
     def _type_uris(tag: dict[str, Any]) -> list[str]:
         types = tag.get("types")
-        if not isinstance(types, list):
+        if not isinstance(types, dict):
             return []
-        return [wikidata_entity_uri(str(qid)) for qid in types if qid]
+        return [
+            wikidata_entity_uri(str(qid))
+            for qid, predicted in types.items()
+            if predicted
+        ]
 
     @staticmethod
     def _optional_float(value: Any) -> float | None:
