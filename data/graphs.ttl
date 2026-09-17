@@ -18,6 +18,7 @@ graph:catalog
         graph:climafacts,
         graph:climate-fever,
         graph:dbpedia-enricher,
+        graph:wikidata-enricher,
         graph:organizations,
         graph:vocabularies ;
     dcat:service <https://data.climatesense-project.eu/sparql> ;
@@ -97,6 +98,18 @@ graph:dbpedia-enricher
         <https://dbpedia.org/sparql> ;
     void:sparqlEndpoint <https://data.climatesense-project.eu/sparql> .
 
+graph:wikidata-enricher
+    a dcat:Dataset, void:Dataset ;
+    dcterms:identifier "wikidata-enricher" ;
+    dcterms:title "Wikidata entity enrichment"@en ;
+    dcterms:description "Entity mentions identified by OpenTapioca and ReFinED, and properties retrieved from Wikidata."@en ;
+    dcterms:publisher <https://climatesense-project.eu/> ;
+    dcterms:source
+        <https://opentapioca.org/>,
+        <https://github.com/ehrhart/ReFinED>,
+        <https://query.wikidata.org/> ;
+    void:sparqlEndpoint <https://data.climatesense-project.eu/sparql> .
+
 graph:organizations
     a dcat:Dataset, void:Dataset ;
     dcterms:identifier "organizations" ;
@@ -130,6 +143,7 @@ graph:vocabularies
         graph:climafacts,
         graph:climate-fever,
         graph:dbpedia-enricher,
+        graph:wikidata-enricher,
         graph:organizations,
         graph:vocabularies .
 

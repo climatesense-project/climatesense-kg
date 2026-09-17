@@ -18,8 +18,10 @@ from climatesense_kg.domain import (
 )
 from climatesense_kg.enrichers import (
     CimpleModelEnricher,
-    DBpediaPropertyEnricher,
     DBpediaSpotlightEnricher,
+    OpenTapiocaEnricher,
+    RefinedEnricher,
+    SparqlEntityPropertyEnricher,
 )
 from climatesense_kg.enrichers.base import Enricher, EnrichmentSubject
 from climatesense_kg.enrichment import EnrichmentService
@@ -97,6 +99,261 @@ def test_spotlight_computes_and_applies_entity_payload() -> None:
 def test_spotlight_worker_count_is_operational_configuration() -> None:
     serial = DBpediaSpotlightEnricher(target="claim", max_workers=1)
     concurrent = DBpediaSpotlightEnricher(target="claim", max_workers=8)
+
+    assert serial.config_hash == concurrent.config_hash
+
+
+_OPENTAPIOCA_RESPONSE = {
+    "text": "Emmanuel Macron visited Germany.",
+    "annotations": [
+        {
+            "start": 0,
+            "end": 15,
+            "tags": [
+                {
+                    "id": "Q3052772",
+                    "label": "Emmanuel Macron",
+                    "types": {"Q5": True, "Q82955": True, "Q43229": False},
+                    "score": 0.999,
+                    "nb_sitelinks": 120,
+                },
+                {"id": "Q42", "types": {}, "score": 0.001, "nb_sitelinks": 0},
+            ],
+            "best_qid": "Q3052772",
+            "best_tag_label": "Emmanuel Macron",
+        },
+        {"start": 24, "end": 31, "tags": [], "best_qid": None},
+    ],
+}
+
+
+def test_opentapioca_computes_and_applies_entity_payload() -> None:
+    enricher = OpenTapiocaEnricher(target="claim")
+    review = _review(claim="Emmanuel Macron visited Germany.")
+    response = Mock(status_code=200)
+    response.json.return_value = _OPENTAPIOCA_RESPONSE
+    with patch("requests.post", return_value=response):
+        subject = enricher.subjects([review])[0]
+        result = enricher.compute_batch([subject])[0]
+        enricher.apply(subject, result.payload)
+
+    assert result.succeeded
+    [entity] = review.claim.analysis.entities
+    assert entity.uri == "http://www.wikidata.org/entity/Q3052772"
+    assert entity.source == "opentapioca"
+    assert entity.surface_form == "Emmanuel Macron"
+    assert entity.types == [
+        "http://www.wikidata.org/entity/Q5",
+        "http://www.wikidata.org/entity/Q82955",
+    ]
+    assert entity.confidence is None
+    assert entity.support == 120
+    assert entity.offset == 0
+
+
+def test_opentapioca_confidence_threshold_filters_low_score_mentions() -> None:
+    enricher = OpenTapiocaEnricher(target="claim", confidence=0.5)
+    review = _review(claim="Emmanuel Macron visited Germany.")
+    response = Mock(status_code=200)
+    response.json.return_value = {
+        "text": "Emmanuel Macron visited Germany.",
+        "annotations": [
+            {
+                "start": 24,
+                "end": 31,
+                "tags": [{"id": "Q183", "types": [], "score": 0.3, "nb_sitelinks": 5}],
+                "best_qid": "Q183",
+                "best_tag_label": "Germany",
+            }
+        ],
+    }
+    with patch("requests.post", return_value=response):
+        result = enricher.compute_batch([enricher.subjects([review])[0]])[0]
+
+    assert result.succeeded
+    assert review.claim.analysis.entities == []
+
+
+def test_opentapioca_claim_subject_is_shared_by_claim_uri() -> None:
+    enricher = OpenTapiocaEnricher(target="claim")
+    reviews = [_review(), _review()]
+
+    subjects = enricher.subjects(reviews)
+
+    assert len(subjects) == 1
+    assert len(subjects[0].targets) == 2
+    assert subjects[0].key == reviews[0].claim.uri
+
+
+def test_opentapioca_review_subject_is_shared_by_exact_body() -> None:
+    enricher = OpenTapiocaEnricher(target="review")
+    reviews = [_review(body="The same exact body"), _review(body="The same exact body")]
+
+    subjects = enricher.subjects(reviews)
+
+    assert len(subjects) == 1
+    assert subjects[0].key.startswith("review-text/")
+
+
+def test_opentapioca_healthcheck_probes_the_annotate_endpoint() -> None:
+    enricher = OpenTapiocaEnricher(target="claim")
+    response = Mock(status_code=200)
+    with patch("requests.post", return_value=response) as post:
+        assert enricher.is_available()
+
+    assert post.call_args.kwargs["data"]["query"] == "test"
+
+
+def test_opentapioca_confidence_is_semantic_configuration() -> None:
+    baseline = OpenTapiocaEnricher(target="claim", confidence=0.5)
+    operational_change = OpenTapiocaEnricher(
+        target="claim", confidence=0.5, timeout=999
+    )
+    semantic_change = OpenTapiocaEnricher(target="claim", confidence=0.9)
+
+    assert baseline.config_hash == operational_change.config_hash
+    assert baseline.config_hash != semantic_change.config_hash
+
+
+def test_opentapioca_worker_count_is_operational_configuration() -> None:
+    serial = OpenTapiocaEnricher(target="claim", max_workers=1)
+    concurrent = OpenTapiocaEnricher(target="claim", max_workers=8)
+
+    assert serial.config_hash == concurrent.config_hash
+
+
+_REFINED_RESPONSE = {
+    "text": "Emmanuel Macron visited Germany in 2017.",
+    "spans": [
+        {
+            "text": "Emmanuel Macron",
+            "start": 0,
+            "end": 15,
+            "coarse_type": "MENTION",
+            "mention_type": "PERSON",
+            "date": None,
+            "confidence": 0.9998,
+            "entity": {
+                "qid": "Q3052772",
+                "label": None,
+                "wikipedia_title": "Emmanuel Macron",
+            },
+            "types": [{"id": "Q5", "label": "human", "confidence": 1.0}],
+        },
+        {
+            "text": "2017",
+            "start": 35,
+            "end": 39,
+            "coarse_type": "DATE",
+            "mention_type": None,
+            "date": None,
+            "confidence": 0.9,
+            "entity": {"qid": "Q25290", "label": None, "wikipedia_title": "2017"},
+            "types": [],
+        },
+        {
+            "text": "Germany",
+            "start": 24,
+            "end": 31,
+            "coarse_type": "MENTION",
+            "mention_type": "ORG",
+            "date": None,
+            "confidence": 0.97,
+            "entity": {"qid": None, "label": None, "wikipedia_title": None},
+            "types": [],
+        },
+    ],
+}
+
+
+def test_refined_computes_and_applies_entity_payload() -> None:
+    enricher = RefinedEnricher(target="claim")
+    review = _review(claim="Emmanuel Macron visited Germany in 2017.")
+    response = Mock(status_code=200)
+    response.json.return_value = _REFINED_RESPONSE
+    with patch("requests.post", return_value=response):
+        subject = enricher.subjects([review])[0]
+        result = enricher.compute_batch([subject])[0]
+        enricher.apply(subject, result.payload)
+
+    assert result.succeeded
+    [entity] = review.claim.analysis.entities
+    assert entity.uri == "http://www.wikidata.org/entity/Q3052772"
+    assert entity.source == "refined"
+    assert entity.surface_form == "Emmanuel Macron"
+    assert entity.types == ["http://www.wikidata.org/entity/Q5"]
+    assert entity.confidence == 0.9998
+    assert entity.support is None
+    assert entity.offset == 0
+
+
+def test_refined_confidence_threshold_filters_low_score_mentions() -> None:
+    enricher = RefinedEnricher(target="claim", confidence=0.99)
+    review = _review(claim="Emmanuel Macron visited Germany in 2017.")
+    response = Mock(status_code=200)
+    response.json.return_value = {
+        "text": "Emmanuel Macron visited Germany in 2017.",
+        "spans": [
+            {
+                "text": "Germany",
+                "start": 24,
+                "end": 31,
+                "coarse_type": "MENTION",
+                "confidence": 0.97,
+                "entity": {"qid": "Q183", "label": None, "wikipedia_title": "Germany"},
+                "types": [],
+            }
+        ],
+    }
+    with patch("requests.post", return_value=response):
+        result = enricher.compute_batch([enricher.subjects([review])[0]])[0]
+
+    assert result.succeeded
+    assert review.claim.analysis.entities == []
+
+
+def test_refined_claim_subject_is_shared_by_claim_uri() -> None:
+    enricher = RefinedEnricher(target="claim")
+    reviews = [_review(), _review()]
+
+    subjects = enricher.subjects(reviews)
+
+    assert len(subjects) == 1
+    assert len(subjects[0].targets) == 2
+    assert subjects[0].key == reviews[0].claim.uri
+
+
+def test_refined_review_subject_is_shared_by_exact_body() -> None:
+    enricher = RefinedEnricher(target="review")
+    reviews = [_review(body="The same exact body"), _review(body="The same exact body")]
+
+    subjects = enricher.subjects(reviews)
+
+    assert len(subjects) == 1
+    assert subjects[0].key.startswith("review-text/")
+
+
+def test_refined_healthcheck_probes_the_annotate_endpoint() -> None:
+    enricher = RefinedEnricher(target="claim")
+    response = Mock(status_code=200)
+    with patch("requests.post", return_value=response) as post:
+        assert enricher.is_available()
+
+    assert post.call_args.kwargs["json"] == {"text": "test"}
+
+
+def test_refined_confidence_is_semantic_configuration() -> None:
+    baseline = RefinedEnricher(target="claim", confidence=0.5)
+    operational_change = RefinedEnricher(target="claim", confidence=0.5, timeout=999)
+    semantic_change = RefinedEnricher(target="claim", confidence=0.9)
+
+    assert baseline.config_hash == operational_change.config_hash
+    assert baseline.config_hash != semantic_change.config_hash
+
+
+def test_refined_worker_count_is_operational_configuration() -> None:
+    serial = RefinedEnricher(target="claim", max_workers=1)
+    concurrent = RefinedEnricher(target="claim", max_workers=8)
 
     assert serial.config_hash == concurrent.config_hash
 
@@ -196,9 +453,28 @@ def test_cimple_sends_api_key_header_on_model_calls() -> None:
     assert post.call_args.kwargs["headers"]["X-API-Key"] == "secret-key"
 
 
+def _property_enricher(
+    *,
+    properties: list[str] | None = None,
+    rate_limit_delay: float = 0.1,
+    max_retries: int = 4,
+) -> SparqlEntityPropertyEnricher:
+    return SparqlEntityPropertyEnricher(
+        name="dbpedia_entity_properties",
+        entity_sources=frozenset({"dbpedia_spotlight"}),
+        sparql_endpoint="https://dbpedia.org/sparql",
+        availability_key="dbpedia_sparql",
+        availability_probe_entity="http://dbpedia.org/resource/Paris",
+        availability_probe_property="http://www.w3.org/2003/01/geo/wgs84_pos#lat",
+        properties=properties,
+        rate_limit_delay=rate_limit_delay,
+        max_retries=max_retries,
+    )
+
+
 def test_property_enricher_groups_and_applies_entity_properties() -> None:
     property_uri = "http://example.test/property"
-    enricher = DBpediaPropertyEnricher(properties=[property_uri])
+    enricher = _property_enricher(properties=[property_uri])
     reviews = [_review(), _review()]
     for review in reviews:
         review.claim.analysis.entities.append(
@@ -231,18 +507,34 @@ def test_property_enricher_groups_and_applies_entity_properties() -> None:
 
 
 def test_property_dependency_healthcheck_probes_the_property_query_shape() -> None:
-    enricher = DBpediaPropertyEnricher(properties=[])
+    enricher = _property_enricher(properties=[])
     response = Mock(status_code=200)
     with patch("requests.get", return_value=response) as request:
         assert enricher.is_available()
     query = request.call_args.kwargs["params"]["query"]
     assert query.startswith("SELECT")
+    assert "http://dbpedia.org/resource/Paris" in query
     assert "wgs84_pos#lat" in query
     request.assert_called_once()
 
 
+def test_property_enricher_ignores_entities_from_other_sources() -> None:
+    enricher = _property_enricher(properties=["http://example.test/property"])
+    review = _review()
+    review.claim.analysis.entities.append(
+        EntityMention(
+            uri="http://www.wikidata.org/entity/Q3052772",
+            source="opentapioca",
+        )
+    )
+
+    subjects = enricher.subjects([review])
+
+    assert subjects == []
+
+
 def _property_subjects(
-    enricher: DBpediaPropertyEnricher, entity_uri: str
+    enricher: SparqlEntityPropertyEnricher, entity_uri: str
 ) -> list[EnrichmentSubject]:
     review = _review()
     review.claim.analysis.entities.append(
@@ -254,7 +546,7 @@ def _property_subjects(
 def test_property_query_retry_honors_retry_after_header() -> None:
     property_uri = "http://example.test/property"
     entity_uri = "http://dbpedia.org/resource/Climate_change"
-    enricher = DBpediaPropertyEnricher(properties=[property_uri], rate_limit_delay=0)
+    enricher = _property_enricher(properties=[property_uri], rate_limit_delay=0)
     unavailable = Mock(status_code=503, headers={"Retry-After": "7"})
     unavailable.raise_for_status.side_effect = requests.HTTPError(
         "503 Server Error", response=unavailable
@@ -266,7 +558,7 @@ def test_property_query_retry_honors_retry_after_header() -> None:
     with (
         patch("requests.get", side_effect=[unavailable, available]),
         patch(
-            "climatesense_kg.enrichers.dbpedia_property_enricher.time.sleep",
+            "climatesense_kg.enrichers.sparql_property_enricher.time.sleep",
             side_effect=sleeps.append,
         ),
     ):
@@ -279,7 +571,7 @@ def test_property_query_retry_honors_retry_after_header() -> None:
 def test_property_query_failures_stay_retryable_with_bounded_delays() -> None:
     property_uri = "http://example.test/property"
     entity_uri = "http://dbpedia.org/resource/Climate_change"
-    enricher = DBpediaPropertyEnricher(
+    enricher = _property_enricher(
         properties=[property_uri], rate_limit_delay=0, max_retries=3
     )
     unavailable = Mock(status_code=503, headers={})
@@ -290,7 +582,7 @@ def test_property_query_failures_stay_retryable_with_bounded_delays() -> None:
     with (
         patch("requests.get", return_value=unavailable),
         patch(
-            "climatesense_kg.enrichers.dbpedia_property_enricher.time.sleep",
+            "climatesense_kg.enrichers.sparql_property_enricher.time.sleep",
             side_effect=sleeps.append,
         ),
     ):

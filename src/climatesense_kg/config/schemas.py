@@ -170,6 +170,48 @@ class DbpediaEntityPropertiesConfig:
 
 
 @dataclass
+class OpenTapiocaConfig:
+    """Configuration for OpenTapioca Wikidata entity extraction."""
+
+    enabled: bool = False
+    api_url: str = "https://opentapioca.tools.eurecom.fr/api/annotate"
+    confidence: float = 0.5
+    timeout: int = 20
+    max_workers: int = 8
+
+    def __post_init__(self) -> None:
+        if self.max_workers <= 0:
+            raise ValueError("OpenTapioca max_workers must be positive")
+
+
+@dataclass
+class RefinedConfig:
+    """Configuration for ReFinED Wikidata entity extraction."""
+
+    enabled: bool = False
+    api_url: str = "https://refined.tools.eurecom.fr/annotate_text"
+    confidence: float = 0.5
+    timeout: int = 60
+    max_workers: int = 6
+
+    def __post_init__(self) -> None:
+        if self.max_workers <= 0:
+            raise ValueError("ReFinED max_workers must be positive")
+
+
+@dataclass
+class WikidataEntityPropertiesConfig:
+    """Configuration for Wikidata entity property enrichment."""
+
+    enabled: bool = False
+    sparql_endpoint: str = "https://query.wikidata.org/sparql"
+    properties: list[str] = field(default_factory=list[str])
+    timeout: int = 20
+    rate_limit_delay: float = 0.1
+    max_retries: int = 4
+
+
+@dataclass
 class CimpleConfig:
     """Configuration for individually persisted CIMPLE models."""
 
@@ -201,6 +243,11 @@ class EnrichmentConfig:
     dbpedia_entity_properties: DbpediaEntityPropertiesConfig = field(
         default_factory=DbpediaEntityPropertiesConfig
     )
+    opentapioca: OpenTapiocaConfig = field(default_factory=OpenTapiocaConfig)
+    refined: RefinedConfig = field(default_factory=RefinedConfig)
+    wikidata_entity_properties: WikidataEntityPropertiesConfig = field(
+        default_factory=WikidataEntityPropertiesConfig
+    )
     cimple: CimpleConfig = field(default_factory=CimpleConfig)
 
     def __post_init__(self) -> None:
@@ -214,6 +261,15 @@ class EnrichmentConfig:
         ):
             raise ValueError(
                 "DBpedia entity properties require DBpedia Spotlight to be enabled"
+            )
+        if (
+            self.wikidata_entity_properties.enabled
+            and not self.opentapioca.enabled
+            and not self.refined.enabled
+        ):
+            raise ValueError(
+                "Wikidata entity properties require OpenTapioca or ReFinED "
+                "to be enabled"
             )
 
 

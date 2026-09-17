@@ -6,15 +6,22 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from .config import PipelineConfig
-from .config.graphs import ENRICHMENT_GRAPH_ENTITY_SOURCES
+from .config.graphs import (
+    DBPEDIA_ENRICHER_SOURCE_NAME,
+    DBPEDIA_ENTITY_SOURCES,
+    WIKIDATA_ENRICHER_SOURCE_NAME,
+    WIKIDATA_ENTITY_SOURCES,
+)
 from .config.organizations import ORGANIZATION_CATALOG_PATH, OrganizationCatalog
 from .data_manager import DataManager
 from .database import Database
 from .enrichers import (
     CimpleModelEnricher,
-    DBpediaPropertyEnricher,
     DBpediaSpotlightEnricher,
     Enricher,
+    OpenTapiocaEnricher,
+    RefinedEnricher,
+    SparqlEntityPropertyEnricher,
 )
 from .enrichment import EnrichmentService
 from .export import RdfExporter
@@ -23,6 +30,11 @@ from .identity import IdentityService
 from .ingestion import IngestionService
 from .projection import ReviewProjectionReader
 from .rdf_generation import RDFGenerator
+
+DBPEDIA_PROBE_ENTITY = "http://dbpedia.org/resource/Paris"
+DBPEDIA_PROBE_PROPERTY = "http://www.w3.org/2003/01/geo/wgs84_pos#lat"
+WIKIDATA_PROBE_ENTITY = "http://www.wikidata.org/entity/Q90"
+WIKIDATA_PROBE_PROPERTY = "http://www.wikidata.org/prop/direct/P31"
 
 
 @dataclass
@@ -51,11 +63,7 @@ def build_services(config: PipelineConfig) -> PipelineServices:
         batch_size=config.batch_size,
         progress_interval_seconds=config.enrichment.progress_interval_seconds,
     )
-    enrichment_graphs = (
-        dict(ENRICHMENT_GRAPH_ENTITY_SOURCES)
-        if config.enrichment.dbpedia_spotlight.enabled
-        else {}
-    )
+    enrichment_graphs = _enrichment_graphs(config)
     return PipelineServices(
         database=database,
         ingestion=IngestionService(
@@ -85,6 +93,16 @@ def build_services(config: PipelineConfig) -> PipelineServices:
             progress_interval_seconds=config.progress_interval_seconds,
         ),
     )
+
+
+def _enrichment_graphs(config: PipelineConfig) -> dict[str, frozenset[str]]:
+    enrichment = config.enrichment
+    graphs: dict[str, frozenset[str]] = {}
+    if enrichment.dbpedia_spotlight.enabled:
+        graphs[DBPEDIA_ENRICHER_SOURCE_NAME] = DBPEDIA_ENTITY_SOURCES
+    if enrichment.opentapioca.enabled or enrichment.refined.enabled:
+        graphs[WIKIDATA_ENRICHER_SOURCE_NAME] = WIKIDATA_ENTITY_SOURCES
+    return graphs
 
 
 def _build_extraction(
@@ -131,12 +149,57 @@ def _build_enrichers(config: PipelineConfig) -> list[Enricher]:
     if enrichment.dbpedia_entity_properties.enabled:
         properties = enrichment.dbpedia_entity_properties
         enrichers.append(
-            DBpediaPropertyEnricher(
+            SparqlEntityPropertyEnricher(
+                name="dbpedia_entity_properties",
+                entity_sources=DBPEDIA_ENTITY_SOURCES,
                 sparql_endpoint=properties.sparql_endpoint,
                 properties=properties.properties,
+                availability_key="dbpedia_sparql",
+                availability_probe_entity=DBPEDIA_PROBE_ENTITY,
+                availability_probe_property=DBPEDIA_PROBE_PROPERTY,
                 timeout=properties.timeout,
                 rate_limit_delay=properties.rate_limit_delay,
                 max_retries=properties.max_retries,
+            )
+        )
+    if enrichment.opentapioca.enabled:
+        opentapioca = enrichment.opentapioca
+        enrichers.extend(
+            OpenTapiocaEnricher(
+                target=target,
+                api_url=opentapioca.api_url,
+                confidence=opentapioca.confidence,
+                timeout=opentapioca.timeout,
+                max_workers=opentapioca.max_workers,
+            )
+            for target in ("claim", "review")
+        )
+    if enrichment.refined.enabled:
+        refined = enrichment.refined
+        enrichers.extend(
+            RefinedEnricher(
+                target=target,
+                api_url=refined.api_url,
+                confidence=refined.confidence,
+                timeout=refined.timeout,
+                max_workers=refined.max_workers,
+            )
+            for target in ("claim", "review")
+        )
+    if enrichment.wikidata_entity_properties.enabled:
+        wikidata_properties = enrichment.wikidata_entity_properties
+        enrichers.append(
+            SparqlEntityPropertyEnricher(
+                name="wikidata_entity_properties",
+                entity_sources=WIKIDATA_ENTITY_SOURCES,
+                sparql_endpoint=wikidata_properties.sparql_endpoint,
+                properties=wikidata_properties.properties,
+                availability_key="wikidata_sparql",
+                availability_probe_entity=WIKIDATA_PROBE_ENTITY,
+                availability_probe_property=WIKIDATA_PROBE_PROPERTY,
+                timeout=wikidata_properties.timeout,
+                rate_limit_delay=wikidata_properties.rate_limit_delay,
+                max_retries=wikidata_properties.max_retries,
             )
         )
     if enrichment.cimple.enabled:

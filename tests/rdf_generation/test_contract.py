@@ -7,8 +7,8 @@ from unittest.mock import Mock
 from uuid import UUID
 
 import pytest
-from rdflib import Graph, URIRef
-from rdflib.namespace import RDF
+from rdflib import Graph, Literal, URIRef
+from rdflib.namespace import RDF, XSD
 
 from climatesense_kg.domain import (
     CanonicalClaim,
@@ -266,6 +266,82 @@ def test_missing_enrichment_results_publish_the_enrichment_graph(
     )
     assert mention in enrichment_graph
     assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_wikidata_providers_share_one_graph_and_emit_properties_once(
+    tmp_path: Path,
+) -> None:
+    organization = CanonicalOrganization(
+        uri=f"{BASE}/organization/factual",
+        name="Factual",
+        website="https://factual.ro",
+    )
+    entity_uri = "http://www.wikidata.org/entity/Q1258"
+    temperature = "http://www.wikidata.org/prop/direct/P2076"
+    spotlight_review = _review(organization)
+    spotlight_review.claim.analysis.entities.append(
+        EntityMention(
+            uri=entity_uri,
+            source="opentapioca",
+            properties={
+                temperature: [
+                    EntityPropertyValue(
+                        value="21.111111",
+                        value_type="literal",
+                        datatype="http://www.w3.org/2001/XMLSchema#decimal",
+                    )
+                ]
+            },
+        )
+    )
+    refined_review = _review(organization)
+    refined_review.claim.analysis.entities.append(
+        EntityMention(
+            uri=entity_uri,
+            source="refined",
+            properties={
+                temperature: [
+                    EntityPropertyValue(
+                        value="21.111111",
+                        value_type="literal",
+                        datatype="http://www.w3.org/2001/XMLSchema#decimal",
+                    )
+                ]
+            },
+        )
+    )
+    reader = Mock()
+    reader.count.return_value = 2
+    reader.iter_batches.return_value = iter([[spotlight_review, refined_review]])
+    exporter = RdfExporter(
+        reader,
+        Mock(),
+        RDFGenerator(BASE),
+        output_path_template=str(tmp_path / "{SOURCE}.nt.gz"),
+        enrichment_graphs={
+            "wikidata-enricher": frozenset({"opentapioca", "refined"}),
+        },
+    )
+
+    report = exporter.run(("claimreviewdata",), datetime(2026, 8, 13))
+
+    assert [artifact.graph_name for artifact in report.artifacts] == [
+        "claimreviewdata",
+        "wikidata-enricher",
+    ]
+    enrichment_graph = Graph().parse(
+        data=gzip.decompress(
+            (tmp_path / "wikidata-enricher.nt.gz").read_bytes()
+        ).decode("utf-8"),
+        format="nt",
+    )
+    claim_uri = URIRef(f"{BASE}/{spotlight_review.claim.uri}")
+    entity = URIRef(entity_uri)
+    assert (claim_uri, URIRef(f"{SCHEMA}mentions"), entity) in enrichment_graph
+    assert list(enrichment_graph.objects(entity, URIRef(temperature))) == [
+        Literal("21.111111", datatype=XSD.decimal)
+    ]
+    assert len(list(enrichment_graph)) == 2
 
 
 def test_deduplication_failure_preserves_previous_snapshot(

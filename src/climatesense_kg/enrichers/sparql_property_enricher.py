@@ -1,4 +1,4 @@
-"""DBpedia entity-property enrichment stage."""
+"""SPARQL entity-property enrichment stages."""
 
 from __future__ import annotations
 
@@ -13,7 +13,6 @@ from urllib.parse import urlsplit
 import requests
 
 from .. import USER_AGENT
-from ..config.graphs import DBPEDIA_ENTITY_SOURCES
 from ..domain import CanonicalClaimReview, EntityMention, EntityPropertyValue
 from ..processing import ProcessingResult, stable_hash
 from .base import Enricher, EnrichmentSubject
@@ -29,41 +28,46 @@ class PropertyQueryResult:
     language: str | None = None
 
 
-class DBpediaPropertyEnricher(Enricher):
-    """Persist selected properties once for each DBpedia entity URI."""
+class SparqlEntityPropertyEnricher(Enricher):
+    """Persist selected properties once for each entity URI from one endpoint."""
 
-    name = "dbpedia_entity_properties"
-    version = "1"
-    availability_key = "dbpedia_sparql"
     entity_batch_size = 50
     _MIN_RETRY_DELAY_SECONDS = 1.0
     _MAX_RETRY_DELAY_SECONDS = 30.0
-    _AVAILABILITY_QUERY = (
-        "SELECT ?entity ?property ?value WHERE { "
-        "VALUES ?entity { <http://dbpedia.org/resource/Berlin> } "
-        "VALUES ?property { <http://www.w3.org/2003/01/geo/wgs84_pos#lat> } "
-        "?entity ?property ?value ."
-        " }"
-    )
     _FORBIDDEN_IRI_CHARACTERS = re.compile(r'[\x00-\x20<>"{}|^`\\]')
     _INVALID_PERCENT_ESCAPE = re.compile(r"%(?![0-9A-Fa-f]{2})")
 
     def __init__(
         self,
         *,
-        sparql_endpoint: str = "https://dbpedia.org/sparql",
+        name: str,
+        entity_sources: frozenset[str],
+        sparql_endpoint: str,
         properties: list[str] | None = None,
+        availability_key: str,
+        availability_probe_entity: str,
+        availability_probe_property: str,
         timeout: int = 20,
         rate_limit_delay: float = 0.1,
         max_retries: int = 4,
     ) -> None:
+        if not entity_sources:
+            raise ValueError("SPARQL property enricher requires entity sources")
         self.endpoint = sparql_endpoint
+        self.entity_sources = frozenset(entity_sources)
         self.properties = self._normalize_property_uris(properties or [])
+        self.availability_query = (
+            "SELECT ?entity ?property ?value WHERE { "
+            f"VALUES ?entity {{ <{availability_probe_entity}> }} "
+            f"VALUES ?property {{ <{availability_probe_property}> }} "
+            "?entity ?property ?value ."
+            " }"
+        )
         super().__init__(
-            self.name,
-            version=self.version,
+            name,
+            version="1",
             semantic_config={"properties": self.properties},
-            availability_key=self.availability_key,
+            availability_key=availability_key,
             batch_size=self.entity_batch_size,
         )
         self.timeout = timeout
@@ -78,10 +82,7 @@ class DBpediaPropertyEnricher(Enricher):
         try:
             response = requests.get(
                 self.endpoint,
-                params={
-                    "query": self._AVAILABILITY_QUERY,
-                    "format": "application/sparql-results+json",
-                },
+                params={"query": self.availability_query},
                 headers=self.headers,
                 timeout=self.timeout,
             )
@@ -119,10 +120,7 @@ class DBpediaPropertyEnricher(Enricher):
             try:
                 response = requests.get(
                     self.endpoint,
-                    params={
-                        "query": self._build_query(entity_uris),
-                        "format": "application/sparql-results+json",
-                    },
+                    params={"query": self._build_query(entity_uris)},
                     headers=self.headers,
                     timeout=self.timeout,
                 )
@@ -147,7 +145,7 @@ class DBpediaPropertyEnricher(Enricher):
                 {
                     "error_type": "property_query_error",
                     "entity_uri": entity_uri,
-                    "error": str(last_exception or "Unknown DBpedia property error"),
+                    "error": str(last_exception or "Unknown property query error"),
                 },
             )
             for entity_uri in entity_uris
@@ -174,9 +172,11 @@ class DBpediaPropertyEnricher(Enricher):
         raw_properties = payload.get("properties")
         if not isinstance(raw_properties, dict):
             return
-        properties = DBpediaPropertyEnricher._deserialize_properties(raw_properties)
+        properties = SparqlEntityPropertyEnricher._deserialize_properties(
+            raw_properties
+        )
         for entity in entity_references:
-            DBpediaPropertyEnricher._merge_properties(entity, properties)
+            SparqlEntityPropertyEnricher._merge_properties(entity, properties)
 
     def _collect_all_entity_references(
         self, items: list[CanonicalClaimReview]
@@ -193,7 +193,7 @@ class DBpediaPropertyEnricher(Enricher):
         entity_map: dict[str, list[EntityMention]] = {}
         entities = [*item.claim.analysis.entities, *item.analysis.entities]
         for entity in entities:
-            if entity.uri and entity.source in DBPEDIA_ENTITY_SOURCES:
+            if entity.uri and entity.source in self.entity_sources:
                 entity_map.setdefault(entity.uri, []).append(entity)
         return entity_map
 
@@ -215,14 +215,14 @@ class DBpediaPropertyEnricher(Enricher):
             if (validated := self._validate_absolute_uri(entity_uri)) is not None
         ]
         if len(validated_entity_uris) != len(entity_uris):
-            raise ValueError("Invalid DBpedia entity URI")
+            raise ValueError("Invalid entity URI")
         validated_properties = [
             validated
             for prop in self.properties
             if (validated := self._validate_absolute_uri(prop)) is not None
         ]
         if len(validated_properties) != len(self.properties):
-            raise ValueError("Invalid DBpedia property URI")
+            raise ValueError("Invalid property URI")
         entity_values = " ".join(f"<{uri}>" for uri in validated_entity_uris)
         property_values = " ".join(f"<{prop}>" for prop in validated_properties)
         return (

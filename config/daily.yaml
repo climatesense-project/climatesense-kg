@@ -93,6 +93,30 @@ enrichment:
     timeout: 30
     rate_limit_delay: 0
 
+  opentapioca:
+    enabled: true
+    api_url: "https://opentapioca.tools.eurecom.fr/api/annotate"
+    confidence: 0.5
+    timeout: 20
+    max_workers: 8
+
+  refined:
+    enabled: true
+    api_url: "https://refined.tools.eurecom.fr/annotate_text"
+    confidence: 0.5
+    timeout: 60
+    max_workers: 6
+
+  wikidata_entity_properties:
+    enabled: true
+    sparql_endpoint: "https://query.wikidata.org/sparql"
+    properties:
+      - "http://www.wikidata.org/prop/direct/P31"
+      - "http://www.wikidata.org/prop/direct/P17"
+      - "http://www.wikidata.org/prop/direct/P625"
+    timeout: 30
+    rate_limit_delay: 1
+
   cimple:
     enabled: true
     model_versions:
