@@ -22,10 +22,27 @@ def test_dbpedia_properties_require_spotlight(tmp_path: Path) -> None:
         load_config(config_path)
 
 
+def test_wikidata_properties_require_a_wikidata_linker(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        "enrichment:\n"
+        "  wikidata_entity_properties:\n"
+        "    enabled: true\n"
+        "output:\n"
+        "  output_path: output/graph.nt.gz\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="require OpenTapioca or ReFinED"):
+        load_config(config_path)
+
+
 @pytest.mark.parametrize(
     "section",
     [
         "  dbpedia_spotlight:\n    max_workers: 0\n",
+        "  opentapioca:\n    max_workers: 0\n",
+        "  refined:\n    max_workers: 0\n",
         "  cimple:\n    max_workers: 0\n",
     ],
 )
