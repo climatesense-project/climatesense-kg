@@ -6,15 +6,15 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from .config import PipelineConfig
-from .config.graphs import ENRICHMENT_GRAPH_ENTITY_SOURCES
+from .config.graphs import DBPEDIA_ENTITY_SOURCES, ENRICHMENT_GRAPH_ENTITY_SOURCES
 from .config.organizations import ORGANIZATION_CATALOG_PATH, OrganizationCatalog
 from .data_manager import DataManager
 from .database import Database
 from .enrichers import (
     CimpleModelEnricher,
-    DBpediaPropertyEnricher,
     DBpediaSpotlightEnricher,
     Enricher,
+    SparqlEntityPropertyEnricher,
 )
 from .enrichment import EnrichmentService
 from .export import RdfExporter
@@ -23,6 +23,9 @@ from .identity import IdentityService
 from .ingestion import IngestionService
 from .projection import ReviewProjectionReader
 from .rdf_generation import RDFGenerator
+
+DBPEDIA_PROBE_ENTITY = "http://dbpedia.org/resource/Berlin"
+DBPEDIA_PROBE_PROPERTY = "http://www.w3.org/2003/01/geo/wgs84_pos#lat"
 
 
 @dataclass
@@ -131,9 +134,14 @@ def _build_enrichers(config: PipelineConfig) -> list[Enricher]:
     if enrichment.dbpedia_entity_properties.enabled:
         properties = enrichment.dbpedia_entity_properties
         enrichers.append(
-            DBpediaPropertyEnricher(
+            SparqlEntityPropertyEnricher(
+                name="dbpedia_entity_properties",
+                entity_sources=DBPEDIA_ENTITY_SOURCES,
                 sparql_endpoint=properties.sparql_endpoint,
                 properties=properties.properties,
+                availability_key="dbpedia_sparql",
+                availability_probe_entity=DBPEDIA_PROBE_ENTITY,
+                availability_probe_property=DBPEDIA_PROBE_PROPERTY,
                 timeout=properties.timeout,
                 rate_limit_delay=properties.rate_limit_delay,
                 max_retries=properties.max_retries,

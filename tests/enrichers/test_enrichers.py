@@ -18,10 +18,10 @@ from climatesense_kg.domain import (
 )
 from climatesense_kg.enrichers import (
     CimpleModelEnricher,
-    DBpediaPropertyEnricher,
     DBpediaSpotlightEnricher,
     OpenTapiocaEnricher,
     RefinedEnricher,
+    SparqlEntityPropertyEnricher,
 )
 from climatesense_kg.enrichers.base import Enricher, EnrichmentSubject
 from climatesense_kg.enrichment import EnrichmentService
@@ -453,9 +453,28 @@ def test_cimple_sends_api_key_header_on_model_calls() -> None:
     assert post.call_args.kwargs["headers"]["X-API-Key"] == "secret-key"
 
 
+def _property_enricher(
+    *,
+    properties: list[str] | None = None,
+    rate_limit_delay: float = 0.1,
+    max_retries: int = 4,
+) -> SparqlEntityPropertyEnricher:
+    return SparqlEntityPropertyEnricher(
+        name="dbpedia_entity_properties",
+        entity_sources=frozenset({"dbpedia_spotlight"}),
+        sparql_endpoint="https://dbpedia.org/sparql",
+        availability_key="dbpedia_sparql",
+        availability_probe_entity="http://dbpedia.org/resource/Paris",
+        availability_probe_property="http://www.w3.org/2003/01/geo/wgs84_pos#lat",
+        properties=properties,
+        rate_limit_delay=rate_limit_delay,
+        max_retries=max_retries,
+    )
+
+
 def test_property_enricher_groups_and_applies_entity_properties() -> None:
     property_uri = "http://example.test/property"
-    enricher = DBpediaPropertyEnricher(properties=[property_uri])
+    enricher = _property_enricher(properties=[property_uri])
     reviews = [_review(), _review()]
     for review in reviews:
         review.claim.analysis.entities.append(
@@ -488,18 +507,34 @@ def test_property_enricher_groups_and_applies_entity_properties() -> None:
 
 
 def test_property_dependency_healthcheck_probes_the_property_query_shape() -> None:
-    enricher = DBpediaPropertyEnricher(properties=[])
+    enricher = _property_enricher(properties=[])
     response = Mock(status_code=200)
     with patch("requests.get", return_value=response) as request:
         assert enricher.is_available()
     query = request.call_args.kwargs["params"]["query"]
     assert query.startswith("SELECT")
+    assert "http://dbpedia.org/resource/Paris" in query
     assert "wgs84_pos#lat" in query
     request.assert_called_once()
 
 
+def test_property_enricher_ignores_entities_from_other_sources() -> None:
+    enricher = _property_enricher(properties=["http://example.test/property"])
+    review = _review()
+    review.claim.analysis.entities.append(
+        EntityMention(
+            uri="http://www.wikidata.org/entity/Q3052772",
+            source="opentapioca",
+        )
+    )
+
+    subjects = enricher.subjects([review])
+
+    assert subjects == []
+
+
 def _property_subjects(
-    enricher: DBpediaPropertyEnricher, entity_uri: str
+    enricher: SparqlEntityPropertyEnricher, entity_uri: str
 ) -> list[EnrichmentSubject]:
     review = _review()
     review.claim.analysis.entities.append(
@@ -511,7 +546,7 @@ def _property_subjects(
 def test_property_query_retry_honors_retry_after_header() -> None:
     property_uri = "http://example.test/property"
     entity_uri = "http://dbpedia.org/resource/Climate_change"
-    enricher = DBpediaPropertyEnricher(properties=[property_uri], rate_limit_delay=0)
+    enricher = _property_enricher(properties=[property_uri], rate_limit_delay=0)
     unavailable = Mock(status_code=503, headers={"Retry-After": "7"})
     unavailable.raise_for_status.side_effect = requests.HTTPError(
         "503 Server Error", response=unavailable
@@ -523,7 +558,7 @@ def test_property_query_retry_honors_retry_after_header() -> None:
     with (
         patch("requests.get", side_effect=[unavailable, available]),
         patch(
-            "climatesense_kg.enrichers.dbpedia_property_enricher.time.sleep",
+            "climatesense_kg.enrichers.sparql_property_enricher.time.sleep",
             side_effect=sleeps.append,
         ),
     ):
@@ -536,7 +571,7 @@ def test_property_query_retry_honors_retry_after_header() -> None:
 def test_property_query_failures_stay_retryable_with_bounded_delays() -> None:
     property_uri = "http://example.test/property"
     entity_uri = "http://dbpedia.org/resource/Climate_change"
-    enricher = DBpediaPropertyEnricher(
+    enricher = _property_enricher(
         properties=[property_uri], rate_limit_delay=0, max_retries=3
     )
     unavailable = Mock(status_code=503, headers={})
@@ -547,7 +582,7 @@ def test_property_query_failures_stay_retryable_with_bounded_delays() -> None:
     with (
         patch("requests.get", return_value=unavailable),
         patch(
-            "climatesense_kg.enrichers.dbpedia_property_enricher.time.sleep",
+            "climatesense_kg.enrichers.sparql_property_enricher.time.sleep",
             side_effect=sleeps.append,
         ),
     ):
