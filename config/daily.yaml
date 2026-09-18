@@ -98,14 +98,14 @@ enrichment:
     api_url: "https://opentapioca.tools.eurecom.fr/api/annotate"
     confidence: 0.5
     timeout: 20
-    max_workers: 8
+    max_workers: 4
 
   refined:
     enabled: true
     api_url: "https://refined.tools.eurecom.fr/annotate_text"
     confidence: 0.5
     timeout: 60
-    max_workers: 6
+    max_workers: 4
 
   wikidata_entity_properties:
     enabled: true
