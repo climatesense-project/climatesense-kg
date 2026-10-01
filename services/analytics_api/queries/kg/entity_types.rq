@@ -12,7 +12,8 @@ WHERE {
       VALUES ?rdfType { schema:Claim schema:ClaimReview }
     }
   }
-  GRAPH graph:dbpedia-enricher {
+  VALUES ?enricherGraph { graph:dbpedia-enricher graph:wikidata-enricher }
+  GRAPH ?enricherGraph {
     ?claim schema:mentions ?entity .
   }
 }
