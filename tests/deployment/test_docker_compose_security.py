@@ -7,33 +7,36 @@ import yaml
 
 _REPOSITORY_ROOT = Path(__file__).parents[2]
 _COMPOSE_PATH = _REPOSITORY_ROOT / "docker" / "docker-compose.yml"
+_VIRTUOSO_COMPOSE_PATH = _REPOSITORY_ROOT / "docker" / "docker-compose.virtuoso.yml"
 _ENV_EXAMPLE_PATH = _REPOSITORY_ROOT / "docker" / ".env.example"
 _PIPELINE_DOCKERFILE_PATH = _REPOSITORY_ROOT / "docker" / "Dockerfile"
 
 
-def _compose_services() -> dict[str, dict[str, Any]]:
-    compose = yaml.safe_load(_COMPOSE_PATH.read_text())
+def _compose_services(path: Path) -> dict[str, dict[str, Any]]:
+    compose = yaml.safe_load(path.read_text())
     return compose["services"]
 
 
 def test_database_ports_are_loopback_only() -> None:
-    services = _compose_services()
+    services = _compose_services(_COMPOSE_PATH)
 
     assert services["postgres"]["ports"] == [
         "${POSTGRES_BIND_ADDRESS:-127.0.0.1}:${POSTGRES_HOST_PORT:-5432}:5432"
     ]
-    assert services["virtuoso"]["ports"] == [
+    virtuoso = _compose_services(_VIRTUOSO_COMPOSE_PATH)["virtuoso"]
+    assert virtuoso["ports"] == [
         "${VIRTUOSO_BIND_ADDRESS:-127.0.0.1}:${VIRTUOSO_PORT:-8890}:8890"
     ]
 
 
 def test_database_passwords_have_no_defaults() -> None:
-    services = _compose_services()
+    services = _compose_services(_COMPOSE_PATH)
 
     assert services["postgres"]["environment"]["POSTGRES_PASSWORD"] == (
         "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}"  # noqa: S105
     )
-    assert services["virtuoso"]["environment"]["DBA_PASSWORD"] == (
+    virtuoso = _compose_services(_VIRTUOSO_COMPOSE_PATH)["virtuoso"]
+    assert virtuoso["environment"]["DBA_PASSWORD"] == (
         "${VIRTUOSO_PASSWORD:?VIRTUOSO_PASSWORD must be set}"  # noqa: S105
     )
 
@@ -43,7 +46,7 @@ def test_database_passwords_have_no_defaults() -> None:
 
 
 def test_pipeline_runs_as_host_mapped_non_root_user() -> None:
-    pipeline = _compose_services()["pipeline"]
+    pipeline = _compose_services(_COMPOSE_PATH)["pipeline"]
     dockerfile = _PIPELINE_DOCKERFILE_PATH.read_text()
     env_example = _ENV_EXAMPLE_PATH.read_text().splitlines()
 
