@@ -68,9 +68,10 @@ export type EnrichmentCoverage = {
   claims_with_climate_relatedness: number;
 };
 
-export type EntityTypeCount = {
-  type_uri: string | null;
-  count: number;
+export type EntityMentionCount = {
+  graph: string | null;
+  entity_uri: string | null;
+  mentions: number;
 };
 
 export type FactorDistributionItem = {
@@ -194,8 +195,8 @@ export function useKgEnrichmentCoverage(): UseAnalyticsResult<EnrichmentCoverage
   return useAnalyticsData<EnrichmentCoverage>("/metrics/kg/enrichment-coverage");
 }
 
-export function useKgEntityTypes(): UseAnalyticsResult<EntityTypeCount[]> {
-  return useAnalyticsData<EntityTypeCount[]>("/metrics/kg/entity-types");
+export function useKgEntities(): UseAnalyticsResult<EntityMentionCount[]> {
+  return useAnalyticsData<EntityMentionCount[]>("/metrics/kg/entities");
 }
 
 export function useKgClaimFactors(): UseAnalyticsResult<ClaimFactorDistributions> {

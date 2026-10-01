@@ -1,0 +1,29 @@
+PREFIX schema: <http://schema.org/>
+PREFIX graph: <http://data.climatesense-project.eu/graph/>
+
+# Top mentioned entities per enrichment graph. One UNION branch per graph
+# because SPARQL cannot limit a grouped result per group; each branch keeps
+# its own top 25.
+SELECT ?graph ?entity ?mentions
+WHERE {
+  {
+    SELECT (graph:dbpedia-enricher AS ?graph) ?entity (COUNT(*) AS ?mentions)
+    WHERE {
+      GRAPH graph:dbpedia-enricher { ?claim schema:mentions ?entity . }
+    }
+    GROUP BY ?entity
+    ORDER BY DESC(?mentions)
+    LIMIT 25
+  }
+  UNION
+  {
+    SELECT (graph:wikidata-enricher AS ?graph) ?entity (COUNT(*) AS ?mentions)
+    WHERE {
+      GRAPH graph:wikidata-enricher { ?claim schema:mentions ?entity . }
+    }
+    GROUP BY ?entity
+    ORDER BY DESC(?mentions)
+    LIMIT 25
+  }
+}
+ORDER BY DESC(?mentions)

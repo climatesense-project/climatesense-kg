@@ -32,9 +32,10 @@ class EnrichmentCoverage(BaseModel):
     claims_with_climate_relatedness: int = Field(ge=0)
 
 
-class EntityTypeCount(BaseModel):
-    type_uri: str | None = None
-    count: int = Field(ge=0)
+class EntityMentionCount(BaseModel):
+    graph: str | None = None
+    entity_uri: str | None = None
+    mentions: int = Field(ge=0)
 
 
 class FactorDistributionItem(BaseModel):

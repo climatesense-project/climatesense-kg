@@ -187,7 +187,7 @@ async def refresh_cache(
         await kg_router.enrichment_coverage()
         sparql_queries_warmed += 1
 
-        await kg_router.entity_types()
+        await kg_router.top_entities()
         sparql_queries_warmed += 1
 
         await kg_router.claim_factors()

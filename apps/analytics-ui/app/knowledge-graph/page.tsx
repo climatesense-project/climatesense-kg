@@ -23,16 +23,21 @@ import {
   useKgClassDistribution,
   useKgClaimFactors,
   useKgCoreCounts,
-  useKgEntityTypes,
+  useKgEntities,
   useKgTripleStats,
 } from "@/lib/hooks";
+import type { EntityMentionCount } from "@/lib/hooks";
 
 export default function KnowledgeGraphPage() {
   const { data: tripleStats, loading: tripleLoading } = useKgTripleStats();
   const { data: classDistribution, loading: classLoading } =
     useKgClassDistribution();
   const { data: coreCounts, loading: coreCountsLoading } = useKgCoreCounts();
-  const { data: entityTypes, loading: entityLoading } = useKgEntityTypes();
+  const { data: entities, loading: entitiesLoading } = useKgEntities();
+  const dbpediaEntities =
+    entities?.filter((row) => row.graph?.endsWith("dbpedia-enricher")) ?? [];
+  const wikidataEntities =
+    entities?.filter((row) => row.graph?.endsWith("wikidata-enricher")) ?? [];
   const { data: claimFactors, loading: factorsLoading } = useKgClaimFactors();
 
   const totalTriples =
@@ -494,59 +499,84 @@ export default function KnowledgeGraphPage() {
       </section>
 
       <section className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Top entities</CardTitle>
-            <CardDescription>
-              Most frequently mentioned entities in claims
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {entityLoading ? (
-              <Skeleton className="h-48 w-full" />
-            ) : entityTypes && entityTypes.length > 0 ? (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Type</TableHead>
-                    <TableHead className="text-right">Mentions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {entityTypes.slice(0, 10).map((row) => (
-                    <TableRow key={row.type_uri ?? "unknown"}>
-                      <TableCell
-                        className="truncate"
-                        title={row.type_uri ?? "unknown"}
-                      >
-                        {row.type_uri?.startsWith("http") ? (
-                          <a
-                            href={row.type_uri}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="hover:underline"
-                          >
-                            {row.type_uri}
-                          </a>
-                        ) : (
-                          row.type_uri ?? "unknown"
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {row.count.toLocaleString()}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                No entity statistics captured.
-              </p>
-            )}
-          </CardContent>
-        </Card>
+        <EntityTableCard
+          title="Top DBpedia entities"
+          description="Most frequently mentioned DBpedia entities in claims and reviews"
+          rows={dbpediaEntities}
+          loading={entitiesLoading}
+        />
+        <EntityTableCard
+          title="Top Wikidata entities"
+          description="Most frequently mentioned Wikidata entities in claims and reviews"
+          rows={wikidataEntities}
+          loading={entitiesLoading}
+        />
       </section>
     </div>
+  );
+}
+
+function EntityTableCard({
+  title,
+  description,
+  rows,
+  loading,
+}: {
+  title: string;
+  description: string;
+  rows: EntityMentionCount[];
+  loading: boolean;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <Skeleton className="h-48 w-full" />
+        ) : rows.length > 0 ? (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Entity</TableHead>
+                <TableHead className="text-right">Mentions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.slice(0, 10).map((row) => (
+                <TableRow key={row.entity_uri ?? "unknown"}>
+                  <TableCell
+                    className="truncate"
+                    title={row.entity_uri ?? "unknown"}
+                  >
+                    {row.entity_uri?.startsWith("http") ? (
+                      <a
+                        href={row.entity_uri}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="hover:underline"
+                      >
+                        {row.entity_uri}
+                      </a>
+                    ) : (
+                      row.entity_uri ?? "unknown"
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {row.mentions.toLocaleString()}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            No entity statistics captured.
+          </p>
+        )}
+      </CardContent>
+    </Card>
   );
 }

@@ -1,9 +1,15 @@
-"""Static regression checks for analytics query semantics."""
+"""Regression checks for analytics query semantics."""
 
 from pathlib import Path
 
+from rdflib import Dataset, URIRef
+from rdflib.namespace import Namespace
+
 _QUERY_DIR = Path(__file__).parents[2] / "services" / "analytics_api" / "queries" / "kg"
 _PIPELINE_QUERY_DIR = _QUERY_DIR.parent / "pipeline"
+
+_GRAPH_BASE = "http://data.climatesense-project.eu/graph/"
+_SCHEMA = Namespace("http://schema.org/")
 
 
 def test_enrichment_coverage_counts_distinct_claims() -> None:
@@ -42,3 +48,38 @@ def test_document_failure_query_uses_recorded_url() -> None:
 
     assert "stage_name = 'document.extract'" in query
     assert "payload->>'url'" in query
+
+
+def test_entities_query_ranks_per_graph() -> None:
+    query = (_QUERY_DIR / "entities.rq").read_text(encoding="utf-8")
+    dataset = Dataset()
+    dbpedia = dataset.graph(URIRef(f"{_GRAPH_BASE}dbpedia-enricher"))
+    wikidata = dataset.graph(URIRef(f"{_GRAPH_BASE}wikidata-enricher"))
+
+    for rank in range(1, 27):
+        for claim in range(1, rank + 1):
+            dbpedia.add(
+                (
+                    URIRef(f"urn:c{claim}"),
+                    _SCHEMA.mentions,
+                    URIRef(f"urn:e{rank}"),
+                )
+            )
+    wikidata.add((URIRef("urn:c1"), _SCHEMA.mentions, URIRef("urn:w1")))
+    for claim in range(1, 10):
+        wikidata.add((URIRef(f"urn:c{claim}"), _SCHEMA.mentions, URIRef("urn:e2")))
+
+    rows = {
+        (str(row.graph).removeprefix(_GRAPH_BASE), str(row.entity)): int(row.mentions)
+        for row in dataset.query(query)
+    }
+
+    dbpedia_rows = {e: m for (g, e), m in rows.items() if g == "dbpedia-enricher"}
+    wikidata_rows = {e: m for (g, e), m in rows.items() if g == "wikidata-enricher"}
+
+    assert len(dbpedia_rows) == 25
+    assert "urn:e1" not in dbpedia_rows
+    assert dbpedia_rows["urn:e2"] == 2
+    assert dbpedia_rows["urn:e26"] == 26
+    assert wikidata_rows["urn:e2"] == 9
+    assert wikidata_rows["urn:w1"] == 1

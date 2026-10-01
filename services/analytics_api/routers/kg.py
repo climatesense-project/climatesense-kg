@@ -9,7 +9,7 @@ from ..schemas.kg import (
     ClassDistribution,
     CoreCounts,
     EnrichmentCoverage,
-    EntityTypeCount,
+    EntityMentionCount,
     FactorDistributionItem,
     GraphTripleCount,
 )
@@ -80,11 +80,15 @@ async def enrichment_coverage() -> EnrichmentCoverage:
     )
 
 
-@router.get("/entity-types", response_model=list[EntityTypeCount])
-async def entity_types() -> list[EntityTypeCount]:
-    rows = await sparql_select_async("kg", "entity_types.rq")
+@router.get("/entities", response_model=list[EntityMentionCount])
+async def top_entities() -> list[EntityMentionCount]:
+    rows = await sparql_select_async("kg", "entities.rq")
     return [
-        EntityTypeCount(type_uri=row.get("entity"), count=int(row.get("count", 0)))
+        EntityMentionCount(
+            graph=row.get("graph"),
+            entity_uri=row.get("entity"),
+            mentions=int(row.get("mentions", 0)),
+        )
         for row in rows
     ]
 
