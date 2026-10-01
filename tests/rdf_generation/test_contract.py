@@ -220,6 +220,7 @@ def test_streaming_projection_errors_are_summarized_per_graph(tmp_path: Path) ->
     )
     assert report.total_file_size == 0
     assert not (tmp_path / "claimreviewdata.nt.gz").exists()
+    assert not (tmp_path / ".complete").exists()
 
 
 def test_missing_enrichment_results_publish_the_enrichment_graph(
@@ -253,6 +254,7 @@ def test_missing_enrichment_results_publish_the_enrichment_graph(
         "dbpedia-enricher",
     ]
     assert all(artifact.complete for artifact in report.artifacts)
+    assert (tmp_path / ".complete").exists()
     enrichment_graph = Graph().parse(
         data=gzip.decompress((tmp_path / "dbpedia-enricher.nt.gz").read_bytes()).decode(
             "utf-8"

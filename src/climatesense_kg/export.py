@@ -145,6 +145,7 @@ class RdfExporter:
             for stream in streams.values()
             if stream.failed_items
         )
+        self._write_completion_marker(artifacts)
         return ExportSummary(
             artifacts=tuple(artifacts),
             reviews=processed,
@@ -153,6 +154,19 @@ class RdfExporter:
             total_file_size=sum(artifact.file_size for artifact in artifacts),
             errors=errors,
         )
+
+    def _write_completion_marker(self, artifacts: list[RdfArtifact]) -> None:
+        """Mark the run directory as a complete snapshot for the deploy scripts."""
+
+        if not artifacts or any(not artifact.complete for artifact in artifacts):
+            return
+        run_dirs = {artifact.path.parent for artifact in artifacts}
+        if len(run_dirs) > 1:
+            raise RuntimeError(
+                "RDF output template must place every artifact in one run directory: "
+                + ", ".join(sorted(str(path) for path in run_dirs))
+            )
+        (run_dirs.pop() / ".complete").touch()
 
     def _write_review(
         self,

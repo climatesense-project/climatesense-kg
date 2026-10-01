@@ -19,13 +19,14 @@ case "$qlever_uid:$qlever_gid" in
 esac
 
 if [ -z "$snapshot_path" ]; then
-    snapshot_path=$(find "$data_dir/rdf" -mindepth 1 -maxdepth 1 -type d ! -name '.*' -print | sort | tail -n 1)
+    snapshot_path=$(find "$data_dir/rdf" -mindepth 2 -maxdepth 2 -type f -name .complete -print | sort | tail -n 1)
+    snapshot_path=${snapshot_path%/*}
 elif [ ! -d "$snapshot_path" ] && [ -d "$repo_root/$snapshot_path" ]; then
     snapshot_path="$repo_root/$snapshot_path"
 fi
 
 if [ -z "$snapshot_path" ] || [ ! -d "$snapshot_path" ]; then
-    echo "No RDF snapshot run directory found. Pass its path explicitly." >&2
+    echo "No completed RDF snapshot run directory found. Pass its path explicitly." >&2
     exit 1
 fi
 
@@ -49,11 +50,14 @@ case "$snapshot_dir/" in
         ;;
 esac
 
-graphs="claimreviewdata euroclimatecheck defacto dbkf desmog climafacts climate-fever dbpedia-enricher"
-for graph in $graphs; do
-    artifact="$snapshot_dir/${graph}.nt.gz"
+if [ ! -f "$snapshot_dir/.complete" ]; then
+    echo "Snapshot is not marked complete: $snapshot_dir/.complete" >&2
+    exit 1
+fi
+
+for artifact in "$snapshot_dir"/*.nt.gz; do
     if [ ! -s "$artifact" ]; then
-        echo "Incomplete snapshot; missing or empty file: $artifact" >&2
+        echo "Incomplete snapshot; empty file: $artifact" >&2
         exit 1
     fi
 done
@@ -74,8 +78,17 @@ temporary_dir=$(mktemp -d "${TMPDIR:-/tmp}/climatesense-qlever.XXXXXX")
 trap 'rm -rf "$temporary_dir"' EXIT HUP INT TERM
 
 container_snapshot_dir="../source/$snapshot_relative"
+
+graph_base_uri="http://data.climatesense-project.eu/graph/"
+snapshot_input_json=
+for artifact in "$snapshot_dir"/*.nt.gz; do
+    graph=$(basename "$artifact" .nt.gz)
+    snapshot_input_json="$snapshot_input_json{ \"cmd\": \"gunzip -c {}\", \"format\": \"nt\", \"graph\": \"${graph_base_uri}${graph}\", \"for-each\": \"\${data:SNAPSHOT_DIRECTORY}/${graph}.nt.gz\", \"parallel\": \"true\" }, "
+done
+
 sed \
     -e "s|__SNAPSHOT_DIRECTORY__|$container_snapshot_dir|g" \
+    -e "s|__SNAPSHOT_INPUT_JSON__|$snapshot_input_json|g" \
     "$template" >"$temporary_dir/Qleverfile"
 
 compose() {

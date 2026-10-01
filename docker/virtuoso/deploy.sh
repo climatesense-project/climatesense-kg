@@ -18,8 +18,6 @@ virtuoso_password=${VIRTUOSO_PASSWORD:-}
 container_data_dir="/database/data"
 graph_template="http://data.climatesense-project.eu/graph/{SOURCE}"
 
-graphs="claimreviewdata euroclimatecheck defacto dbkf desmog climafacts climate-fever dbpedia-enricher"
-
 if [ -z "$virtuoso_password" ]; then
     echo "VIRTUOSO_PASSWORD must be set." >&2
     exit 1
@@ -28,7 +26,8 @@ fi
 # --- Select and validate the snapshot ---------------------------------------
 
 if [ -z "$snapshot_arg" ]; then
-    snapshot_path=$(find "$data_dir/rdf" -mindepth 1 -maxdepth 1 -type d ! -name '.*' -print | sort | tail -n 1)
+    snapshot_path=$(find "$data_dir/rdf" -mindepth 2 -maxdepth 2 -type f -name .complete -print | sort | tail -n 1)
+    snapshot_path=${snapshot_path%/*}
 elif [ ! -d "$snapshot_arg" ] && [ -d "$repo_root/$snapshot_arg" ]; then
     snapshot_path="$repo_root/$snapshot_arg"
 else
@@ -36,7 +35,7 @@ else
 fi
 
 if [ -z "$snapshot_path" ] || [ ! -d "$snapshot_path" ]; then
-    echo "No RDF snapshot run directory found. Pass its path explicitly." >&2
+    echo "No completed RDF snapshot run directory found. Pass its path explicitly." >&2
     exit 1
 fi
 
@@ -51,10 +50,14 @@ case "$snapshot_name" in
         ;;
 esac
 
-for graph in $graphs; do
-    artifact="$snapshot_dir/${graph}.nt.gz"
+if [ ! -f "$snapshot_dir/.complete" ]; then
+    echo "Snapshot is not marked complete: $snapshot_dir/.complete" >&2
+    exit 1
+fi
+
+for artifact in "$snapshot_dir"/*.nt.gz; do
     if [ ! -s "$artifact" ]; then
-        echo "Incomplete snapshot; missing or empty file: $artifact" >&2
+        echo "Incomplete snapshot; empty file: $artifact" >&2
         exit 1
     fi
 done
@@ -150,8 +153,8 @@ wait_for_virtuoso() {
 echo "Deploying Virtuoso graphs from snapshot $snapshot_name"
 compose up -d
 
-for graph in $graphs; do
-    deploy_file "$snapshot_dir/${graph}.nt.gz" "$graph"
+for artifact in "$snapshot_dir"/*.nt.gz; do
+    deploy_file "$artifact" "$(basename "$artifact" .nt.gz)"
 done
 
 deploy_file "$data_dir/graphs.ttl" catalog
