@@ -1,5 +1,6 @@
 volumes:
   postgres_data:
+  workbench_data:
 
 services:
   postgres:
@@ -100,7 +101,12 @@ services:
       SPARQL_TIMEOUT_MS: ${SPARQL_TIMEOUT_MS:-60000}
       WORKBENCH_NAME: ${WORKBENCH_NAME:-RDF Workbench}
       WORKBENCH_URL: ${WORKBENCH_URL:-http://localhost:${WORKBENCH_PORT:-3001}}
+      WORKBENCH_DB_PATH: /data/workbench.sqlite
+      BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME:-dba}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-dba}
       RESOURCE_BASE_URI: ${RESOURCE_BASE_URI:-}
+    volumes:
+      - workbench_data:/data
     ports:
       - "${WORKBENCH_PORT:-3001}:3000"
     extra_hosts:
