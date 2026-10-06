@@ -2,6 +2,7 @@
 
 import base64
 from dataclasses import dataclass
+from fnmatch import fnmatchcase
 import gzip
 import io
 import os
@@ -73,9 +74,16 @@ class GitHubProvider(BaseProvider[GitHubProviderConfig]):
         asset_pattern = config.asset_pattern
         extract_file = config.extract_file
 
-        self.logger.info(f"Fetching latest release from {repository}")
-
-        release = self._get_latest_release(repository, timeout=config.timeout)
+        if config.tag_pattern:
+            self.logger.info(
+                f"Fetching latest {config.tag_pattern!r} release from {repository}"
+            )
+            release = self._get_latest_matching_release(
+                repository, config.tag_pattern, timeout=config.timeout
+            )
+        else:
+            self.logger.info(f"Fetching latest release from {repository}")
+            release = self._get_latest_release(repository, timeout=config.timeout)
         if not release:
             raise RuntimeError(f"No release found for {repository}")
 
@@ -145,6 +153,39 @@ class GitHubProvider(BaseProvider[GitHubProviderConfig]):
         except Exception as e:
             self.logger.error(f"Failed to get latest release from {repository}: {e}")
             return None
+
+    def _get_latest_matching_release(
+        self, repository: str, tag_pattern: str, timeout: int
+    ) -> dict[str, Any]:
+        """Repos that publish software and data as separate release tracks mark
+        the data track with tags no other track uses, so /releases/latest
+        cannot be used to find data assets. tag_pattern is an fnmatch glob
+        matched against the whole tag, so both data-* and data-2026.* work.
+        """
+        url = f"{self.api_base}/repos/{repository}/releases"
+        try:
+            response = requests.get(
+                url,
+                headers=self._build_headers(accept="application/vnd.github.v3+json"),
+                params={"per_page": "30"},
+                timeout=timeout,
+            )
+            response.raise_for_status()
+            releases = response.json()
+        except Exception as e:
+            self.logger.error(f"Failed to list releases from {repository}: {e}")
+            raise RuntimeError(f"Failed to list releases from {repository}: {e}") from e
+
+        for release in releases:
+            tag = str(release.get("tag_name", ""))
+            if fnmatchcase(tag, tag_pattern):
+                self.logger.info(f"Selected release {tag} matching {tag_pattern!r}")
+                return cast(dict[str, Any], release)
+
+        raise RuntimeError(
+            f"No release matching tag pattern '{tag_pattern}' found in "
+            f"{repository} (scanned the {len(releases)} most recent releases)"
+        )
 
     def _filter_assets(
         self, assets: list[GitHubAsset], pattern: str
@@ -299,6 +340,7 @@ class GitHubProvider(BaseProvider[GitHubProviderConfig]):
 
         if fields["mode"] == "release":
             fields["asset_pattern"] = config.asset_pattern
+            fields["tag_pattern"] = config.tag_pattern
             fields["extract_file"] = config.extract_file
         else:
             fields["repository_path"] = config.repository_path

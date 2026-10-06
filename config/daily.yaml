@@ -45,6 +45,7 @@ data_sources:
       repository: "climatesense-project/climafacts-kg"
       mode: "release"
       asset_pattern: "climafacts_kg.ttl"
+      tag_pattern: "data-*"
       timeout: 120
   - name: "climate-fever"
     type: "climate-fever"

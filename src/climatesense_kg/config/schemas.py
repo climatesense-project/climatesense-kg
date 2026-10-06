@@ -22,6 +22,7 @@ class GitHubProviderConfig:
     provider_type: Literal["github"]
     repository: str = ""
     asset_pattern: str = "*.json"
+    tag_pattern: str = ""
     extract_file: str | None = None
     mode: Literal["release", "repository"] = "release"
     repository_path: str = ""
