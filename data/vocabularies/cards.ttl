@@ -1,0 +1,857 @@
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix : <https://purl.net/climatesense/cards/ns#> .
+
+:CARDS rdf:type skos:ConceptScheme ;
+    skos:prefLabel "CARDS"@en ;
+    skos:definition "Computer Assisted Recognition of Denial and Skepticism texonomy for categorising misinformation about climate change."@en ;
+    skos:hasTopConcept :0 ;
+    skos:hasTopConcept :1 ;
+    skos:hasTopConcept :2 ;
+    skos:hasTopConcept :3 ;
+    skos:hasTopConcept :4 ;
+    skos:hasTopConcept :5 .
+
+:0 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:topConceptOf :CARDS ;
+    #skos:narrower :0_0 ;
+    skos:prefLabel "Not climate misinformation or related to the climate."@en ;
+    skos:definition "Claims or statements that do not relate to climate change misinformation or climate science topics."@en ;
+    skos:example "The local sports team won the championship game last night"@en ;
+    skos:example "New restaurant downtown has excellent Italian food and friendly service"@en ;
+    skos:example "Traffic congestion on the highway causes delays during rush hour"@en .
+
+# :0_0 rdf:type skos:Concept ;
+#     skos:inScheme :CARDS ;
+#     #skos:prefLabel "Not climate misinformation or related to the climate"@en ;
+#     #skos:broader :0 ;
+#     skos:exactMatch :0 .
+
+:1 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:topConceptOf :CARDS ;
+    skos:prefLabel "Global warming is not happening"@en ;
+    skos:definition "Claims that deny the existence or occurrence of global warming or climate change."@en ;
+    skos:example "Global warming stopped in 1998"@en ;
+    skos:example "Climate temperature records are manipulated by scientists to show false warming trends"@en ;
+    skos:example "There has been no warming for 15 years"@en ;
+    skos:narrower :1_1 ;
+    skos:narrower :1_2 ;
+    skos:narrower :1_3 ;
+    skos:narrower :1_4 ;
+    skos:narrower :1_5 ;
+    skos:narrower :1_6 ;
+    skos:narrower :1_7 ;
+    skos:narrower :1_8 .
+
+
+:2 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:topConceptOf :CARDS ;
+    skos:prefLabel "Human GHGs are not causing global warming"@en ;
+    skos:definition "Claims that deny human greenhouse gas emissions are the primary cause of observed global warming."@en ;
+    skos:example "Climate has always changed naturally"@en ;
+    skos:example "Solar radiation changes, not human CO2 emissions, are causing current global warming"@en ;
+    skos:example "CO2 is plant food, not a pollutant"@en ;
+    skos:narrower :2_1 ;
+    skos:narrower :2_2 ;
+    skos:narrower :2_3 ;
+    skos:narrower :2_4 ;
+    skos:narrower :2_5 .
+
+
+:3 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:topConceptOf :CARDS ;
+    skos:prefLabel "Climate impacts are not bad"@en ;
+    skos:definition "Claims that minimize, downplay, or deny the negative impacts and consequences of climate change."@en ;
+    skos:example "Climate change will be mild and manageable"@en ;
+    skos:example "Extreme weather isn't getting worse"@en ;
+    skos:example "Warmer global temperatures will reduce winter deaths and benefit human health overall"@en ;
+    skos:narrower :3_1 ;
+    skos:narrower :3_2 ;
+    skos:narrower :3_3 ;
+    skos:narrower :3_4 ;
+    skos:narrower :3_5 ;
+    skos:narrower :3_6 .
+
+:4 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:topConceptOf :CARDS ;
+    skos:prefLabel "Climate solutions won't work"@en ;
+    skos:definition "Claims that argue against the effectiveness, feasibility, or desirability of climate change mitigation and adaptation solutions."@en ;
+    skos:example "Renewable energy sources like wind and solar are too unreliable to address climate change"@en ;
+    skos:example "Carbon taxes hurt the economy"@en ;
+    skos:example "Climate policies are too expensive"@en ;
+    skos:narrower :4_1 ;
+    skos:narrower :4_2 ;
+    skos:narrower :4_3 ;
+    skos:narrower :4_4 ;
+    skos:narrower :4_5 .
+
+:5 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:topConceptOf :CARDS ;
+    skos:prefLabel "Climate movement/science is unreliable"@en ;
+    skos:definition "Claims that attack the credibility, reliability, or motivations of climate science, scientists, or the climate movement."@en ;
+    skos:example "Climate scientists exaggerate global warming threats to secure more research funding"@en ;
+    skos:example "There's no real scientific consensus on human-caused climate change"@en ;
+    skos:example "Climate temperature and atmospheric data are manipulated by researchers to create false warming trends"@en ;
+    skos:narrower :5_1 ;
+    skos:narrower :5_2 ;
+    skos:narrower :5_3 .
+
+# ------------ Sub-concepts for 1 ------------
+:1_1 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Ice isn't melting"@en ;
+    skos:definition "Claims that deny the melting of ice sheets, glaciers, or sea ice due to global warming."@en ;
+    skos:example "Antarctic ice sheets are actually increasing in mass, contradicting global warming predictions"@en ;
+    skos:example "Many glaciers worldwide are actually growing, not shrinking due to climate change"@en ;
+    skos:example "Arctic sea ice extent is recovering and not shrinking due to global warming"@en ;
+    skos:broader :1 ;
+    skos:narrower :1_1_1 ;
+    skos:narrower :1_1_2 ;
+    skos:narrower :1_1_3 ;
+    skos:narrower :1_1_4 .
+
+:1_2 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Heading into ice age"@en ;
+    skos:definition "Claims that the Earth is entering a cooling period or ice age rather than warming."@en ;
+    skos:example "We're entering a natural mini ice age that will counteract any human-caused warming"@en ;
+    skos:example "The current solar minimum will cause global cooling that outweighs CO2 warming effects"@en ;
+    skos:example "The next natural ice age is overdue and will cancel out any human-caused global warming"@en ;
+    skos:broader :1 .
+
+:1_3 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Weather is cold"@en ;
+    skos:definition "Claims that use short-term cold weather events to deny global warming."@en ;
+    skos:example "It's snowing in April, where's global warming?"@en ;
+    skos:example "This cold winter proves climate change is fake"@en ;
+    skos:example "Record low temperatures this month contradict warming predictions"@en ;
+    skos:broader :1 .
+
+:1_4 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Hiatus in warming"@en ;
+    skos:definition "Claims that there has been a pause or stop in global warming trends."@en ;
+    skos:example "Global warming paused from 1998-2012"@en ;
+    skos:example "Global surface temperatures have plateaued for 15 years despite rising CO2 levels"@en ;
+    skos:example "Temperature measurements show no statistically significant warming trend since the late 1990s"@en ;
+    skos:broader :1 .
+
+:1_5 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Oceans are cooling"@en ;
+    skos:definition "Claims that ocean temperatures are decreasing rather than warming."@en ;
+    skos:example "Ocean temperatures have been cooling for the past decade, contradicting global warming claims"@en ;
+    skos:example "Deep ocean measurements show cooling trends in major ocean basins"@en ;
+    skos:example "Sea surface temperature data indicates cooling, not warming as predicted by models"@en ;
+    skos:broader :1 .
+
+:1_6 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Sea level rise is exaggerated"@en ;
+    skos:definition "Claims that sea level rise is not occurring or is much smaller than reported."@en ;
+    skos:example "Sea levels have been stable for decades"@en ;
+    skos:example "Coastal tidal gauge measurements show no acceleration in sea level rise from climate change"@en ;
+    skos:example "Satellite measurements of sea level rise are unreliable and don't show climate change impacts"@en ;
+    skos:broader :1 .
+
+:1_7 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Extremes aren't increasing"@en ;
+    skos:definition "Claims that extreme weather events are not becoming more frequent or intense."@en ;
+    skos:example "Hurricane intensity and frequency are not increasing due to climate change"@en ;
+    skos:example "Historical droughts were much worse than current ones, showing no climate change trend"@en ;
+    skos:example "Heat waves are just natural climate variation, not evidence of global warming"@en ;
+    skos:broader :1 .
+
+:1_8 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Changed the name"@en ;
+    skos:definition "Claims that scientists changed terminology from 'global warming' to 'climate change' to hide lack of warming."@en ;
+    skos:example "Scientists switched from 'global warming' to 'climate change' because the warming stopped"@en ;
+    skos:example "The term 'climate change' is a political rebranding to maintain funding when warming stalled"@en ;
+    skos:example "Rebranding to 'climate change' allows alarmists to blame any weather event on human activity"@en ;
+    skos:broader :1 .
+
+# ------------ Sub-concepts for 2 ------------
+:2_1 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "It's natural cycles"@en ;
+    skos:definition "Claims that observed climate change is due to natural variations rather than human activities."@en ;
+    skos:example "It's just natural climate variability"@en ;
+    skos:example "Climate has changed before without humans"@en ;
+    skos:example "Natural solar radiation cycles, not human emissions, explain all current global warming"@en ;
+    skos:broader :2 ;
+    skos:narrower :2_1_1 ;
+    skos:narrower :2_1_2 ;
+    skos:narrower :2_1_3 ;
+    skos:narrower :2_1_4 ;
+    skos:narrower :2_1_5 .
+
+:2_2 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Non-GHG forcings"@en ;
+    skos:definition "Claims that non-greenhouse gas factors are the primary drivers of climate change."@en ;
+    skos:example "Cosmic rays and solar magnetic fields, not CO2, are the main drivers of climate change"@en ;
+    skos:example "Solar irradiance variations control temperature patterns far more than atmospheric gas concentrations"@en ;
+    skos:example "Ocean current patterns and volcanic activity drive temperature changes independent of human emissions"@en ;
+    skos:broader :2 .
+
+:2_3 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "No evidence for GHE"@en ;
+    skos:definition "Claims that deny or question the existence and operation of the greenhouse effect."@en ;
+    skos:example "The greenhouse effect violates thermodynamics"@en ;
+    skos:example "CO2 can't warm the atmosphere"@en ;
+    skos:example "Atmospheric back radiation from greenhouse gases doesn't exist and can't cause warming"@en ;
+    skos:broader :2 ;
+    skos:narrower :2_3_1 ;
+    skos:narrower :2_3_2 ;
+    skos:narrower :2_3_3 ;
+    skos:narrower :2_3_4 ;
+    skos:narrower :2_3_5 ;
+    skos:narrower :2_3_6 .
+
+:2_4 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "CO2 not rising"@en ;
+    skos:definition "Claims that atmospheric CO2 concentrations are not increasing."@en ;
+    skos:example "Atmospheric CO2 concentration measurements are too unreliable to prove human influence on climate"@en ;
+    skos:example "The Mauna Loa CO2 measurements are cherry-picked data that don't represent global atmospheric conditions"@en ;
+    skos:example "Atmospheric CO2 levels have been much higher in Earth's past without causing climate catastrophe"@en ;
+    skos:broader :2 .
+
+:2_5 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Emissions not raising CO2 levels"@en ;
+    skos:definition "Claims that human CO2 emissions do not contribute to rising atmospheric CO2 concentrations."@en ;
+    skos:example "Human fossil fuel emissions are too small to affect global atmospheric CO2 levels"@en ;
+    skos:example "Natural CO2 absorption by oceans and vegetation balances out all industrial emissions"@en ;
+    skos:example "Atmospheric gas concentrations fluctuate naturally regardless of industrial activity"@en ;
+    skos:broader :2 .
+
+# ------------ Sub-concepts for 3 ------------
+:3_1 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Sensitivity is low"@en ;
+    skos:definition "Claims that climate sensitivity to greenhouse gases is lower than scientific consensus suggests."@en ;
+    skos:example "Doubling CO2 will only warm by 1°C"@en ;
+    skos:example "Climate models overestimate warming"@en ;
+    skos:example "Natural negative climate feedbacks will automatically reduce warming sensitivity to CO2 increases"@en ;
+    skos:broader :3 .
+
+:3_2 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "No species impact"@en ;
+    skos:definition "Claims that deny or minimize the impact of climate change on wildlife, ecosystems, and species survival."@en ;
+    skos:example "Polar bear populations are thriving despite Arctic ice loss claims from climate scientists"@en ;
+    skos:example "Wildlife species will easily adapt to climate change without significant population losses"@en ;
+    skos:example "Coral reefs will survive ocean acidification and warming from climate change"@en ;
+    skos:broader :3 ;
+    skos:narrower :3_2_1 ;
+    skos:narrower :3_2_2 ;
+    skos:narrower :3_2_3 .
+
+:3_3 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Not a pollutant"@en ;
+    skos:definition "Claims that CO2 is not harmful and should not be considered a pollutant."@en ;
+    skos:example "CO2 is plant food and essential for life, not a dangerous pollutant causing climate change"@en ;
+    skos:example "Higher atmospheric carbon dioxide concentrations benefit agriculture and forest growth worldwide"@en ;
+    skos:example "Labeling natural gas emissions as pollution ignores the beneficial effects on vegetation"@en ;
+    skos:narrower :3_3_1 ;
+    skos:broader :3 .
+
+:3_4 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Only a few degrees"@en ;
+    skos:definition "Claims that projected temperature increases are small and insignificant."@en ;
+    skos:example "2°C of global warming is nothing to worry about and won't cause significant environmental damage"@en ;
+    skos:example "A few degrees of global warming won't significantly impact human civilization or ecosystems"@en ;
+    skos:example "Current temperature changes are within natural climate variability, not human-caused warming"@en ;
+    skos:broader :3 .
+
+:3_5 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "No link to conflict"@en ;
+    skos:definition "Claims that climate change does not contribute to conflict or social instability."@en ;
+    skos:example "Climate change doesn't cause wars or social conflicts - those have other political causes"@en ;
+    skos:example "Resource scarcity and migration patterns are driven by economics, not temperature changes"@en ;
+    skos:example "Historical conflicts show that political factors, not environmental conditions, determine warfare"@en ;
+    skos:broader :3 .
+
+:3_6 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "No health impacts"@en ;
+    skos:definition "Claims that climate change does not pose risks to human health."@en ;
+    skos:example "Climate change won't significantly impact human health or increase disease outbreaks"@en ;
+    skos:example "Warmer temperatures will actually reduce cold-related deaths and improve public health"@en ;
+    skos:example "Healthcare systems can easily adapt to any temperature-related health challenges"@en ;
+    skos:broader :3 .
+
+# ------------ Sub-concepts for 4 ------------
+:4_1 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Policies are harmful"@en ;
+    skos:definition "Claims that climate policies cause more harm than good or have negative consequences."@en ;
+    skos:example "Carbon taxes designed to fight climate change will destroy manufacturing jobs and hurt the economy"@en ;
+    skos:example "Climate change policies like carbon pricing disproportionately hurt low-income families"@en ;
+    skos:example "Environmental regulations to combat climate change stifle technological innovation and economic growth"@en ;
+    skos:broader :4 ;
+    skos:narrower :4_1_1 ;
+    skos:narrower :4_1_2 ;
+    skos:narrower :4_1_3 ;
+    skos:narrower :4_1_4 ;
+    skos:narrower :4_1_5 .
+
+:4_2 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Policies are ineffective"@en ;
+    skos:definition "Claims that climate policies will not achieve their intended goals or make meaningful impact."@en ;
+    skos:example "Carbon pricing mechanisms don't effectively reduce greenhouse gas emissions or address climate change"@en ;
+    skos:example "Government subsidies for renewable energy to fight climate change are wasteful and economically inefficient"@en ;
+    skos:example "The Paris Climate Agreement will fail to prevent global warming and is not worth the economic costs"@en ;
+    skos:broader :4 ;
+    skos:narrower :4_2_1 ;
+    skos:narrower :4_2_2 ;
+    skos:narrower :4_2_3 ;
+    skos:narrower :4_2_4 ;
+    skos:narrower :4_2_5 ;
+    skos:narrower :4_2_6 ;
+    skos:narrower :4_2_7 .
+
+:4_3 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Too hard"@en ;
+    skos:definition "Claims that addressing climate change is too difficult or complex to achieve."@en ;
+    skos:example "Solving climate change is too complex and expensive for any country or policy to handle"@en ;
+    skos:example "Global coordination needed for temperature reduction is politically impossible to achieve"@en ;
+    skos:example "Transitioning from fossil fuels would require economic sacrifices that no society will accept"@en ;
+    skos:broader :4 ;
+    skos:narrower :4_3_1 ;
+    skos:narrower :4_3_2 .
+
+:4_4 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Clean energy won't work"@en ;
+    skos:definition "Claims that renewable energy technologies are inadequate, unreliable, or cannot replace fossil fuels."@en ;
+    skos:example "Wind and solar power are too intermittent to replace fossil fuels and solve climate change"@en ;
+    skos:example "Battery technology can't store enough renewable energy to make climate solutions viable"@en ;
+    skos:example "Renewable energy sources will always need fossil fuel backup, undermining climate goals"@en ;
+    skos:broader :4 ;
+    skos:narrower :4_4_1 ;
+    skos:narrower :4_4_2 .
+
+:4_5 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "We need energy"@en ;
+    skos:definition "Claims that fossil fuels are essential and alternatives are inadequate for energy needs."@en ;
+    skos:example "Human civilization can't survive without fossil fuels regardless of climate change concerns"@en ;
+    skos:example "Oil and gas are essential for modern life"@en ;
+    skos:example "Fossil fuels lift people out of poverty"@en ;
+    skos:broader :4 ;
+    skos:narrower :4_5_1 ;
+    skos:narrower :4_5_2 ;
+    skos:narrower :4_5_3 .
+
+# ------------ Sub-concepts for 5 ------------
+:5_1 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Science is unreliable"@en ;
+    skos:definition "Claims that question the reliability, accuracy, or validity of climate science and scientific methods."@en ;
+    skos:example "Climate models predicting global warming are consistently wrong and can't be trusted"@en ;
+    skos:example "Climate scientists can't even predict next week's weather, so how can they predict future climate?"@en ;
+    skos:example "There's no real scientific consensus that human activities are causing dangerous climate change"@en ;
+    skos:broader :5 ;
+    skos:narrower :5_1_1 ;
+    skos:narrower :5_1_2 ;
+    skos:narrower :5_1_3 ;
+    skos:narrower :5_1_4 .
+
+:5_2 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Movement is unreliable"@en ;
+    skos:definition "Claims that attack the credibility or motivations of climate activists, environmentalists, media, and politicians."@en ;
+    skos:example "Climate change activists are environmental extremists pushing radical anti-development agendas"@en ;
+    skos:example "The mainstream media deliberately exaggerates climate change threats to create public fear and drive ratings"@en ;
+    skos:example "Politicians exploit climate change fears to gain power, control resources, and expand government authority"@en ;
+    skos:broader :5 ;
+    skos:narrower :5_2_1 ;
+    skos:narrower :5_2_2 ;
+    skos:narrower :5_2_3 ;
+    skos:narrower :5_2_4 ;
+    skos:narrower :5_2_5 .
+
+:5_3 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Climate is conspiracy"@en ;
+    skos:definition "Claims that climate change or climate policies are part of a deliberate conspiracy."@en ;
+    skos:example "Global warming is a hoax created by globalists to destroy capitalism and impose authoritarian control."@en ;
+    skos:example "Scientists invented temperature increases to secure research funding and advance political agendas"@en ;
+    skos:example "Environmental policies are designed to transfer wealth from developed to developing nations"@en ;
+    skos:broader :5 ;
+    skos:narrower :5_3_1 ;
+    skos:narrower :5_3_2 .
+
+
+# ------------ Sub-concepts for 1.1 ------------
+:1_1_1 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Antarctica isn't melting"@en ;
+    skos:definition "Claims that deny ice loss from the Antarctic ice sheet."@en ;
+    skos:example "The Antarctic ice sheet is gaining mass, not losing it due to climate change"@en ;
+    skos:example "Recent southern hemisphere snowfall has increased ice accumulation on the Antarctic continent"@en ;
+    skos:example "Satellite measurements show expanding ice coverage across Antarctica's interior regions"@en ;
+    skos:broader :1_1 .
+
+:1_1_2 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Greenland isn't melting"@en ;
+    skos:definition "Claims that deny ice loss from the Greenland ice sheet."@en ;
+    skos:example "Greenland's ice sheet is stable and not melting from global warming"@en ;
+    skos:example "Northern latitude ice formations show steady accumulation patterns throughout recent decades"@en ;
+    skos:example "Arctic region precipitation creates more ice than melting processes remove"@en ;
+    skos:broader :1_1 .
+
+:1_1_3 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Arctic isn't melting"@en ;
+    skos:definition "Claims that deny Arctic sea ice loss or Arctic ice sheet melting."@en ;
+    skos:example "Arctic sea ice is not declining and Arctic ice sheets are stable despite warming claims"@en ;
+    skos:example "Northern polar ice formations maintain consistent coverage throughout recent measurement periods"@en ;
+    skos:example "Satellite data shows stable ice conditions in high-latitude regions over the past decades"@en ;
+    skos:broader :1_1 .
+
+:1_1_4 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Glaciers aren't vanishing"@en ;
+    skos:definition "Claims that deny glacier retreat or loss worldwide."@en ;
+    skos:example "Mountain glaciers worldwide are not retreating and disappearing due to climate change"@en ;
+    skos:example "Alpine ice formations remain stable across major mountain ranges despite temperature variations"@en ;
+    skos:example "High-altitude ice accumulation rates exceed melting in most mountain regions"@en ;
+    skos:broader :1_1 .
+
+# ------------ Sub-concepts for 2.1 ------------
+:2_1_1 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "It's the sun"@en ;
+    skos:definition "Claims that solar variability is the primary cause of observed climate change."@en ;
+    skos:example "Solar radiation changes and sunspot cycles are the real cause of global warming, not human CO2"@en ;
+    skos:example "Celestial radiation patterns show eleven-year cycles that match observed temperature variations"@en ;
+    skos:example "Historical sunspot records correlate better with temperature than industrial activity"@en ;
+    skos:broader :2_1 .
+
+:2_1_2 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "It's geological"@en ;
+    skos:definition "Claims that geological processes are the primary cause of observed climate change."@en ;
+    skos:example "Volcanic activity and plate tectonics are causing climate change, not human emissions"@en ;
+    skos:broader :2_1 .
+
+:2_1_3 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "It's the ocean"@en ;
+    skos:definition "Claims that ocean cycles and variability are the primary cause of observed climate change."@en ;
+    skos:example "Natural ocean circulation patterns like El Niño are driving climate change, not human activities"@en ;
+    skos:example "Pacific and Atlantic current systems regulate global temperatures independent of atmospheric gases"@en ;
+    skos:example "Deep water circulation has shifted due to natural cycles affecting global temperature patterns"@en ;
+    skos:broader :2_1 .
+
+:2_1_4 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Past climate change"@en ;
+    skos:definition "Claims that current climate change is just part of natural historical climate variations."@en ;
+    skos:example "Current warming is just natural climate variation like the Medieval Warm Period"@en ;
+    skos:example "Historical temperature patterns show regular warming and cooling cycles without industrial influence"@en ;
+    skos:example "Earth has experienced similar temperature changes throughout geological history"@en ;
+    skos:broader :2_1 .
+
+:2_1_5 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Tiny CO2 emissions"@en ;
+    skos:definition "Claims that human CO2 emissions are too small to affect the climate."@en ;
+    skos:example "Human CO2 emissions are only a tiny fraction of natural CO2 and can't affect global climate"@en ;
+    skos:example "Industrial emissions represent a minuscule portion of total atmospheric carbon exchange"@en ;
+    skos:example "Natural carbon sources dwarf human contributions by several orders of magnitude"@en ;
+    skos:broader :2_1 .
+
+# ------------ Sub-concepts for 2.3 ------------
+:2_3_1 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "CO2 is trace gas"@en ;
+    skos:definition "Claims that CO2 concentrations are too low to have significant climate effects."@en ;
+    skos:example "CO2 is only 0.04% of the atmosphere - such trace amounts can't affect global climate"@en ;
+    skos:example "Nitrogen and oxygen make up 99% of atmospheric composition, dwarfing carbon dioxide effects"@en ;
+    skos:example "Such minute concentrations of any gas cannot influence planetary temperature systems"@en ;
+    skos:broader :2_3 .
+
+:2_3_2 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "GHE is saturated"@en ;
+    skos:definition "Claims that the greenhouse effect is saturated and additional CO2 will have no warming effect."@en ;
+    skos:example "The greenhouse effect is already saturated, so adding more CO2 won't cause further warming"@en ;
+    skos:example "Atmospheric absorption bands are already fully utilized by existing gas concentrations"@en ;
+    skos:example "Additional carbon dioxide cannot enhance thermal retention beyond current saturation levels"@en ;
+    skos:broader :2_3 .
+
+:2_3_3 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "CO2 lags climate"@en ;
+    skos:definition "Claims that CO2 follows rather than drives temperature changes in paleoclimate records."@en ;
+    skos:example "Ice core data shows CO2 levels follow temperature changes, not the other way around"@en ;
+    skos:example "Historical atmospheric composition changes occurred after temperature shifts, not before"@en ;
+    skos:example "Paleoclimate records demonstrate gas concentrations respond to temperature variations"@en ;
+    skos:broader :2_3 .
+
+:2_3_4 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Water vapor"@en ;
+    skos:definition "Claims that water vapor is the dominant greenhouse gas, minimizing CO2's role."@en ;
+    skos:example "Water vapor is the most important greenhouse gas, making CO2's climate impact negligible"@en ;
+    skos:example "Atmospheric moisture content far exceeds carbon dioxide concentrations in thermal effects"@en ;
+    skos:example "Humidity levels regulate temperature patterns more than any other atmospheric component"@en ;
+    skos:broader :2_3 .
+
+:2_3_5 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Tropospheric hot spot"@en ;
+    skos:definition "Claims that the absence of tropical tropospheric warming disproves greenhouse warming theory."@en ;
+    skos:example "The missing tropical tropospheric hot spot proves greenhouse warming theory is wrong"@en ;
+    skos:example "Upper atmosphere temperature measurements in tropical regions show no enhanced warming patterns"@en ;
+    skos:example "Predicted atmospheric temperature profiles don't match observed measurements in key altitude zones"@en ;
+    skos:broader :2_3 .
+
+:2_3_6 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "CO2 high in past"@en ;
+    skos:definition "Claims that CO2 levels were higher in the past without causing problems."@en ;
+    skos:example "CO2 levels were much higher millions of years ago and life flourished without climate catastrophe"@en ;
+    skos:example "Geological records show atmospheric carbon concentrations far exceeding current levels during thriving periods"@en ;
+    skos:example "Ancient ecosystems prospered under gas concentrations several times higher than today's levels"@en ;
+    skos:broader :2_3 .
+
+# ------------ Sub-concepts for 3.2 ------------
+:3_2_1 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Species can adapt"@en ;
+    skos:definition "Claims that species and ecosystems can easily adapt to climate change."@en ;
+    skos:example "Plants and animals will easily adapt and evolve to cope with climate change impacts"@en ;
+    skos:example "Wildlife populations demonstrate remarkable resilience to changing environmental conditions"@en ;
+    skos:example "Evolutionary processes allow species to adjust to new temperature and precipitation patterns"@en ;
+    skos:broader :3_2 .
+
+:3_2_2 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Polar bears ok"@en ;
+    skos:definition "Claims that polar bear populations are stable or increasing despite climate change."@en ;
+    skos:example "Polar bear numbers are actually increasing, not declining due to Arctic ice loss"@en ;
+    skos:example "Arctic wildlife populations remain stable despite changes in sea ice coverage"@en ;
+    skos:example "Large marine mammals show healthy population trends in northern regions"@en ;
+    skos:broader :3_2 .
+
+:3_2_3 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Oceans are ok"@en ;
+    skos:definition "Claims that ocean acidification and warming are not harmful to marine ecosystems."@en ;
+    skos:example "Ocean acidification from climate change is not severe enough to damage marine life"@en ;
+    skos:example "Marine ecosystems have natural buffering capacity against pH changes in seawater"@en ;
+    skos:example "Sea life has thrived under various ocean chemistry conditions throughout geological history"@en ;
+    skos:broader :3_2 .
+
+
+# ------------ Sub-concepts for 3.3 ------------
+:3_3_1 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "CO2 is plant food"@en ;
+    skos:definition "Claims that increased atmospheric CO2 is beneficial because it promotes plant growth."@en ;
+    skos:example "Higher CO2 levels are actually good for the planet because plants need CO2 to grow - it's plant food."@en ;
+    skos:example "Increased atmospheric carbon concentrations boost photosynthesis rates in vegetation worldwide"@en ;
+    skos:example "Agricultural yields improve significantly under elevated carbon dioxide conditions"@en ;
+    skos:broader :3_3 .
+
+
+# ------------ Sub-concepts for 4.1 ------------
+:4_1_1 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Policy increases costs"@en ;
+    skos:definition "Claims that climate policies impose excessive economic costs."@en ;
+    skos:example "Climate change policies will impose massive costs on businesses and consumers"@en ;
+    skos:example "Environmental regulations increase operational expenses for manufacturing companies"@en ;
+    skos:example "Carbon pricing mechanisms raise energy costs for households and industries"@en ;
+    skos:broader :4_1 .
+
+:4_1_2 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Policy weakens security"@en ;
+    skos:definition "Claims that climate policies undermine national or energy security."@en ;
+    skos:example "Climate policies that reduce fossil fuel use will weaken our national energy security"@en ;
+    skos:example "Dependence on renewable energy sources makes the power grid vulnerable to disruptions"@en ;
+    skos:example "Environmental regulations limit domestic energy production and increase foreign dependence"@en ;
+    skos:broader :4_1 .
+
+:4_1_3 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Policy harms environment"@en ;
+    skos:definition "Claims that climate policies cause more environmental damage than they prevent."@en ;
+    skos:example "Wind farms and solar panels cause more environmental damage than the climate change they prevent"@en ;
+    skos:example "Large-scale renewable installations disrupt natural habitats and wildlife migration patterns"@en ;
+    skos:example "Mining rare earth metals for green technology creates more pollution than traditional energy sources"@en ;
+    skos:broader :4_1 .
+
+:4_1_4 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Rich future generations"@en ;
+    skos:definition "Claims that future generations will be wealthier and better able to handle climate impacts."@en ;
+    skos:example "Future generations will be much richer and have technology to handle climate change impacts"@en ;
+    skos:example "Economic growth will provide tomorrow's societies with resources to adapt to environmental changes"@en ;
+    skos:example "Technological advances will make future generations more capable of managing atmospheric conditions"@en ;
+    skos:broader :4_1 .
+
+:4_1_5 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Limits freedom"@en ;
+    skos:definition "Claims that climate policies restrict personal freedoms and individual choice."@en ;
+    skos:example "Climate change policies restrict individual freedoms and limit consumer choices"@en ;
+    skos:example "Environmental regulations impose government control over personal lifestyle decisions"@en ;
+    skos:example "Carbon restrictions limit travel options and personal mobility for citizens"@en ;
+    skos:broader :4_1 .
+
+
+# ------------ Sub-concepts for 4.2 ------------
+:4_2_1 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Green jobs don't work"@en ;
+    skos:definition "Claims that green energy policies destroy more jobs than they create."@en ;
+    skos:example "Green energy policies destroy more traditional jobs than the green jobs they create"@en ;
+    skos:example "Renewable energy sector employment is temporary and less stable than fossil fuel industry jobs"@en ;
+    skos:example "Transitioning to alternative energy sources eliminates more manufacturing positions than it generates"@en ;
+    skos:broader :4_2 .
+
+:4_2_2 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Markets more efficient"@en ;
+    skos:definition "Claims that free markets are better at addressing climate issues than government policies."@en ;
+    skos:example "Free market solutions are more efficient than government intervention for addressing environmental challenges"@en ;
+    skos:example "Private sector innovation drives better outcomes than regulatory mandates for energy transitions"@en ;
+    skos:example "Market forces naturally encourage cleaner technologies without need for government policies"@en ;
+    skos:broader :4_2 .
+
+:4_2_3 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Policy impact is negligible"@en ;
+    skos:definition "Claims that climate policies will have minimal impact on global emissions or climate."@en ;
+    skos:example "Environmental regulations will have negligible impact on global greenhouse gas emissions"@en ;
+    skos:example "Carbon reduction policies make only marginal differences to atmospheric concentrations"@en ;
+    skos:example "Local emission controls have minimal effect on global atmospheric chemistry"@en ;
+    skos:broader :4_2 .
+
+:4_2_4 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "One country is negligible"@en ;
+    skos:definition "Claims that individual countries' emissions are too small to make a difference."@en ;
+    skos:example "One country's emission reductions are too small to make any difference to global atmospheric conditions"@en ;
+    skos:example "National policies have minimal impact when other countries continue high emission rates"@en ;
+    skos:example "Individual nations contribute such small percentages that their actions don't affect global totals"@en ;
+    skos:broader :4_2 .
+
+:4_2_5 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Better to adapt"@en ;
+    skos:definition "Claims that adaptation is more cost-effective than mitigation for addressing climate change."@en ;
+    skos:example "Adaptation strategies are more cost-effective than emission reduction policies for managing environmental changes"@en ;
+    skos:example "Building resilience to changing conditions provides better returns than preventing atmospheric changes"@en ;
+    skos:example "Infrastructure modifications cost less than transforming entire energy systems"@en ;
+    skos:broader :4_2 .
+
+:4_2_6 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "China's emissions"@en ;
+    skos:definition "Claims that action is pointless because China and other countries won't reduce emissions."@en ;
+    skos:example "Action is pointless because China and other developing countries won't reduce their emissions"@en ;
+    skos:example "Major industrial nations continue increasing production while others implement restrictions"@en ;
+    skos:example "Global manufacturing centers offset any local emission reductions through expanded operations"@en ;
+    skos:broader :4_2 .
+
+:4_2_7 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Techno fix"@en ;
+    skos:definition "Claims that technological solutions will solve climate change without policy intervention."@en ;
+    skos:example "Technological innovation will solve environmental problems without need for government policies"@en ;
+    skos:example "Engineering solutions like geoengineering can address atmospheric issues more effectively than regulations"@en ;
+    skos:example "Market-driven technological development will automatically provide cleaner alternatives"@en ;
+    skos:broader :4_2 .
+
+# ------------ Sub-concepts for 4.3 ------------
+:4_3_1 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Policy too difficult"@en ;
+    skos:definition "Claims that implementing effective climate policies is too politically or technically difficult."@en ;
+    skos:example "Implementing effective environmental policies is too politically complex for democratic governments"@en ;
+    skos:example "Technical challenges of regulating atmospheric composition exceed current administrative capabilities"@en ;
+    skos:example "Coordinating global emission standards requires political cooperation that is practically impossible"@en ;
+    skos:broader :4_3 .
+
+:4_3_2 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Low public support"@en ;
+    skos:definition "Claims that there is insufficient public support for climate action."@en ;
+    skos:example "There is insufficient public support for costly environmental policies and lifestyle changes"@en ;
+    skos:example "Voters consistently reject politicians who propose expensive emission reduction measures"@en ;
+    skos:example "Public opinion polls show low willingness to pay higher costs for atmospheric regulation"@en ;
+    skos:broader :4_3 .
+
+# ------------ Sub-concepts for 4.4 ------------
+:4_4_1 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Clean energy unreliable"@en ;
+    skos:definition "Claims that renewable energy sources are too intermittent and unreliable."@en ;
+    skos:example "Renewable energy sources are too intermittent and unreliable for consistent power generation"@en ;
+    skos:example "Wind and solar power cannot provide stable electricity when weather conditions are unfavorable"@en ;
+    skos:example "Alternative energy systems lack the consistency needed for industrial operations and grid stability"@en ;
+    skos:broader :4_4 .
+
+:4_4_2 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "CCS is unproven"@en ;
+    skos:definition "Claims that carbon capture and storage technology is unproven and unreliable."@en ;
+    skos:example "Carbon capture and storage technology is unproven and too expensive for large-scale deployment"@en ;
+    skos:example "Underground storage systems for atmospheric gases pose unknown geological risks"@en ;
+    skos:example "Industrial carbon removal processes consume more energy than they save"@en ;
+    skos:broader :4_4 .
+
+# ------------ Sub-concepts for 4.5 ------------
+:4_5_1 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "FF is plentiful"@en ;
+    skos:definition "Claims that fossil fuels are abundant and won't run out for centuries."@en ;
+    skos:example "Fossil fuel reserves are abundant and will last for centuries without supply concerns"@en ;
+    skos:example "New extraction technologies continue to unlock previously inaccessible energy resources"@en ;
+    skos:example "Geological surveys show vast untapped petroleum and coal deposits worldwide"@en ;
+    skos:broader :4_5 .
+
+:4_5_2 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "FF are cheap"@en ;
+    skos:definition "Claims that fossil fuels are the cheapest energy option available."@en ;
+    skos:example "Fossil fuels remain the cheapest and most cost-effective energy source available"@en ;
+    skos:example "Traditional energy sources provide better economic value than expensive alternative technologies"@en ;
+    skos:example "Oil and gas prices consistently undercut renewable energy costs in competitive markets"@en ;
+    skos:broader :4_5 .
+
+:4_5_3 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Nuclear is good"@en ;
+    skos:definition "Claims that nuclear power is the best solution for clean energy production."@en ;
+    skos:example "Nuclear power is the best clean energy solution for reducing atmospheric emissions"@en ;
+    skos:example "Atomic energy provides reliable, carbon-free electricity generation at industrial scale"@en ;
+    skos:example "Nuclear reactors offer the most efficient path to reducing fossil fuel dependence"@en ;
+    skos:broader :4_5 .
+
+# ------------ Sub-concepts for 5.1 ------------
+:5_1_1 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "No consensus"@en ;
+    skos:definition "Claims that there is no scientific consensus on climate change."@en ;
+    skos:example "There is no real scientific consensus on human-caused global warming"@en ;
+    skos:example "Scientists disagree widely about the causes and extent of atmospheric temperature changes"@en ;
+    skos:example "Many researchers question the dominant theories about carbon dioxide and planetary warming"@en ;
+    skos:broader :5_1 .
+
+:5_1_2 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Proxies are unreliable"@en ;
+    skos:definition "Claims that paleoclimate proxy data is unreliable for understanding past climate."@en ;
+    skos:example "Tree rings and ice cores are unreliable indicators of past atmospheric conditions"@en ;
+    skos:example "Proxy data from ancient sediments cannot accurately reconstruct historical temperature patterns"@en ;
+    skos:example "Paleoclimate reconstruction methods introduce too much uncertainty to draw reliable conclusions"@en ;
+    skos:broader :5_1 .
+
+:5_1_3 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Temp is unreliable"@en ;
+    skos:definition "Claims that temperature measurements are unreliable or corrupted."@en ;
+    skos:example "Modern temperature records are corrupted by urban heat islands and poor measurement practices"@en ;
+    skos:example "Global temperature datasets have been manipulated and adjusted to show artificial warming trends"@en ;
+    skos:example "Weather station networks are too sparse and poorly maintained to provide accurate atmospheric readings"@en ;
+    skos:broader :5_1 .
+
+:5_1_4 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Models are unreliable"@en ;
+    skos:definition "Claims that climate models are inaccurate, unreliable, or cannot be trusted for predictions."@en ;
+    skos:example "Computer models predicting future atmospheric conditions are fundamentally flawed and unreliable"@en ;
+    skos:example "Atmospheric simulation models fail to accurately represent complex planetary systems"@en ;
+    skos:example "Predictive models consistently overestimate the rate and extent of environmental changes"@en ;
+    skos:broader :5_1 .
+
+# ------------ Sub-concepts for 5.2 ------------
+:5_2_1 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Climate is religion"@en ;
+    skos:definition "Claims that climate science has become a religion or ideology rather than science."@en ;
+    skos:example "Climate science has become a religious ideology that cannot be questioned or debated"@en ;
+    skos:example "Environmental advocacy resembles religious fundamentalism more than objective scientific inquiry"@en ;
+    skos:example "Atmospheric research has taken on cult-like characteristics that discourage skeptical analysis"@en ;
+    skos:broader :5_2 .
+
+:5_2_2 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Media is alarmist"@en ;
+    skos:definition "Claims that the media exaggerates climate change to create fear and alarm."@en ;
+    skos:example "News media deliberately exaggerates environmental threats to increase viewership and ratings"@en ;
+    skos:example "Journalists sensationalize atmospheric research findings to create public panic and drive clicks"@en ;
+    skos:example "Television networks profit from fear-mongering about temperature and weather pattern changes"@en ;
+    skos:broader :5_2 .
+
+:5_2_3 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Politicians are biased"@en ;
+    skos:definition "Claims that politicians have ulterior motives for promoting climate change concerns."@en ;
+    skos:example "Politicians exploit environmental fears to gain votes and expand government control over citizens"@en ;
+    skos:example "Government officials use atmospheric concerns to justify higher taxes and more regulations"@en ;
+    skos:example "Elected leaders benefit financially from promoting renewable energy policies and carbon markets"@en ;
+    skos:broader :5_2 .
+
+:5_2_4 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Environmentalists are alarmist"@en ;
+    skos:definition "Claims that environmental groups exaggerate climate change to raise money or push agendas."@en ;
+    skos:example "Environmental groups exaggerate atmospheric threats to raise donations and maintain relevance"@en ;
+    skos:example "Green organizations profit from spreading fear about temperature changes and weather patterns"@en ;
+    skos:example "Conservation activists deliberately overstate environmental risks to advance their political agendas"@en ;
+    skos:broader :5_2 .
+
+:5_2_5 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Scientists are biased"@en ;
+    skos:definition "Claims that climate scientists are biased, corrupt, or driven by financial incentives."@en ;
+    skos:example "Climate scientists are biased because their research funding depends on finding alarming results"@en ;
+    skos:example "Researchers who study atmospheric conditions have financial incentives to exaggerate their findings"@en ;
+    skos:example "Academic institutions pressure scientists to produce results that support popular environmental narratives"@en ;
+    skos:broader :5_2 .
+
+# ------------ Sub-concepts for 5.3 ------------
+:5_3_1 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Policy is conspiracy"@en ;
+    skos:definition "Claims that climate policies are part of a conspiracy to achieve hidden agendas."@en ;
+    skos:example "The entire global climate policy framework, like the Paris Agreement, is a conspiracy designed to enrich a small cabal of global elites and bankers."@en ;
+    skos:example "International environmental agreements are designed to transfer wealth and power from developed to developing nations"@en ;
+    skos:example "Global carbon markets represent a financial conspiracy to create new trading mechanisms for elite investors"@en ;
+    skos:broader :5_3 .
+
+:5_3_2 rdf:type skos:Concept ;
+    skos:inScheme :CARDS ;
+    skos:prefLabel "Science is conspiracy"@en ;
+    skos:definition "Claims that climate science is based on fraudulent data or scientific conspiracy."@en ;
+    skos:example "Climategate proved that top scientists conspired to hide data and manipulate results to deceive the public about the true state of the climate."@en ;
+    skos:example "A small group of researchers controls atmospheric data and suppresses findings that contradict warming theories"@en ;
+    skos:example "Scientific institutions coordinate to falsify temperature records and hide evidence of natural climate patterns"@en ;
+    skos:broader :5_3 .

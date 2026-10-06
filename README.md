@@ -218,6 +218,8 @@ logging:
 
 `data/graphs.ttl` is the curated catalog for the published named graphs.
 
+`data/vocabularies/` contains the curated vocabularies and ontologies which are loaded into the `<http://data.climatesense-project.eu/graph/vocabularies>` named graph.
+
 ## Querying the Knowledge Graph
 
 Once loaded into the selected triplestore, query the knowledge graph using SPARQL:
