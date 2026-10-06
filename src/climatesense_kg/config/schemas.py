@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-from .enrichment import default_cimple_model_versions
+from .enrichment import CARDSClassifierName, default_cimple_model_versions
 
 
 @dataclass
@@ -234,6 +234,40 @@ class CimpleConfig:
 
 
 @dataclass
+class CARDSConfig:
+    """Configuration for the CARDS taxonomy enricher."""
+
+    enabled: bool = False
+    classifier: CARDSClassifierName = "matcher"
+    min_threshold: float = 0.25
+    preset: str | None = None
+    provider: str | None = None
+    model: str | None = None
+    cache_path: str | None = None
+    use_preclassifier: bool = True
+    languages: list[str] | None = None
+    batch_size: int = 32
+    max_workers: int = 1
+
+    def __post_init__(self) -> None:
+        if self.batch_size <= 0:
+            raise ValueError("CARDS batch_size must be positive")
+        if self.languages is not None and not self.languages:
+            raise ValueError("CARDS languages must not be empty")
+        if self.max_workers <= 0:
+            raise ValueError("CARDS max_workers must be positive")
+        if not 0 <= self.min_threshold <= 1:
+            raise ValueError("CARDS min_threshold must be between 0 and 1")
+        if self.classifier != "llm" and (
+            self.preset or self.provider or self.model or not self.use_preclassifier
+        ):
+            raise ValueError(
+                "CARDS preset, provider, model and use_preclassifier "
+                "only apply to the llm classifier"
+            )
+
+
+@dataclass
 class EnrichmentConfig:
     """Configuration for enrichment methods."""
 
@@ -250,6 +284,7 @@ class EnrichmentConfig:
         default_factory=WikidataEntityPropertiesConfig
     )
     cimple: CimpleConfig = field(default_factory=CimpleConfig)
+    cards: CARDSConfig = field(default_factory=CARDSConfig)
 
     def __post_init__(self) -> None:
         if self.progress_interval_seconds < 0:

@@ -14,6 +14,9 @@ CimpleModelName = Literal[
 ]
 
 
+CARDSClassifierName = Literal["matcher", "transformer", "llm"]
+
+
 @dataclass(frozen=True)
 class CimpleModelSpec:
     """Stable identity and API route for one CIMPLE model."""
