@@ -1,11 +1,19 @@
-PREFIX schema: <http://schema.org/>
-PREFIX prov: <http://www.w3.org/ns/prov#>
+PREFIX dcat:    <http://www.w3.org/ns/dcat#>
 
 SELECT ?graph (COUNT(*) AS ?tripleCount)
 WHERE {
-  FILTER(STRSTARTS(STR(?graph), "http://data.climatesense-project.eu/graph/"))
-  GRAPH ?graph { ?s ?p ?o }
+  {
+    GRAPH <http://data.climatesense-project.eu/graph/catalog> {
+      ?catalog dcat:dataset ?graph .
+    }
+  }
+  UNION
+  {
+    BIND(<http://data.climatesense-project.eu/graph/catalog> AS ?graph)
+  }
+  GRAPH ?graph {
+    ?s ?p ?o
+  }
 }
 GROUP BY ?graph
 ORDER BY DESC(?tripleCount)
-LIMIT 25
