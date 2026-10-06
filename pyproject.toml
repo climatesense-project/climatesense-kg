@@ -27,6 +27,14 @@ dependencies = [
     "pydantic>=2.13.4,<3",
 ]
 
+[project.optional-dependencies]
+cards = [
+    "climafactskg[matcher] @ git+https://github.com/climatesense-project/climafacts-kg.git@v2.7.0",
+]
+cards-transformer = [
+    "climafactskg[matcher,transformer] @ git+https://github.com/climatesense-project/climafacts-kg.git@v2.7.0",
+]
+
 [project.scripts]
 climatesense-kg = "climatesense_kg.cli:main"
 
@@ -37,6 +45,9 @@ dev = [
     "ty==0.0.71",
     "pre-commit>=4.6.2,<5",
 ]
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.hatch.build.targets.sdist]
 include = ["src/climatesense_kg"]
