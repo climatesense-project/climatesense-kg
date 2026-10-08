@@ -8,15 +8,6 @@ compose_file="$repo_root/docker/docker-compose.yml"
 qlever_compose_file="$repo_root/docker/docker-compose.qlever.yml"
 template="$repo_root/docker/qlever/Qleverfile"
 snapshot_path=${1:-}
-qlever_uid=${QLEVER_UID:-999}
-qlever_gid=${QLEVER_GID:-999}
-
-case "$qlever_uid:$qlever_gid" in
-    *[!0-9:]*)
-        echo "QLEVER_UID and QLEVER_GID must be numeric." >&2
-        exit 1
-        ;;
-esac
 
 if [ -z "$snapshot_path" ]; then
     snapshot_path=$(find "$data_dir/rdf" -mindepth 2 -maxdepth 2 -type f -name .complete -print | sort | tail -n 1)
@@ -96,7 +87,7 @@ compose() {
 }
 
 volume_admin() {
-    compose --profile qlever-init run --rm --no-deps qlever-volume-admin sh -eu -c "$1"
+    compose run --rm --no-deps qlever-volume-admin sh -eu -c "$1"
 }
 
 wait_for_qlever() {
@@ -115,23 +106,9 @@ wait_for_qlever() {
 }
 
 echo "Building QLever index from snapshot $snapshot_id"
-volume_admin "
-    rm -rf /data/index-next
-    mkdir -p /data/index-next
-    chown -R $qlever_uid:$qlever_gid /data/index-next
-"
-QLEVER_DEPLOY_QLEVERFILE="$temporary_dir/Qleverfile" \
-    compose --profile qlever-init run --rm qlever-index
-echo "Switching QLever to the completed candidate index"
+QLEVER_FORCE_REBUILD=1 QLEVER_DEPLOY_QLEVERFILE="$temporary_dir/Qleverfile" \
+    compose run --rm qlever-index
 compose stop qlever >/dev/null 2>&1 || true
-volume_admin '
-    test -f /data/index-next/Qleverfile
-    rm -rf /data/index-previous
-    if [ -d /data/index-current ]; then
-        mv /data/index-current /data/index-previous
-    fi
-    mv /data/index-next /data/index-current
-'
 
 compose up -d --force-recreate qlever
 if wait_for_qlever; then
