@@ -73,6 +73,7 @@ class RDFGenerator:
             "dc": "http://purl.org/dc/elements/1.1/",
             "schema": "http://schema.org/",
             "skos": "http://www.w3.org/2004/02/skos/core#",
+            "cards": "https://purl.net/climatesense/cards/ns#",
             "cimple": "http://data.cimple.eu/ontology#",
             "climatesense": f"{self.base_uri}/ontology#",
             "base": f"{self.base_uri}/",
@@ -82,6 +83,7 @@ class RDFGenerator:
         self.CIMPLE = Namespace(self.namespaces["cimple"])
         self.CLIMATESENSE = Namespace(self.namespaces["climatesense"])
         self.SKOS = Namespace(self.namespaces["skos"])
+        self.CARDS = Namespace(self.namespaces["cards"])
 
     def _bind_namespaces(self) -> None:
         """Bind namespaces to graph."""
@@ -502,6 +504,16 @@ class RDFGenerator:
         if claim_review.language:
             self.graph.add(
                 (review_uri, self.SCHEMA.inLanguage, Literal(claim_review.language))
+            )
+
+        # CARDS taxonomy category
+        if claim_review.claim.analysis.cards_category:
+            self.graph.add(
+                (
+                    review_uri,
+                    self.SCHEMA.about,
+                    self.CARDS[claim_review.claim.analysis.cards_category],
+                )
             )
 
         # Rating

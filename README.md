@@ -24,6 +24,7 @@
   - Text extraction from URLs using [trafilatura](https://trafilatura.readthedocs.io/)
   - Entity linking using [DBpedia Spotlight](https://www.dbpedia-spotlight.org/), [OpenTapioca](https://opentapioca.org/), and [ReFinED](https://github.com/ehrhart/ReFinED)
   - [Factors classification](https://github.com/climatesense-project/cimple-factors-server) using fine-tuned BERT models
+  - [CARDS](https://cardsclimate.com/) taxonomy labelling using [climafactskg](https://github.com/climatesense-project/climafacts-kg) classifiers (rule-based matcher, transformer or LLM)
 - RDF output using [Schema.org](https://schema.org/) and [CIMPLE ontology](https://github.com/CIMPLE-project/knowledge-base)
 - Triple store deployment through Virtuoso or QLever
 - [YAML-based configuration](#configuration)
@@ -194,6 +195,26 @@ enrichment:
     max_length: 128
     timeout: 300
     rate_limit_delay: 0
+    max_workers: 1
+
+  # Requires an optional extra: uv sync --extra cards (matcher) or
+  # uv sync --extra cards-transformer (transformer, and llm unless use_preclassifier: false).
+  # The llm classifier reads its provider key from the environment, e.g. OPENAI_API_KEY,
+  # OPENROUTER_API_KEY, or CARDS_LLM_PROVIDER / CARDS_LLM_MODEL for the defaults.
+  cards:
+    enabled: false
+    classifier: matcher # matcher | transformer | llm
+    min_threshold: 0.25 # matcher only
+    # llm only: a preset, optionally with a provider and/or model override,
+    # or just a provider and model
+    # preset: climatesense-nslp
+    # provider: openai
+    # model: gpt-4o-mini
+    # use_preclassifier: false # skip the ClimateBERT pre-filter (no torch needed)
+    # Skip reviews in other languages (unknown languages are kept). Defaults to
+    # English for matcher and transformer, and to no filter for llm.
+    # languages: [en, english]
+    batch_size: 32
     max_workers: 1
 
 output:

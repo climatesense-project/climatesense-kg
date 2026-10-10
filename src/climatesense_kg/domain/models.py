@@ -202,6 +202,7 @@ class ClaimAnalysis:
         default_factory=lambda: {"mentioned": [], "promoted": []}
     )
     climate_related: bool | None = None
+    cards_category: str | None = None
     readability_score: float | None = None
 
 

@@ -140,6 +140,7 @@ The generated RDF uses the following namespace bindings:
 | `dc`           | `http://purl.org/dc/elements/1.1/`            |
 | `schema`       | `http://schema.org/`                          |
 | `skos`         | `http://www.w3.org/2004/02/skos/core#`        |
+| `cards`        | `https://purl.net/climatesense/cards/ns#`     |
 | `cimple`       | `http://data.cimple.eu/ontology#`             |
 | `climatesense` | `{base_uri}/ontology#`                        |
 | `base`         | `{base_uri}/`                                 |
