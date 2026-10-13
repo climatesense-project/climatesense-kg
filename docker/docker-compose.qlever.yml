@@ -20,7 +20,7 @@ services:
     restart: "no"
 
   qlever-index:
-    image: docker.io/adfreiburg/qlever:commit-8d7945d
+    image: docker.io/adfreiburg/qlever:0.6.0
     container_name: climatesense-qlever-index
     entrypoint: bash
     working_dir: /data
@@ -57,7 +57,7 @@ services:
     restart: "no"
 
   qlever:
-    image: docker.io/adfreiburg/qlever:commit-8d7945d
+    image: docker.io/adfreiburg/qlever:0.6.0
     container_name: climatesense-qlever
     entrypoint: bash
     working_dir: /data
