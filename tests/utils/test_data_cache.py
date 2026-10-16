@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import threading
+import time
 from unittest.mock import patch
 
 import pytest
@@ -84,8 +85,18 @@ def test_zero_ttl_expires_cache_entry_immediately(tmp_path: Path) -> None:
     """An explicit zero TTL must not fall back to the default TTL."""
     cache = DataCache(tmp_path / "cache", default_ttl_hours=24)
     config = {"url": "https://example.test/data"}
+    real_time = time.time
+    clock = iter([10.0, 11.0])
 
-    with patch("src.climatesense_kg.utils.data_cache.time.time", side_effect=[10, 11]):
+    def first_calls_are_clock_then_real_time() -> float:
+        # Unrelated code sharing the global time.time patch (e.g. logging on
+        # Python < 3.13) falls through to the real clock instead of failing.
+        return next(clock, real_time())
+
+    with patch(
+        "src.climatesense_kg.utils.data_cache.time.time",
+        side_effect=first_calls_are_clock_then_real_time,
+    ):
         cache.put("source", config, b"cached data")
         result = cache.get("source", config, ttl_hours=0)
 
