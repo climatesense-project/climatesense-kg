@@ -10,6 +10,7 @@ the hooks below.
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass
 import logging
 from typing import Any
@@ -56,6 +57,8 @@ class Enricher:
         availability_key: str | None = None,
         batch_size: int = 25,
         max_workers: int = 1,
+        provides: Iterable[str] = (),
+        requires: Iterable[str] = (),
     ) -> None:
         """Configure identity and cache invalidation for this enricher.
 
@@ -70,6 +73,12 @@ class Enricher:
                 ``name``.
             batch_size: Subjects per work unit handed to ``compute_batch``.
             max_workers: Threads computing work units concurrently.
+            provides: Names of the analysis fields this enricher
+                writes via ``apply_item``.
+            requires: Names of the fields this enricher reads for eligibility
+                or computation. The enrichment service orders consumers after
+                every provider of each required field and rejects
+                requirements that no enabled enricher provides.
 
         Raises:
             ValueError: If ``batch_size`` or ``max_workers`` is not positive.
@@ -85,6 +94,8 @@ class Enricher:
         self.availability_key = availability_key or name
         self.batch_size = batch_size
         self.max_workers = max_workers
+        self.provides = frozenset(provides)
+        self.requires = frozenset(requires)
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
     def subjects(self, items: list[CanonicalClaimReview]) -> list[EnrichmentSubject]:

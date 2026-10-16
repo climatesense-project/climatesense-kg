@@ -29,6 +29,58 @@ class StoredEnrichment:
     result: ProcessingResult
 
 
+def order_enrichers(enrichers: list[Enricher]) -> list[Enricher]:
+    """Order enrichers so every consumer runs after its required providers.
+
+    Args:
+        enrichers: Enrichers in their configured order.
+
+    Returns:
+        A stable topological order: every enricher comes after the enrichers
+        providing a field it requires, and the original order wins wherever
+        dependencies do not constrain the placement.
+
+    Raises:
+        ValueError: If a required analysis field has no provider, or if the
+            provider declarations leave enrichers in a cycle.
+    """
+    providers: dict[str, set[str]] = {}
+    for enricher in enrichers:
+        for field in enricher.provides:
+            providers.setdefault(field, set()).add(enricher.name)
+    for enricher in enrichers:
+        for field in enricher.requires:
+            if field not in providers:
+                raise ValueError(
+                    f"Enricher {enricher.name} requires analysis field "
+                    f"'{field}' that no enabled enricher provides"
+                )
+
+    ordered: list[Enricher] = []
+    emitted: set[str] = set()
+    remaining = list(enrichers)
+    while remaining:
+        ready = [
+            enricher
+            for enricher in remaining
+            if all(
+                provider in emitted
+                for field in enricher.requires
+                for provider in providers[field]
+                if provider != enricher.name
+            )
+        ]
+        if not ready:
+            raise ValueError(
+                "Enricher dependency cycle involving: "
+                + ", ".join(enricher.name for enricher in remaining)
+            )
+        ordered.extend(ready)
+        emitted.update(enricher.name for enricher in ready)
+        remaining = [enricher for enricher in remaining if enricher not in ready]
+    return ordered
+
+
 class EnrichmentService:
     """Run enabled enrichers without retaining canonical review projections."""
 
@@ -47,7 +99,7 @@ class EnrichmentService:
             raise ValueError("Enrichment progress interval must be non-negative")
         self.pool = pool
         self.reader = reader
-        self.enrichers = enrichers
+        self.enrichers = order_enrichers(enrichers)
         self.batch_size = batch_size
         self.progress_interval_seconds = progress_interval_seconds
         self._availability: dict[str, bool] = {}
