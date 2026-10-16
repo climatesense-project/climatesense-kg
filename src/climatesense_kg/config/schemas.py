@@ -245,6 +245,7 @@ class CARDSConfig:
     model: str | None = None
     cache_path: str | None = None
     use_preclassifier: bool = True
+    climate_related_gate: bool = False
     languages: list[str] | None = None
     batch_size: int = 32
     max_workers: int = 1

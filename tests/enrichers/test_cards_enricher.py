@@ -129,6 +129,25 @@ def test_cards_english_only_classifiers_skip_other_languages(
     assert bool(enricher.subjects([review])) is eligible
 
 
+@pytest.mark.parametrize(
+    ("gate", "climate_related", "eligible"),
+    [
+        (True, True, True),
+        (True, False, False),
+        (True, None, True),
+        (False, False, True),
+    ],
+)
+def test_cards_climate_gate_skips_only_off_topic_reviews(
+    make_review, gate, climate_related, eligible
+) -> None:
+    enricher = CARDSEnricher(classifier="matcher", climate_related_gate=gate)
+    review = make_review()
+    review.claim.analysis.climate_related = climate_related
+
+    assert bool(enricher.subjects([review])) is eligible
+
+
 def test_cards_llm_can_disable_the_climatebert_prefilter() -> None:
     classifiers = Mock()
     with patch.dict(

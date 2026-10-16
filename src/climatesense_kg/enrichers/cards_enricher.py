@@ -80,6 +80,7 @@ class CARDSEnricher(Enricher):
         model: str | None = None,
         cache_path: str | None = None,
         use_preclassifier: bool = True,
+        climate_related_gate: bool = False,
         languages: list[str] | None = None,
         batch_size: int = 32,
         max_workers: int = 1,
@@ -105,6 +106,7 @@ class CARDSEnricher(Enricher):
             semantic_config=semantic_config,
             batch_size=batch_size,
             max_workers=max_workers,
+            requires=("climate_related",) if climate_related_gate else (),
         )
         self.classifier = classifier
         self.min_threshold = min_threshold
@@ -113,6 +115,7 @@ class CARDSEnricher(Enricher):
         self.model = model
         self.cache_path = cache_path
         self.use_preclassifier = use_preclassifier
+        self.climate_related_gate = climate_related_gate
         if languages is None and classifier in ENGLISH_ONLY:
             languages = ENGLISH_LANGUAGES
         self.languages = {language.casefold() for language in languages or ()}
@@ -132,16 +135,26 @@ class CARDSEnricher(Enricher):
     def eligible_items(
         self, items: list[CanonicalClaimReview]
     ) -> list[CanonicalClaimReview]:
-        if not self.languages:
-            return items
-        return [item for item in items if self._accepts_language(item.language)]
+        return [
+            item
+            for item in items
+            if self._accepts_language(item.language) and self._accepts_climate(item)
+        ]
 
     def _accepts_language(self, language: str | None) -> bool:
         """Accept unknown languages, a listed value, or its primary subtag."""
+        if not self.languages:
+            return True
         if not language or not language.strip():
             return True
         value = language.strip().casefold()
         return value in self.languages or re.split(r"[-_]", value)[0] in self.languages
+
+    def _accepts_climate(self, item: CanonicalClaimReview) -> bool:
+        """Only an explicit False verdict is off-topic; None classifies."""
+        if not self.climate_related_gate:
+            return True
+        return item.claim.analysis.climate_related is not False
 
     def subject_key(self, item: CanonicalClaimReview) -> str:
         return item.claim.uri

@@ -1,6 +1,9 @@
 """Wiring tests for enrichment providers built from pipeline configuration."""
 
 from pathlib import Path
+from unittest.mock import patch
+
+import pytest
 
 from climatesense_kg.bootstrap import _build_enrichers, _enrichment_graphs
 from climatesense_kg.config import PipelineConfig, load_config
@@ -149,3 +152,36 @@ def test_cards_builds_one_claim_enricher_with_its_classifier_settings(
     assert enrichers[0].semantic_config["min_threshold"] == 0.4
     assert enrichers[0].max_workers == 2
     assert _enrichment_graphs(config) == {}
+
+
+@patch.dict(
+    "os.environ",
+    {
+        "CIMPLE_FACTORS_API_URL": "https://cimple.example",
+        "CIMPLE_FACTORS_API_KEY": "test-key",
+    },
+)
+def test_cards_climate_gate_declares_the_cimple_provider(tmp_path: Path) -> None:
+    config = _config(
+        tmp_path,
+        "  cimple:\n"
+        "    enabled: true\n"
+        "  cards:\n"
+        "    enabled: true\n"
+        "    climate_related_gate: true\n",
+    )
+
+    enrichers = {enricher.name: enricher for enricher in _build_enrichers(config)}
+
+    assert enrichers["cards"].requires == {"climate_related"}
+    assert enrichers["cimple.climate_related"].provides == {"climate_related"}
+
+
+def test_cards_climate_gate_requires_the_cimple_provider(tmp_path: Path) -> None:
+    config = _config(
+        tmp_path,
+        "  cards:\n    enabled: true\n    climate_related_gate: true\n",
+    )
+
+    with pytest.raises(ValueError, match="climate_related"):
+        order_enrichers(_build_enrichers(config))

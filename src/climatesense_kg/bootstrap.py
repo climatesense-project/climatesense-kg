@@ -228,6 +228,7 @@ def _build_enrichers(config: PipelineConfig) -> list[Enricher]:
                 model=cards.model,
                 cache_path=cards.cache_path,
                 use_preclassifier=cards.use_preclassifier,
+                climate_related_gate=cards.climate_related_gate,
                 languages=cards.languages,
                 batch_size=cards.batch_size,
                 max_workers=cards.max_workers,

@@ -214,6 +214,8 @@ enrichment:
     # Skip reviews in other languages (unknown languages are kept). Defaults to
     # English for matcher and transformer, and to no filter for llm.
     # languages: [en, english]
+    # Only classify claims CIMPLE marked climate-related (unknown verdicts still classify).
+    climate_related_gate: false
     batch_size: 32
     max_workers: 1
 
