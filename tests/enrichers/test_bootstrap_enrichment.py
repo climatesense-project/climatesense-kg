@@ -5,6 +5,7 @@ from pathlib import Path
 from climatesense_kg.bootstrap import _build_enrichers, _enrichment_graphs
 from climatesense_kg.config import PipelineConfig, load_config
 from climatesense_kg.enrichers import (
+    CARDSEnricher,
     OpenTapiocaEnricher,
     RefinedEnricher,
     SparqlEntityPropertyEnricher,
@@ -126,3 +127,25 @@ def test_entity_property_enrichers_run_after_every_linker(tmp_path: Path) -> Non
         "dbpedia_entity_properties",
         "wikidata_entity_properties",
     ]
+
+
+def test_cards_builds_one_claim_enricher_with_its_classifier_settings(
+    tmp_path: Path,
+) -> None:
+    config = _config(
+        tmp_path,
+        "  cards:\n"
+        "    enabled: true\n"
+        "    classifier: matcher\n"
+        "    min_threshold: 0.4\n"
+        "    max_workers: 2\n",
+    )
+
+    enrichers = _build_enrichers(config)
+
+    assert [enricher.name for enricher in enrichers] == ["cards"]
+    assert isinstance(enrichers[0], CARDSEnricher)
+    assert enrichers[0].semantic_config["classifier"] == "matcher"
+    assert enrichers[0].semantic_config["min_threshold"] == 0.4
+    assert enrichers[0].max_workers == 2
+    assert _enrichment_graphs(config) == {}

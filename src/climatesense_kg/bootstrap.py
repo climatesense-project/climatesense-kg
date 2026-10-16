@@ -16,6 +16,7 @@ from .config.organizations import ORGANIZATION_CATALOG_PATH, OrganizationCatalog
 from .data_manager import DataManager
 from .database import Database
 from .enrichers import (
+    CARDSEnricher,
     CimpleModelEnricher,
     DBpediaSpotlightEnricher,
     Enricher,
@@ -215,5 +216,21 @@ def _build_enrichers(config: PipelineConfig) -> list[Enricher]:
                 max_workers=cimple.max_workers,
             )
             for model in CimpleModelEnricher.MODEL_KEYS
+        )
+    if enrichment.cards.enabled:
+        cards = enrichment.cards
+        enrichers.append(
+            CARDSEnricher(
+                classifier=cards.classifier,
+                min_threshold=cards.min_threshold,
+                preset=cards.preset,
+                provider=cards.provider,
+                model=cards.model,
+                cache_path=cards.cache_path,
+                use_preclassifier=cards.use_preclassifier,
+                languages=cards.languages,
+                batch_size=cards.batch_size,
+                max_workers=cards.max_workers,
+            )
         )
     return enrichers

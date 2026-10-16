@@ -374,3 +374,21 @@ def test_deduplication_failure_preserves_previous_snapshot(
 
     assert gzip.decompress(output.read_bytes()) == b"previous complete graph\n"
     assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_cards_category_links_the_review_to_the_vocabulary_concept() -> None:
+    organization = CanonicalOrganization(
+        uri=f"{BASE}/organization/factual",
+        name="Factual",
+        website="https://factual.ro",
+    )
+    review = _review(organization)
+    review.claim.analysis.cards_category = "2_1"
+    review_uri = URIRef(f"{BASE}/{review.uri}")
+    concept = URIRef("https://purl.net/climatesense/cards/ns#2_1")
+
+    turtle = RDFGenerator(BASE).generate([review], "turtle")
+    graph = Graph().parse(data=turtle, format="turtle")
+
+    assert list(graph.objects(review_uri, URIRef(f"{SCHEMA}about"))) == [concept]
+    assert "@prefix cards: <https://purl.net/climatesense/cards/ns#>" in turtle
