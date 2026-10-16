@@ -134,6 +134,14 @@ enrichment:
     rate_limit_delay: 0
     max_workers: 1
 
+  cards:
+    enabled: true
+    classifier: llm
+    model: glm-5.3-flash
+    use_preclassifier: false
+    batch_size: 32
+    max_workers: 1
+
 output:
   output_path: "data/rdf/{DATETIME}/{SOURCE}.nt.gz"
   base_uri: "http://data.climatesense-project.eu"
