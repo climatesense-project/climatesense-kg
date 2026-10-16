@@ -48,6 +48,7 @@ class CimpleModelEnricher(Enricher):
             availability_key="cimple_factors",
             batch_size=effective_batch_size,
             max_workers=max_workers,
+            provides=(model,),
         )
         self.model = model
         api_url = os.environ.get("CIMPLE_FACTORS_API_URL", "").strip().rstrip("/")
