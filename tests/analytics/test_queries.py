@@ -25,11 +25,13 @@ def test_enrichment_coverage_includes_promoted_conspiracies() -> None:
     assert "cimple:mentionsConspiracy|cimple:promotesConspiracy" in query
 
 
-def test_triple_volume_filters_graphs_before_limit() -> None:
+def test_triple_volume_uses_graphs_catalog() -> None:
     query = (_QUERY_DIR / "triple_volume.rq").read_text(encoding="utf-8")
 
-    assert query.index("STRSTARTS") < query.index("LIMIT 25")
-    assert "http://data.climatesense-project.eu/graph/" in query
+    catalog = "http://data.climatesense-project.eu/graph/catalog"
+    assert f"GRAPH <{catalog}>" in query
+    assert "dcat:dataset" in query
+    assert "UNION" in query
 
 
 def test_pipeline_metrics_use_current_processing_results() -> None:
