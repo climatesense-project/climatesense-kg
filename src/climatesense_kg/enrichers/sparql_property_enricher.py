@@ -69,6 +69,7 @@ class SparqlEntityPropertyEnricher(Enricher):
             semantic_config={"properties": self.properties},
             availability_key=availability_key,
             batch_size=self.entity_batch_size,
+            requires=("entities",),
         )
         self.timeout = timeout
         self.rate_limit_delay = rate_limit_delay

@@ -38,6 +38,7 @@ class DBpediaSpotlightEnricher(Enricher):
             availability_key="dbpedia_spotlight",
             batch_size=1,
             max_workers=max_workers,
+            provides=("entities",),
         )
         self.target = target
         self.api_url = api_url

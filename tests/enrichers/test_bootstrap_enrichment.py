@@ -9,6 +9,7 @@ from climatesense_kg.enrichers import (
     RefinedEnricher,
     SparqlEntityPropertyEnricher,
 )
+from climatesense_kg.enrichment import order_enrichers
 
 
 def _config(tmp_path: Path, enrichment_yaml: str) -> PipelineConfig:
@@ -87,3 +88,41 @@ def test_wikidata_graph_requires_only_one_linker(tmp_path: Path) -> None:
     assert _enrichment_graphs(config) == {
         "wikidata-enricher": {"opentapioca", "refined"},
     }
+
+
+def test_entity_property_enrichers_run_after_every_linker(tmp_path: Path) -> None:
+    config = _config(
+        tmp_path,
+        "  dbpedia_spotlight:\n"
+        "    enabled: true\n"
+        "  dbpedia_entity_properties:\n"
+        "    enabled: true\n"
+        "  opentapioca:\n"
+        "    enabled: true\n"
+        "  refined:\n"
+        "    enabled: true\n"
+        "  wikidata_entity_properties:\n"
+        "    enabled: true\n"
+        "    properties:\n"
+        "      - http://www.wikidata.org/prop/direct/P31\n",
+    )
+
+    enrichers = _build_enrichers(config)
+    assert enrichers[2].requires == {"entities"}
+    assert all(
+        enricher.provides == {"entities"}
+        for enricher in enrichers
+        if enricher.name.startswith(("dbpedia_spotlight", "opentapioca", "refined"))
+    )
+
+    ordered = order_enrichers(enrichers)
+    assert [enricher.name for enricher in ordered] == [
+        "dbpedia_spotlight.claim",
+        "dbpedia_spotlight.review",
+        "opentapioca.claim",
+        "opentapioca.review",
+        "refined.claim",
+        "refined.review",
+        "dbpedia_entity_properties",
+        "wikidata_entity_properties",
+    ]

@@ -73,7 +73,7 @@ class Enricher:
                 ``name``.
             batch_size: Subjects per work unit handed to ``compute_batch``.
             max_workers: Threads computing work units concurrently.
-            provides: Names of the ``ClaimAnalysis`` fields this enricher
+            provides: Names of the analysis fields this enricher
                 writes via ``apply_item``.
             requires: Names of the fields this enricher reads for eligibility
                 or computation. The enrichment service orders consumers after
