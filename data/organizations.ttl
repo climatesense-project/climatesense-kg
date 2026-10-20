@@ -565,6 +565,17 @@ org:efe-verifica
     ] ;
     schema:memberOf <https://efcsn.com/>, <https://www.poynter.org/ifcn/> .
 
+org:eleza-fact
+    a schema:Organization ;
+    schema:name "Eleza Fact" ;
+    schema:url <https://elezafact.cd/> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Democratic Republic of the Congo"@en ;
+        schema:identifier "CD"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
 org:ellinika-hoaxes
     a schema:Organization ;
     schema:name "Ellinika Hoaxes" ;
@@ -1384,6 +1395,17 @@ org:thip-media
         a schema:Country ;
         schema:name "India"@en ;
         schema:identifier "IN"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:tirto-id
+    a schema:Organization ;
+    schema:name "Tirto.ID" ;
+    schema:url <https://tirto.id/> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Indonesia"@en ;
+        schema:identifier "ID"
     ] ;
     schema:memberOf <https://www.poynter.org/ifcn/> .
 
