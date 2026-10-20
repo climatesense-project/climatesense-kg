@@ -139,6 +139,7 @@ enrichment:
     classifier: llm
     model: glm-5.3-flash
     use_preclassifier: false
+    climate_related_gate: true
     batch_size: 32
     max_workers: 1
 
