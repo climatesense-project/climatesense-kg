@@ -152,7 +152,7 @@ if ! compose build; then
 fi
 
 log "Running daily pipeline..."
-if ! compose run --build pipeline run -c "$CONFIG_FILE"; then
+if ! compose run --rm --build pipeline run -c "$CONFIG_FILE" 2>&1 | tee -a "$LOG_FILE"; then
 	log "Error: Pipeline execution failed"
 	exit 1
 fi
