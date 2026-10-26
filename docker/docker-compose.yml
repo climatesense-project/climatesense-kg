@@ -44,6 +44,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       CIMPLE_FACTORS_API_URL: ${CIMPLE_FACTORS_API_URL:?CIMPLE_FACTORS_API_URL must point to a Factors API reachable from the pipeline container}
       CIMPLE_FACTORS_API_KEY: ${CIMPLE_FACTORS_API_KEY:?CIMPLE_FACTORS_API_KEY must contain a valid Factors API key}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL}
     volumes:
       - ../data:/app/data
       - ../logs:/app/logs
