@@ -82,7 +82,7 @@ services:
         --cache-max-size ${QLEVER_CACHE_MAX_SIZE:-2G}
         --timeout ${QLEVER_QUERY_TIMEOUT:-30s}
     ports:
-      - "${QLEVER_PORT:-7019}:7019"
+      - "${QLEVER_BIND_ADDRESS:-127.0.0.1}:${QLEVER_PORT:-7019}:7019"
     volumes:
       - type: volume
         source: qlever_data
