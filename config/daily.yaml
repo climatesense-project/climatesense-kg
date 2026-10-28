@@ -142,6 +142,7 @@ enrichment:
     climate_related_gate: true
     batch_size: 32
     max_workers: 1
+    concurrency: 4
 
 output:
   output_path: "data/rdf/{DATETIME}/{SOURCE}.nt.gz"
