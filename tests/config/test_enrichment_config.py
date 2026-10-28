@@ -74,6 +74,14 @@ def test_enrichment_worker_counts_must_be_positive(
             "  cards:\n    classifier: matcher\n    preset: climatesense-nslp\n",
             "only apply to the llm classifier",
         ),
+        (
+            "  cards:\n    classifier: matcher\n    concurrency: 4\n",
+            "only apply to the llm classifier",
+        ),
+        (
+            "  cards:\n    classifier: llm\n    concurrency: 0\n",
+            "concurrency must be positive",
+        ),
     ],
 )
 def test_cards_configuration_is_validated(

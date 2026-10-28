@@ -80,6 +80,7 @@ class CARDSEnricher(Enricher):
         model: str | None = None,
         cache_path: str | None = None,
         use_preclassifier: bool = True,
+        concurrency: int | None = None,
         climate_related_gate: bool = False,
         languages: list[str] | None = None,
         batch_size: int = 32,
@@ -87,6 +88,8 @@ class CARDSEnricher(Enricher):
     ) -> None:
         if classifier not in CLASSIFIERS:
             raise ValueError(f"Unknown CARDS classifier: {classifier}")
+        if concurrency is not None and concurrency <= 0:
+            raise ValueError("CARDS concurrency must be positive")
         semantic_config: dict[str, Any] = {
             "classifier": classifier,
             "library_version": _library_version(),
@@ -115,6 +118,7 @@ class CARDSEnricher(Enricher):
         self.model = model
         self.cache_path = cache_path
         self.use_preclassifier = use_preclassifier
+        self.concurrency = concurrency
         self.climate_related_gate = climate_related_gate
         if languages is None and classifier in ENGLISH_ONLY:
             languages = ENGLISH_LANGUAGES
@@ -210,6 +214,8 @@ class CARDSEnricher(Enricher):
     def _batch_options(self) -> dict[str, Any]:
         if self.classifier == "matcher":
             return {"min_threshold": self.min_threshold}
+        if self.concurrency is not None:
+            return {"concurrency": self.concurrency}
         return {}
 
     def _get_classifier(self) -> Any:

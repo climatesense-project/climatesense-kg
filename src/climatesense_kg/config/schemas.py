@@ -245,6 +245,7 @@ class CARDSConfig:
     model: str | None = None
     cache_path: str | None = None
     use_preclassifier: bool = True
+    concurrency: int | None = None
     climate_related_gate: bool = False
     languages: list[str] | None = None
     batch_size: int = 32
@@ -259,11 +260,17 @@ class CARDSConfig:
             raise ValueError("CARDS max_workers must be positive")
         if not 0 <= self.min_threshold <= 1:
             raise ValueError("CARDS min_threshold must be between 0 and 1")
+        if self.concurrency is not None and self.concurrency <= 0:
+            raise ValueError("CARDS concurrency must be positive")
         if self.classifier != "llm" and (
-            self.preset or self.provider or self.model or not self.use_preclassifier
+            self.preset
+            or self.provider
+            or self.model
+            or not self.use_preclassifier
+            or self.concurrency is not None
         ):
             raise ValueError(
-                "CARDS preset, provider, model and use_preclassifier "
+                "CARDS preset, provider, model, use_preclassifier and concurrency "
                 "only apply to the llm classifier"
             )
 

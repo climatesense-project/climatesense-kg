@@ -215,3 +215,19 @@ def test_cards_preset_model_override_reaches_the_library() -> None:
     classifiers.cards.CARDSLLMClassifier.from_preset.assert_called_once_with(
         "climatesense-nslp", model="openai/gpt-4o", cache_path="cards.db"
     )
+
+
+def test_cards_llm_concurrency_reaches_classify_batch(make_review) -> None:
+    enricher = CARDSEnricher(classifier="llm", use_preclassifier=False, concurrency=4)
+    classifier = Mock()
+    classifier.classify_batch.return_value = ["1_0", "0"]
+    subjects = enricher.subjects([make_review(claim="a"), make_review(claim="b")])
+    with patch(_LOADER, return_value=classifier):
+        enricher.compute_batch(subjects)
+
+    classifier.classify_batch.assert_called_once_with(["a", "b"], concurrency=4)
+
+
+def test_cards_rejects_an_invalid_concurrency() -> None:
+    with pytest.raises(ValueError, match="concurrency must be positive"):
+        CARDSEnricher(classifier="llm", concurrency=0)

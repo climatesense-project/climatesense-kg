@@ -185,3 +185,15 @@ def test_cards_climate_gate_requires_the_cimple_provider(tmp_path: Path) -> None
 
     with pytest.raises(ValueError, match="climate_related"):
         order_enrichers(_build_enrichers(config))
+
+
+def test_cards_llm_concurrency_builds_into_the_enricher(tmp_path: Path) -> None:
+    config = _config(
+        tmp_path,
+        "  cards:\n    enabled: true\n    classifier: llm\n    concurrency: 4\n",
+    )
+
+    enrichers = _build_enrichers(config)
+
+    assert isinstance(enrichers[0], CARDSEnricher)
+    assert enrichers[0].concurrency == 4
