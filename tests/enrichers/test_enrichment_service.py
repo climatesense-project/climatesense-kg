@@ -7,6 +7,7 @@ import time
 from unittest.mock import Mock
 
 import pytest
+import requests
 
 from climatesense_kg.domain import CanonicalClaimReview
 from climatesense_kg.enrichers import Enricher
@@ -106,6 +107,46 @@ def test_enrichment_work_units_are_bounded_checkpointed_and_mapped(
     ]
     assert "Enrichment [fixture.concurrent]: reviews 1-6/6" in caplog.text
     assert "Enrichment [fixture.concurrent] batch 1-6" in caplog.text
+
+
+class _HTTPFailureEnricher(Enricher):
+    def __init__(self) -> None:
+        super().__init__("fixture.http_failure", version="1", batch_size=25)
+
+    def is_available(self) -> bool:
+        return True
+
+    def subject_key(self, item: CanonicalClaimReview) -> str:
+        return item.claim.uri
+
+    def input_value(self, item: CanonicalClaimReview) -> str:
+        return item.claim.text
+
+    def compute_item(self, item: CanonicalClaimReview) -> ProcessingResult:
+        response = requests.Response()
+        response.status_code = int(item.claim.text)
+        raise requests.HTTPError(
+            f"{response.status_code} error for {item.claim.text}",
+            response=response,
+        )
+
+
+def test_request_entity_too_large_is_permanent_and_other_http_errors_stay_retryable(
+    make_review,
+) -> None:
+    enricher = _HTTPFailureEnricher()
+    reviews = [
+        make_review(claim="413"),
+        make_review(claim="504"),
+    ]
+
+    results = enricher.compute_items(reviews)
+
+    assert results[0].permanent
+    assert results[0].payload["error_type"] == "request_too_large"
+    assert results[0].payload["status_code"] == 413
+    assert not results[1].permanent
+    assert results[1].payload["error_type"] == "stage_error"
 
 
 class _DeclaredEnricher(Enricher):

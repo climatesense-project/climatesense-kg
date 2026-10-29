@@ -15,6 +15,8 @@ from dataclasses import dataclass
 import logging
 from typing import Any
 
+import requests
+
 from ..domain import CanonicalClaimReview
 from ..processing import ProcessingResult, stable_hash
 
@@ -183,6 +185,9 @@ class Enricher:
             One ``ProcessingResult`` per item, in the same order. An
             exception from ``compute_item`` is logged and returned as a
             retryable result, so one failing item never discards the others.
+            An HTTP 413 response is stored as a permanent failure instead:
+            the service rejected the input size, so retrying the same
+            input cannot succeed.
         """
         results: list[ProcessingResult] = []
         for item in items:
@@ -192,11 +197,27 @@ class Enricher:
                 self.logger.error(
                     "Enricher %s failed for %s: %s", self.name, item.uri, exc
                 )
-                results.append(
-                    ProcessingResult.retryable(
-                        {"error_type": "stage_error", "error": str(exc)}
-                    )
+                too_large = (
+                    isinstance(exc, requests.HTTPError)
+                    and exc.response is not None
+                    and exc.response.status_code == 413
                 )
+                if too_large:
+                    results.append(
+                        ProcessingResult.permanent_failure(
+                            {
+                                "error_type": "request_too_large",
+                                "error": str(exc),
+                                "status_code": 413,
+                            }
+                        )
+                    )
+                else:
+                    results.append(
+                        ProcessingResult.retryable(
+                            {"error_type": "stage_error", "error": str(exc)}
+                        )
+                    )
         return results
 
     def is_available(self) -> bool:
