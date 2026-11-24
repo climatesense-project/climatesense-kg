@@ -22,6 +22,28 @@ org:20-minutes-fake-off
     ] ;
     schema:memberOf <https://www.poynter.org/ifcn/> .
 
+org:211-check
+    a schema:Organization ;
+    schema:name "211 Check" ;
+    schema:url <https://211check.org> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "South Sudan"@en ;
+        schema:identifier "SS"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:a-s-delfi
+    a schema:Organization ;
+    schema:name "A/s \"Delfi\"" ;
+    schema:url <https://delfi.lv> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Latvia"@en ;
+        schema:identifier "LV"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
 org:aap-factcheck
     a schema:Organization ;
     schema:name "AAP FactCheck" ;
@@ -32,6 +54,28 @@ org:aap-factcheck
         schema:identifier "AU"
     ] ;
     schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:abs-cbn-fact-check
+    a schema:Organization ;
+    schema:name "ABS-CBN Fact Check" ;
+    schema:url <https://news.abs-cbn.com> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Philippines"@en ;
+        schema:identifier "PH"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:action-for-democratic-society-ads-hibrid-info
+    a schema:Organization ;
+    schema:name "Action for Democratic Society (ADS) hibrid.info" ;
+    schema:url <https://hibrid.info> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Kosovo"@en ;
+        schema:identifier "XK"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/>, <https://efcsn.com/> .
 
 org:afp-fact-check
     a schema:Organization ;
@@ -286,6 +330,28 @@ org:agence-science-presse
     ] ;
     schema:memberOf <https://www.poynter.org/ifcn/> .
 
+org:agencia-lupa
+    a schema:Organization ;
+    schema:name "Agência Lupa" ;
+    schema:url <https://lupa.news> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Brazil"@en ;
+        schema:identifier "BR"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:agencia-ocote
+    a schema:Organization ;
+    schema:name "Agencia Ocote" ;
+    schema:url <https://agenciaocote.com> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Guatemala"@en ;
+        schema:identifier "GT"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
 org:agencia-publica-checagem
     a schema:Organization ;
     schema:name "Agência Pública — Checagem" ;
@@ -295,6 +361,17 @@ org:agencia-publica-checagem
         schema:name "Brazil"@en ;
         schema:identifier "BR"
     ] .
+
+org:akhbarmeter
+    a schema:Organization ;
+    schema:name "AkhbarMeter" ;
+    schema:url <https://akhbarmeter.org> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Egypt"@en ;
+        schema:identifier "EG"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
 
 org:alt-news
     a schema:Organization ;
@@ -328,6 +405,28 @@ org:annie-lab
     ] ;
     schema:memberOf <https://www.poynter.org/ifcn/> .
 
+org:annir
+    a schema:Organization ;
+    schema:name "Annir" ;
+    schema:url <https://annir.ly> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Libya"@en ;
+        schema:identifier "LY"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:ansa-verified
+    a schema:Organization ;
+    schema:name "ANSA Verified" ;
+    schema:url <https://ansa.it> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Italy"@en ;
+        schema:identifier "IT"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
 org:antifake
     a schema:Organization ;
     schema:name "AntiFake" ;
@@ -349,6 +448,17 @@ org:aos-fatos
     ] ;
     schema:memberOf <https://www.poynter.org/ifcn/> .
 
+org:ap-fact-check
+    a schema:Organization ;
+    schema:name "AP Fact Check" ;
+    schema:url <https://ap.org> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "United States"@en ;
+        schema:identifier "US"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
 org:apa-austria-press-agency
     a schema:Organization ;
     schema:name "APA — Austria Press Agency" ;
@@ -359,6 +469,72 @@ org:apa-austria-press-agency
         schema:identifier "AT"
     ] ;
     schema:memberOf <https://efcsn.com/>, <https://www.poynter.org/ifcn/> .
+
+org:arij
+    a schema:Organization ;
+    schema:name "ARIJ" ;
+    schema:url <https://arij.net> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Jordan"@en ;
+        schema:identifier "JO"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:balobaki-check
+    a schema:Organization ;
+    schema:name "BALOBAKI CHECK" ;
+    schema:url <https://balobakicheck.com> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Democratic Republic of the Congo"@en ;
+        schema:identifier "CD"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:bayerischer-rundfunk-br24-faktenfuchs
+    a schema:Organization ;
+    schema:name "Bayerischer Rundfunk - BR24 #Faktenfuchs" ;
+    schema:url <https://br.de> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Germany"@en ;
+        schema:identifier "DE"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:beam-reports
+    a schema:Organization ;
+    schema:name "Beam Reports" ;
+    schema:url <https://beamreports.com> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Sudan"@en ;
+        schema:identifier "SD"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:belarusian-investigative-center
+    a schema:Organization ;
+    schema:name "Belarusian Investigative Center" ;
+    schema:url <https://investigatebel.org> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Czechia"@en ;
+        schema:identifier "CZ"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/>, <https://efcsn.com/> .
+
+org:bncheck
+    a schema:Organization ;
+    schema:name "BNCHECK" ;
+    schema:url <https://businessnews.com.tn> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Tunisia"@en ;
+        schema:identifier "TN"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
 
 org:bolivia-verifica
     a schema:Organization ;
@@ -379,6 +555,39 @@ org:boom
         a schema:Country ;
         schema:name "India"@en ;
         schema:identifier "IN"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:cablecheck
+    a schema:Organization ;
+    schema:name "CableCheck" ;
+    schema:url <https://factcheck.thecable.ng> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Nigeria"@en ;
+        schema:identifier "NG"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:cazadores-de-fake-news
+    a schema:Organization ;
+    schema:name "Cazadores de Fake News" ;
+    schema:url <https://cazadoresdefakenews.info> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Venezuela"@en ;
+        schema:identifier "VE"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:cek-fakta-liputan-6
+    a schema:Organization ;
+    schema:name "Cek Fakta - Liputan 6" ;
+    schema:url <https://liputan6.com> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Indonesia"@en ;
+        schema:identifier "ID"
     ] ;
     schema:memberOf <https://www.poynter.org/ifcn/> .
 
@@ -403,6 +612,17 @@ org:chequeado
     ] ;
     schema:memberOf <https://www.poynter.org/ifcn/> .
 
+org:civilnet
+    a schema:Organization ;
+    schema:name "CivilNet" ;
+    schema:url <https://civilnet.am> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Armenia"@en ;
+        schema:identifier "AM"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/>, <https://efcsn.com/> .
+
 org:climate-fever-dataset
     a schema:Organization ;
     schema:name "CLIMATE-FEVER Dataset" ;
@@ -421,6 +641,17 @@ org:colombiacheck
         a schema:Country ;
         schema:name "Colombia"@en ;
         schema:identifier "CO"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:congo-check
+    a schema:Organization ;
+    schema:name "Congo Check" ;
+    schema:url <https://congocheck.net> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Democratic Republic of the Congo"@en ;
+        schema:identifier "CD"
     ] ;
     schema:memberOf <https://www.poynter.org/ifcn/> .
 
@@ -443,6 +674,61 @@ org:cotejo-info
         a schema:Country ;
         schema:name "Venezuela"@en ;
         schema:identifier "VE"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:dagens-nyheter
+    a schema:Organization ;
+    schema:name "Dagens Nyheter" ;
+    schema:url <https://dn.se> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Sweden"@en ;
+        schema:identifier "SE"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:danbi-fact-check
+    a schema:Organization ;
+    schema:name "Danbi Fact Check" ;
+    schema:url <https://danbinews.com> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Korea, Republic of"@en ;
+        schema:identifier "KR"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:datacheckorg
+    a schema:Organization ;
+    schema:name "DataCheckOrg" ;
+    schema:url <https://data-check.org> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Cameroon"@en ;
+        schema:identifier "CM"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:decrypteurs
+    a schema:Organization ;
+    schema:name "Décrypteurs" ;
+    schema:url <https://ici.radio-canada.ca> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Canada"@en ;
+        schema:identifier "CA"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:delfi-faktikontroll
+    a schema:Organization ;
+    schema:name "Delfi Faktikontroll" ;
+    schema:url <https://epl.delfi.ee> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Estonia"@en ;
+        schema:identifier "EE"
     ] ;
     schema:memberOf <https://www.poynter.org/ifcn/> .
 
@@ -500,6 +786,17 @@ org:desmog
         schema:identifier "CA"
     ] .
 
+org:deutsche-welle
+    a schema:Organization ;
+    schema:name "Deutsche Welle" ;
+    schema:url <https://dw.com> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Germany"@en ;
+        schema:identifier "DE"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
 org:digieye-india
     a schema:Organization ;
     schema:name "DigiEye India" ;
@@ -510,6 +807,39 @@ org:digieye-india
         schema:identifier "IN"
     ] ;
     schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:digital-forensics-research-and-analytics-centre-d-frac
+    a schema:Organization ;
+    schema:name "Digital Forensics, Research and Analytics Centre (D-FRAC)" ;
+    schema:url <https://dfrac.org> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "India"@en ;
+        schema:identifier "IN"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:doble-check
+    a schema:Organization ;
+    schema:name "Doble Check" ;
+    schema:url <https://doblecheck.cr> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Costa Rica"@en ;
+        schema:identifier "CR"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:dogrula
+    a schema:Organization ;
+    schema:name "Doğrula" ;
+    schema:url <https://dogrula.org> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Türkiye"@en ;
+        schema:identifier "TR"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/>, <https://efcsn.com/> .
 
 org:dogruluk-pay
     a schema:Organization ;
@@ -565,6 +895,17 @@ org:efe-verifica
     ] ;
     schema:memberOf <https://efcsn.com/>, <https://www.poynter.org/ifcn/> .
 
+org:efecto-cocuyo-cocuyo-chequea
+    a schema:Organization ;
+    schema:name "Efecto Cocuyo (Cocuyo Chequea)" ;
+    schema:url <https://efectococuyo.com> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Venezuela"@en ;
+        schema:identifier "VE"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
 org:eleza-fact
     a schema:Organization ;
     schema:name "Eleza Fact" ;
@@ -587,6 +928,17 @@ org:ellinika-hoaxes
     ] ;
     schema:memberOf <https://efcsn.com/>, <https://www.poynter.org/ifcn/> .
 
+org:encosta-no-horizonte-lda-green-efact
+    a schema:Organization ;
+    schema:name "Encosta no Horizonte, Lda | Green eFact" ;
+    schema:url <https://greenefact.sapo.pt> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Portugal"@en ;
+        schema:identifier "PT"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/>, <https://efcsn.com/> .
+
 org:estadao-verifica
     a schema:Organization ;
     schema:name "Estadão Verifica" ;
@@ -595,6 +947,28 @@ org:estadao-verifica
         a schema:Country ;
         schema:name "Brazil"@en ;
         schema:identifier "BR"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:fact-check-cyprus
+    a schema:Organization ;
+    schema:name "Fact Check Cyprus" ;
+    schema:url <https://factcheckcyprus.org> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Cyprus"@en ;
+        schema:identifier "CY"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/>, <https://efcsn.com/> .
+
+org:fact-check-ghana
+    a schema:Organization ;
+    schema:name "Fact-Check Ghana" ;
+    schema:url <https://fact-checkghana.com> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Ghana"@en ;
+        schema:identifier "GH"
     ] ;
     schema:memberOf <https://www.poynter.org/ifcn/> .
 
@@ -616,6 +990,17 @@ org:fact-crescendo
         a schema:Country ;
         schema:name "India"@en ;
         schema:identifier "IN"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:fact-investigation-platform-fip-am
+    a schema:Organization ;
+    schema:name "Fact Investigation Platform (FIP.am)" ;
+    schema:url <https://fip.am> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Armenia"@en ;
+        schema:identifier "AM"
     ] ;
     schema:memberOf <https://www.poynter.org/ifcn/> .
 
@@ -652,6 +1037,17 @@ org:factcheck-bg
     ] ;
     schema:memberOf <https://efcsn.com/> .
 
+org:factcheck-georgia
+    a schema:Organization ;
+    schema:name "FactCheck Georgia" ;
+    schema:url <https://factcheck.ge> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Georgia"@en ;
+        schema:identifier "GE"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/>, <https://efcsn.com/> .
+
 org:factcheck-kz
     a schema:Organization ;
     schema:name "FactCheck.kz" ;
@@ -660,6 +1056,28 @@ org:factcheck-kz
         a schema:Country ;
         schema:name "Kazakhstan"@en ;
         schema:identifier "KZ"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:factcheck-lab
+    a schema:Organization ;
+    schema:name "Factcheck Lab" ;
+    schema:url <https://factchecklab.org> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Hong Kong"@en ;
+        schema:identifier "HK"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:factcheck-lk-by-verite-research
+    a schema:Organization ;
+    schema:name "FactCheck.lk by Verite Research" ;
+    schema:url <https://factcheck.lk> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Sri Lanka"@en ;
+        schema:identifier "LK"
     ] ;
     schema:memberOf <https://www.poynter.org/ifcn/> .
 
@@ -684,6 +1102,17 @@ org:factcheck-vlaanderen
         schema:identifier "BE"
     ] ;
     schema:memberOf <https://efcsn.com/>, <https://www.poynter.org/ifcn/> .
+
+org:factcheckafrica
+    a schema:Organization ;
+    schema:name "FactCheckAfrica" ;
+    schema:url <https://factcheckafrica.net> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Nigeria"@en ;
+        schema:identifier "NG"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
 
 org:factchecker-in
     a schema:Organization ;
@@ -728,6 +1157,17 @@ org:factchequeado
     ] ;
     schema:memberOf <https://www.poynter.org/ifcn/> .
 
+org:factico
+    a schema:Organization ;
+    schema:name "Factico" ;
+    schema:url <https://factico.org> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Spain"@en ;
+        schema:identifier "ES"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
 org:factly
     a schema:Organization ;
     schema:name "FACTLY" ;
@@ -736,6 +1176,17 @@ org:factly
         a schema:Country ;
         schema:name "India"@en ;
         schema:identifier "IN"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:factnameh
+    a schema:Organization ;
+    schema:name "Factnameh" ;
+    schema:url <https://factnameh.com> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Canada"@en ;
+        schema:identifier "CA"
     ] ;
     schema:memberOf <https://www.poynter.org/ifcn/> .
 
@@ -769,6 +1220,28 @@ org:fakenews-pl
         a schema:Country ;
         schema:name "Poland"@en ;
         schema:identifier "PL"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:fakenews-tragac
+    a schema:Organization ;
+    schema:name "FakeNews Tragač" ;
+    schema:url <https://fakenews.rs> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Serbia"@en ;
+        schema:identifier "RS"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/>, <https://efcsn.com/> .
+
+org:fakt-yoxla
+    a schema:Organization ;
+    schema:name "Fakt Yoxla" ;
+    schema:url <https://faktyoxla.info> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Azerbaijan"@en ;
+        schema:identifier "AZ"
     ] ;
     schema:memberOf <https://www.poynter.org/ifcn/> .
 
@@ -816,6 +1289,50 @@ org:fast-check-cl
     ] ;
     schema:memberOf <https://www.poynter.org/ifcn/> .
 
+org:fatabyyano-project
+    a schema:Organization ;
+    schema:name "Fatabyyano project" ;
+    schema:url <https://fatabyyano.net> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Jordan"@en ;
+        schema:identifier "JO"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:first-check
+    a schema:Organization ;
+    schema:name "First Check" ;
+    schema:url <https://firstcheck.in> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "India"@en ;
+        schema:identifier "IN"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:france-24-les-observateurs
+    a schema:Organization ;
+    schema:name "France 24 - Les Observateurs" ;
+    schema:url <https://observers.france24.com> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "France"@en ;
+        schema:identifier "FR"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:franceinfo-fr
+    a schema:Organization ;
+    schema:name "franceinfo.fr" ;
+    schema:url <https://francetvinfo.fr> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "France"@en ;
+        schema:identifier "FR"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
 org:full-fact
     a schema:Organization ;
     schema:name "Full Fact" ;
@@ -826,6 +1343,17 @@ org:full-fact
         schema:identifier "GB"
     ] ;
     schema:memberOf <https://efcsn.com/>, <https://www.poynter.org/ifcn/> .
+
+org:geofacts
+    a schema:Organization ;
+    schema:name "GeoFacts" ;
+    schema:url <https://geofacts.ee> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Estonia"@en ;
+        schema:identifier "EE"
+    ] ;
+    schema:memberOf <https://efcsn.com/> .
 
 org:ghanafact
     a schema:Organization ;
@@ -860,6 +1388,39 @@ org:gwara-media
     ] ;
     schema:memberOf <https://www.poynter.org/ifcn/> .
 
+org:haqcheck-inform-africa
+    a schema:Organization ;
+    schema:name "HaqCheck/Inform Africa" ;
+    schema:url <https://haqcheck.org> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Ethiopia"@en ;
+        schema:identifier "ET"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:heya-tatahaqaq
+    a schema:Organization ;
+    schema:name "Heya tatahaqaq" ;
+    schema:url <https://shechecks.net> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Libya"@en ;
+        schema:identifier "LY"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:hkbu-fact-check
+    a schema:Organization ;
+    schema:name "HKBU Fact Check" ;
+    schema:url <https://factcheck.hkbu.edu.hk> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Hong Kong"@en ;
+        schema:identifier "HK"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
 org:india-today-fact-check
     a schema:Organization ;
     schema:name "India Today Fact Check" ;
@@ -870,6 +1431,28 @@ org:india-today-fact-check
         schema:identifier "IN"
     ] ;
     schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:infact
+    a schema:Organization ;
+    schema:name "InFact" ;
+    schema:url <https://infact.press> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Japan"@en ;
+        schema:identifier "JP"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:infoveritas
+    a schema:Organization ;
+    schema:name "Infoveritas" ;
+    schema:url <https://info-veritas.com> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Spain"@en ;
+        schema:identifier "ES"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/>, <https://efcsn.com/> .
 
 org:istinomer
     a schema:Organization ;
@@ -891,7 +1474,40 @@ org:istinomjer
         schema:name "Bosnia and Herzegovina"@en ;
         schema:identifier "BA"
     ] ;
+    schema:memberOf <https://efcsn.com/>, <https://www.poynter.org/ifcn/> .
+
+org:japan-fact-check-center
+    a schema:Organization ;
+    schema:name "Japan Fact-check Center" ;
+    schema:url <https://factcheckcenter.jp> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Japan"@en ;
+        schema:identifier "JP"
+    ] ;
     schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:jtbc
+    a schema:Organization ;
+    schema:name "JTBC" ;
+    schema:url <https://news.jtbc.co.kr> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Korea, Republic of"@en ;
+        schema:identifier "KR"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:kallkritikbyran
+    a schema:Organization ;
+    schema:name "Källkritikbyrån" ;
+    schema:url <https://kallkritikbyran.se> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Sweden"@en ;
+        schema:identifier "SE"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/>, <https://efcsn.com/> .
 
 org:kallxo-krypometer
     a schema:Organization ;
@@ -903,6 +1519,50 @@ org:kallxo-krypometer
         schema:identifier "XK"
     ] ;
     schema:memberOf <https://efcsn.com/>, <https://www.poynter.org/ifcn/> .
+
+org:knack-magazine-roularta-media-group
+    a schema:Organization ;
+    schema:name "Knack Magazine, Roularta Media Group" ;
+    schema:url <https://knack.be> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Belgium"@en ;
+        schema:identifier "BE"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/>, <https://efcsn.com/> .
+
+org:la-diaria
+    a schema:Organization ;
+    schema:name "la diaria" ;
+    schema:url <https://ladiaria.com.uy> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Uruguay"@en ;
+        schema:identifier "UY"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:la-silla-vacia
+    a schema:Organization ;
+    schema:name "La Silla Vacía" ;
+    schema:url <https://lasillavacia.com> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Colombia"@en ;
+        schema:identifier "CO"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:lakmusz-hu-magyar-jeti-zrt
+    a schema:Organization ;
+    schema:name "Lakmusz.hu - Magyar Jeti Zrt." ;
+    schema:url <https://lakmusz.hu> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Hungary"@en ;
+        schema:identifier "HU"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/>, <https://efcsn.com/> .
 
 org:lavoce-info-fact-check
     a schema:Organization ;
@@ -977,6 +1637,39 @@ org:lighthouse-journalism
     ] ;
     schema:memberOf <https://www.poynter.org/ifcn/> .
 
+org:lithuanian-national-radio-and-television-lrt
+    a schema:Organization ;
+    schema:name "Lithuanian National Radio and Television, LRT" ;
+    schema:url <https://lrt.lt> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Lithuania"@en ;
+        schema:identifier "LT"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:litmus
+    a schema:Organization ;
+    schema:name "Litmus" ;
+    schema:url <https://litmus-factcheck.jp> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Japan"@en ;
+        schema:identifier "JP"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:local-voices-media-network
+    a schema:Organization ;
+    schema:name "Local Voices Media Network" ;
+    schema:url <https://localvoicesliberia.com> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Liberia"@en ;
+        schema:identifier "LR"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
 org:logically-facts
     a schema:Organization ;
     schema:name "Logically Facts" ;
@@ -986,6 +1679,39 @@ org:logically-facts
         schema:name "Ireland"@en ;
         schema:identifier "IE"
     ] .
+
+org:lupa
+    a schema:Organization ;
+    schema:name "Lupa" ;
+    schema:url <https://lupa.lupiga.com> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Croatia"@en ;
+        schema:identifier "HR"
+    ] ;
+    schema:memberOf <https://efcsn.com/> .
+
+org:mafindo
+    a schema:Organization ;
+    schema:name "MAFINDO" ;
+    schema:url <https://mafindo.or.id> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Indonesia"@en ;
+        schema:identifier "ID"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:maharat-news-fact-o-meter
+    a schema:Organization ;
+    schema:name "Maharat-news Fact-o-meter" ;
+    schema:url <https://maharat-news.com> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Lebanon"@en ;
+        schema:identifier "LB"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
 
 org:mala-espina-check
     a schema:Organization ;
@@ -1009,6 +1735,28 @@ org:maldita-es
     ] ;
     schema:memberOf <https://efcsn.com/>, <https://www.poynter.org/ifcn/> .
 
+org:manorama-online
+    a schema:Organization ;
+    schema:name "Manorama Online" ;
+    schema:url <https://manoramaonline.com> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "India"@en ;
+        schema:identifier "IN"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:mediawise
+    a schema:Organization ;
+    schema:name "MediaWise" ;
+    schema:url <https://poynter.org> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "United States"@en ;
+        schema:identifier "US"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
 org:medical-dialogues
     a schema:Organization ;
     schema:name "Medical Dialogues" ;
@@ -1031,6 +1779,61 @@ org:medizin-transparent
     ] ;
     schema:memberOf <https://efcsn.com/>, <https://www.poynter.org/ifcn/> .
 
+org:metamorphosis-foundation
+    a schema:Organization ;
+    schema:name "Metamorphosis Foundation" ;
+    schema:url <https://vistinomer.mk> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "North Macedonia"@en ;
+        schema:identifier "MK"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/>, <https://efcsn.com/> .
+
+org:mindanews
+    a schema:Organization ;
+    schema:name "MindaNews" ;
+    schema:url <https://mindanews.com> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Philippines"@en ;
+        schema:identifier "PH"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:myanmar-ict-for-development-organization
+    a schema:Organization ;
+    schema:name "Myanmar ICT for Development Organization" ;
+    schema:url <https://realornotmm.info> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Myanmar"@en ;
+        schema:identifier "MM"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:mygopen
+    a schema:Organization ;
+    schema:name "MyGoPen" ;
+    schema:url <https://mygopen.com> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Taiwan"@en ;
+        schema:identifier "TW"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:myth-detector
+    a schema:Organization ;
+    schema:name "Myth Detector" ;
+    schema:url <https://mythdetector.com> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Georgia"@en ;
+        schema:identifier "GE"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/>, <https://efcsn.com/> .
+
 org:nepal-fact-check
     a schema:Organization ;
     schema:name "Nepal Fact Check" ;
@@ -1039,6 +1842,17 @@ org:nepal-fact-check
         a schema:Country ;
         schema:name "Nepal"@en ;
         schema:identifier "NP"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:nest-center-for-journalism-innovation-and-development-ngo
+    a schema:Organization ;
+    schema:name "Nest center for Journalism Innovation and Development NGO" ;
+    schema:url <https://mfcc.mn> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Mongolia"@en ;
+        schema:identifier "MN"
     ] ;
     schema:memberOf <https://www.poynter.org/ifcn/> .
 
@@ -1064,6 +1878,28 @@ org:newsmeter
     ] ;
     schema:memberOf <https://www.poynter.org/ifcn/> .
 
+org:newsmobile
+    a schema:Organization ;
+    schema:name "NewsMobile" ;
+    schema:url <https://newsmobile.in> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "India"@en ;
+        schema:identifier "IN"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:newstof
+    a schema:Organization ;
+    schema:name "NewsToF" ;
+    schema:url <https://newstof.com> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Korea, Republic of"@en ;
+        schema:identifier "KR"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
 org:newtral
     a schema:Organization ;
     schema:name "Newtral" ;
@@ -1084,6 +1920,17 @@ org:nieuwscheckers
         schema:name "Netherlands"@en ;
         schema:identifier "NL"
     ] .
+
+org:nunl
+    a schema:Organization ;
+    schema:name "NUnl" ;
+    schema:url <https://nu.nl> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Netherlands"@en ;
+        schema:identifier "NL"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
 
 org:observador-fact-check
     a schema:Organization ;
@@ -1118,6 +1965,17 @@ org:ostro
     ] ;
     schema:memberOf <https://efcsn.com/>, <https://www.poynter.org/ifcn/> .
 
+org:pa-media
+    a schema:Organization ;
+    schema:name "PA Media" ;
+    schema:url <https://pa.media> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "United Kingdom"@en ;
+        schema:identifier "GB"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/>, <https://efcsn.com/> .
+
 org:pagella-politica
     a schema:Organization ;
     schema:name "Pagella Politica" ;
@@ -1128,6 +1986,50 @@ org:pagella-politica
         schema:identifier "IT"
     ] ;
     schema:memberOf <https://efcsn.com/>, <https://www.poynter.org/ifcn/> .
+
+org:palestinian-platform-for-fact-checking-and-media-literacy-kashif
+    a schema:Organization ;
+    schema:name "Palestinian platform for Fact-checking and Media Literacy \"Kashif\"" ;
+    schema:url <https://kashif.ps> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Palestine, State of"@en ;
+        schema:identifier "PS"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:patikrinta-15min
+    a schema:Organization ;
+    schema:name "Patikrinta 15min" ;
+    schema:url <https://15min.lt> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Lithuania"@en ;
+        schema:identifier "LT"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/>, <https://efcsn.com/> .
+
+org:pesacheck
+    a schema:Organization ;
+    schema:name "PesaCheck" ;
+    schema:url <https://pesacheck.org> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Kenya"@en ;
+        schema:identifier "KE"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:piga-firimbi
+    a schema:Organization ;
+    schema:name "Piga Firimbi" ;
+    schema:url <https://pigafirimbi.africauncensored.net> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Kenya"@en ;
+        schema:identifier "KE"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
 
 org:politifact
     a schema:Organization ;
@@ -1162,6 +2064,39 @@ org:pravda
     ] ;
     schema:memberOf <https://efcsn.com/>, <https://www.poynter.org/ifcn/> .
 
+org:press-trust-of-india
+    a schema:Organization ;
+    schema:name "Press Trust of India" ;
+    schema:url <https://ptinews.com> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "India"@en ;
+        schema:identifier "IN"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:pressone-ph
+    a schema:Organization ;
+    schema:name "PressOne.PH" ;
+    schema:url <https://pressone.ph> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Philippines"@en ;
+        schema:identifier "PH"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:probe
+    a schema:Organization ;
+    schema:name "Probe" ;
+    schema:url <https://probe.ph> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Philippines"@en ;
+        schema:identifier "PH"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
 org:provereno-media
     a schema:Organization ;
     schema:name "Provereno.Media" ;
@@ -1173,6 +2108,28 @@ org:provereno-media
     ] ;
     schema:memberOf <https://efcsn.com/>, <https://www.poynter.org/ifcn/> .
 
+org:pt-kompas-cyber-media
+    a schema:Organization ;
+    schema:name "PT. Kompas Cyber Media" ;
+    schema:url <https://kompas.com> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Indonesia"@en ;
+        schema:identifier "ID"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:publico
+    a schema:Organization ;
+    schema:name "PUBLICO" ;
+    schema:url <https://publico.pt> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Portugal"@en ;
+        schema:identifier "PT"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
 org:rappler
     a schema:Organization ;
     schema:name "Rappler" ;
@@ -1183,6 +2140,28 @@ org:rappler
         schema:identifier "PH"
     ] ;
     schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:raskrikavanje
+    a schema:Organization ;
+    schema:name "Raskrikavanje" ;
+    schema:url <https://raskrikavanje.rs> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Serbia"@en ;
+        schema:identifier "RS"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/>, <https://efcsn.com/> .
+
+org:raskrinkavanje
+    a schema:Organization ;
+    schema:name "Raskrinkavanje" ;
+    schema:url <https://raskrinkavanje.ba> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Bosnia and Herzegovina"@en ;
+        schema:identifier "BA"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/>, <https://efcsn.com/> .
 
 org:raskrinkavanje-me
     a schema:Organization ;
@@ -1209,11 +2188,33 @@ org:re-baltica
 org:reuters-fact-check
     a schema:Organization ;
     schema:name "Reuters Fact Check" ;
-    schema:url <https://www.reuters.com/fact-check/> ;
+    schema:url <https://www.reuters.com/fact-check/>, <https://www.reutersagency.com/> ;
     schema:location [
         a schema:Country ;
         schema:name "United Kingdom"@en ;
         schema:identifier "GB"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:rmit-abc-fact-check
+    a schema:Organization ;
+    schema:name "RMIT ABC Fact Check" ;
+    schema:url <https://abc.net.au> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Australia"@en ;
+        schema:identifier "AU"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:rmit-lookout
+    a schema:Organization ;
+    schema:name "RMIT Lookout" ;
+    schema:url <https://rmit.edu.au> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Australia"@en ;
+        schema:identifier "AU"
     ] ;
     schema:memberOf <https://www.poynter.org/ifcn/> .
 
@@ -1226,6 +2227,17 @@ org:rumor-scanner
         schema:name "Bangladesh"@en ;
         schema:identifier "BD"
     ] .
+
+org:sawab
+    a schema:Organization ;
+    schema:name "Sawab" ;
+    schema:url <https://sawablb.com> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Lebanon"@en ;
+        schema:identifier "LB"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
 
 org:science-feedback
     a schema:Organization ;
@@ -1259,6 +2271,28 @@ org:snopes
     ] ;
     schema:memberOf <https://www.poynter.org/ifcn/> .
 
+org:soch-videos
+    a schema:Organization ;
+    schema:name "Soch Videos" ;
+    schema:url <https://sochfactcheck.com> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Pakistan"@en ;
+        schema:identifier "PK"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:south-asia-check
+    a schema:Organization ;
+    schema:name "South Asia Check" ;
+    schema:url <https://southasiacheck.org> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Nepal"@en ;
+        schema:identifier "NP"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
 org:stopfake
     a schema:Organization ;
     schema:name "StopFake" ;
@@ -1267,6 +2301,17 @@ org:stopfake
         a schema:Country ;
         schema:name "Ukraine"@en ;
         schema:identifier "UA"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:stopfals-md
+    a schema:Organization ;
+    schema:name "Stopfals.md" ;
+    schema:url <https://stopfals.md> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Moldova, Republic of"@en ;
+        schema:identifier "MD"
     ] ;
     schema:memberOf <https://www.poynter.org/ifcn/> .
 
@@ -1280,6 +2325,17 @@ org:suara-com
         schema:identifier "ID"
     ] .
 
+org:t-verifica-noticias-telemundo
+    a schema:Organization ;
+    schema:name "T Verifica — Noticias Telemundo" ;
+    schema:url <https://telemundo.com> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "United States"@en ;
+        schema:identifier "US"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
 org:taiwan-factcheck-center
     a schema:Organization ;
     schema:name "Taiwan FactCheck Center" ;
@@ -1288,6 +2344,17 @@ org:taiwan-factcheck-center
         a schema:Country ;
         schema:name "Taiwan"@en ;
         schema:identifier "TW"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:tech4peace
+    a schema:Organization ;
+    schema:name "Tech4Peace" ;
+    schema:url <https://t4p.co> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Iraq"@en ;
+        schema:identifier "IQ"
     ] ;
     schema:memberOf <https://www.poynter.org/ifcn/> .
 
@@ -1334,6 +2401,17 @@ org:tf1-les-verificateurs
         schema:identifier "FR"
     ] .
 
+org:the-canadian-press
+    a schema:Organization ;
+    schema:name "The Canadian Press" ;
+    schema:url <https://thecanadianpressnews.ca> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Canada"@en ;
+        schema:identifier "CA"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
 org:the-conversation-factcheck
     a schema:Organization ;
     schema:name "The Conversation FactCheck" ;
@@ -1343,6 +2421,17 @@ org:the-conversation-factcheck
         schema:name "Australia"@en ;
         schema:identifier "AU"
     ] .
+
+org:the-dispatch-fact-check
+    a schema:Organization ;
+    schema:name "The Dispatch Fact Check" ;
+    schema:url <https://thedispatch.com> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "United States"@en ;
+        schema:identifier "US"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
 
 org:the-ferret-fact-service
     a schema:Organization ;
@@ -1376,6 +2465,17 @@ org:the-lallantop-fact-check
     ] ;
     schema:memberOf <https://www.poynter.org/ifcn/> .
 
+org:the-logical-indian
+    a schema:Organization ;
+    schema:name "The Logical Indian" ;
+    schema:url <https://thelogicalindian.com> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "India"@en ;
+        schema:identifier "IN"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
 org:the-quint
     a schema:Organization ;
     schema:name "The Quint" ;
@@ -1387,6 +2487,28 @@ org:the-quint
     ] ;
     schema:memberOf <https://www.poynter.org/ifcn/> .
 
+org:the-stage-media-liberia
+    a schema:Organization ;
+    schema:name "The Stage Media -Liberia" ;
+    schema:url <https://tsmliberia.com> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Liberia"@en ;
+        schema:identifier "LR"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:the-taiwan-society-for-targeting-misinformation
+    a schema:Organization ;
+    schema:name "The Taiwan Society for Targeting Misinformation" ;
+    schema:url <https://tstm.tw> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Taiwan"@en ;
+        schema:identifier "TW"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
 org:the-washington-post-fact-checker
     a schema:Organization ;
     schema:name "The Washington Post Fact Checker" ;
@@ -1395,6 +2517,17 @@ org:the-washington-post-fact-checker
         a schema:Country ;
         schema:name "United States"@en ;
         schema:identifier "US"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:the-whistle
+    a schema:Organization ;
+    schema:name "The Whistle" ;
+    schema:url <https://globes.co.il> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Israel"@en ;
+        schema:identifier "IL"
     ] ;
     schema:memberOf <https://www.poynter.org/ifcn/> .
 
@@ -1431,6 +2564,28 @@ org:tjekdet
     ] ;
     schema:memberOf <https://efcsn.com/>, <https://www.poynter.org/ifcn/> .
 
+org:togocheck
+    a schema:Organization ;
+    schema:name "TOGOCHECK" ;
+    schema:url <https://togocheck.com> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Togo"@en ;
+        schema:identifier "TG"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:tws-fact-check
+    a schema:Organization ;
+    schema:name "TWS Fact Check" ;
+    schema:url <https://weeklystandard.com> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "United States"@en ;
+        schema:identifier "US"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
 org:univision-el-detector
     a schema:Organization ;
     schema:name "Univision — El Detector" ;
@@ -1453,6 +2608,28 @@ org:uol-confere
     ] ;
     schema:memberOf <https://www.poynter.org/ifcn/> .
 
+org:usa-today
+    a schema:Organization ;
+    schema:name "USA TODAY" ;
+    schema:url <https://usatoday.com> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "United States"@en ;
+        schema:identifier "US"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:verafiles-incorporated
+    a schema:Organization ;
+    schema:name "Verafiles Incorporated" ;
+    schema:url <https://verafiles.org> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Philippines"@en ;
+        schema:identifier "PH"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
 org:verificado
     a schema:Organization ;
     schema:name "Verificado" ;
@@ -1461,6 +2638,17 @@ org:verificado
         a schema:Country ;
         schema:name "Mexico"@en ;
         schema:identifier "MX"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:verificador-de-la-republica
+    a schema:Organization ;
+    schema:name "Verificador de La República" ;
+    schema:url <https://larepublica.pe> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Peru"@en ;
+        schema:identifier "PE"
     ] ;
     schema:memberOf <https://www.poynter.org/ifcn/> .
 
@@ -1496,6 +2684,28 @@ org:verify-sy
     ] ;
     schema:memberOf <https://www.poynter.org/ifcn/> .
 
+org:viral-check
+    a schema:Organization ;
+    schema:name "Viral Check" ;
+    schema:url <https://viralcheck.pt> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Portugal"@en ;
+        schema:identifier "PT"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/>, <https://efcsn.com/> .
+
+org:viralgranskaren
+    a schema:Organization ;
+    schema:name "Viralgranskaren" ;
+    schema:url <https://metro.se> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Sweden"@en ;
+        schema:identifier "SE"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
 org:vishvas-news
     a schema:Organization ;
     schema:name "Vishvas News" ;
@@ -1515,5 +2725,49 @@ org:voxcheck
         a schema:Country ;
         schema:name "Ukraine"@en ;
         schema:identifier "UA"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:vrt-nws
+    a schema:Organization ;
+    schema:name "VRT NWS" ;
+    schema:url <https://vrtnws.be> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Belgium"@en ;
+        schema:identifier "BE"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/>, <https://efcsn.com/> .
+
+org:wisconsin-watch
+    a schema:Organization ;
+    schema:name "Wisconsin Watch" ;
+    schema:url <https://wisconsinwatch.org> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "United States"@en ;
+        schema:identifier "US"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:wojownicy-klawiatury
+    a schema:Organization ;
+    schema:name "Wojownicy Klawiatury" ;
+    schema:url <https://wojownicyklawiatury.pl> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Poland"@en ;
+        schema:identifier "PL"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
+org:youturn
+    a schema:Organization ;
+    schema:name "Youturn" ;
+    schema:url <https://youturn.in> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "India"@en ;
+        schema:identifier "IN"
     ] ;
     schema:memberOf <https://www.poynter.org/ifcn/> .
