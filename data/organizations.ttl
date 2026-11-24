@@ -882,6 +882,17 @@ org:istinomer
     ] ;
     schema:memberOf <https://efcsn.com/>, <https://www.poynter.org/ifcn/> .
 
+org:istinomjer
+    a schema:Organization ;
+    schema:name "Istinomjer" ;
+    schema:url <https://istinomjer.ba/> ;
+    schema:location [
+        a schema:Country ;
+        schema:name "Bosnia and Herzegovina"@en ;
+        schema:identifier "BA"
+    ] ;
+    schema:memberOf <https://www.poynter.org/ifcn/> .
+
 org:kallxo-krypometer
     a schema:Organization ;
     schema:name "KALLXO Krypometër" ;
