@@ -8,7 +8,8 @@ set -euo pipefail
 # values (project directory, healthcheck URL, lock file, log
 # directory) are read from ops/deploy.env, which is not tracked
 # by git. Copy ops/deploy.env.example to ops/deploy.env and
-# adjust the values.
+# adjust the values. Optional pipeline CLI arguments (e.g.
+# --skip-download) are set via PIPELINE_ARGS in the same file.
 # ============================================================
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
@@ -22,6 +23,7 @@ fi
 
 TRIPLESTORE=${TRIPLESTORE:-qlever}
 CONFIG_FILE=${CONFIG_FILE:-config/daily.yaml}
+PIPELINE_ARGS=${PIPELINE_ARGS:-}
 LOCK_FILE=${LOCK_FILE:-/tmp/climatesense_deploy.lock}
 HEALTHCHECK_BASE_URL=${HEALTHCHECK_BASE_URL:?Set HEALTHCHECK_BASE_URL in $DEPLOY_ENV_FILE}
 LOG_DIR=${LOG_DIR:-"$PROJECT_DIR/logs"}
@@ -152,7 +154,9 @@ if ! compose build; then
 fi
 
 log "Running daily pipeline..."
-if ! compose run --rm --build pipeline run -c "$CONFIG_FILE" 2>&1 | tee -a "$LOG_FILE"; then
+log "Pipeline arguments: ${PIPELINE_ARGS:-(none)}"
+read -ra pipeline_args <<<"$PIPELINE_ARGS"
+if ! compose run --rm --build pipeline run -c "$CONFIG_FILE" ${pipeline_args[@]+"${pipeline_args[@]}"} 2>&1 | tee -a "$LOG_FILE"; then
 	log "Error: Pipeline execution failed"
 	exit 1
 fi
