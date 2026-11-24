@@ -147,6 +147,13 @@ fi
 NEW_COMMIT=$(git rev-parse HEAD)
 log "Updated to commit: $NEW_COMMIT"
 
+if ! git diff --quiet || ! git diff --cached --quiet; then
+	log "Error: the checkout has uncommitted modifications to tracked files:"
+	while IFS= read -r line; do log "dirty: $line"; done <<<"$(git diff || true; git diff --cached || true)"
+	log "Refusing to run from a dirty checkout."
+	exit 1
+fi
+
 log "Building Docker containers..."
 if ! compose build; then
 	log "Error: Failed to start Docker containers"
