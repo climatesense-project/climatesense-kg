@@ -145,6 +145,7 @@ class DocumentExtractionService:
             interval_seconds=self.progress_interval_seconds,
         )
         processed = 0
+        due: list[DocumentTarget] = []
         cursor_name = f"document_extraction_{int(time.time() * 1_000_000)}"
         with self.pool.connection() as connection:
             with (
@@ -172,11 +173,11 @@ class DocumentExtractionService:
                         DocumentTarget(row["document_key"], row["requested_url"])
                         for row in rows
                     ]
-                    summary.merge(
-                        self._process_batch(
-                            targets, offline=offline, ignore_cache=ignore_cache
-                        )
+                    batch_summary, pending = self._restore_due(
+                        targets, offline=offline, ignore_cache=ignore_cache
                     )
+                    summary.merge(batch_summary)
+                    due.extend(pending)
                     processed += len(targets)
                     progress.update(
                         processed,
@@ -197,6 +198,10 @@ class DocumentExtractionService:
             },
             force=True,
         )
+        if offline:
+            summary.missing += len(due)
+        elif due:
+            self._fetch_due(due, summary, progress, processed)
         deferred = sum(item.deferred for item in self._host_cooldowns.values())
         if deferred:
             logger.info(
@@ -205,6 +210,43 @@ class DocumentExtractionService:
                 len(self._host_cooldowns),
             )
         return summary
+
+    def _fetch_due(
+        self,
+        due: list[DocumentTarget],
+        summary: StageSummary,
+        progress: ProgressLogger,
+        processed: int,
+    ) -> None:
+        logger.info("Fetching %d due documents", len(due))
+        chunk_size = self.batch_size * 4
+        for chunk_start in range(0, len(due), chunk_size):
+            chunk = due[chunk_start : chunk_start + chunk_size]
+            with ThreadPoolExecutor(
+                max_workers=self.max_workers,
+                thread_name_prefix="document-extraction",
+            ) as executor:
+                computed = self._compute_many(chunk, executor)
+            self._store(list(zip(chunk, computed, strict=True)))
+            for result in computed:
+                if result.succeeded:
+                    summary.succeeded += 1
+                elif result.permanent:
+                    summary.permanent_failures += 1
+                    summary.missing += 1
+                else:
+                    summary.retryable_failures += 1
+                    summary.missing += 1
+            progress.update(
+                processed,
+                {
+                    "cached": summary.cached,
+                    "fetched": summary.succeeded,
+                    "retryable": summary.retryable_failures,
+                    "permanent": summary.permanent_failures,
+                },
+                force=True,
+            )
 
     def _target_count(self) -> int:
         with self.pool.connection() as connection, connection.cursor() as cursor:
@@ -222,13 +264,13 @@ class DocumentExtractionService:
             row = cursor.fetchone()
         return int(row[0]) if row else 0
 
-    def _process_batch(
+    def _restore_due(
         self,
         targets: list[DocumentTarget],
         *,
         offline: bool,
         ignore_cache: bool,
-    ) -> StageSummary:
+    ) -> tuple[StageSummary, list[DocumentTarget]]:
         summary = StageSummary(self.name, available=None if offline else True)
         stored = {} if ignore_cache else self._load([target.key for target in targets])
         pending: list[DocumentTarget] = []
@@ -250,29 +292,7 @@ class DocumentExtractionService:
                 summary.missing += 1
             else:
                 pending.append(target)
-
-        if not pending:
-            return summary
-        if offline:
-            summary.missing += len(pending)
-            return summary
-
-        with ThreadPoolExecutor(
-            max_workers=self.max_workers,
-            thread_name_prefix="document-extraction",
-        ) as executor:
-            computed = self._compute_many(pending, executor)
-        self._store(list(zip(pending, computed, strict=True)))
-        for result in computed:
-            if result.succeeded:
-                summary.succeeded += 1
-            elif result.permanent:
-                summary.permanent_failures += 1
-                summary.missing += 1
-            else:
-                summary.retryable_failures += 1
-                summary.missing += 1
-        return summary
+        return summary, pending
 
     def _load(self, keys: list[str]) -> dict[str, StoredExtraction]:
         if not keys:
