@@ -64,7 +64,7 @@ document_extraction:
   rate_limit_delay: 0.5
   timeout: 15
   max_retries: 2
-  transient_retry_delay_hours: 1
+  transient_retry_delay_hours: 168
   blocked_retry_delay_hours: 720
   dns_retry_delay_hours: 168
   content_retry_delay_hours: 720
